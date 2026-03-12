@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Reservation, Staff, STORES, formatTime, todayString } from '@/lib/types'
 
@@ -82,10 +82,10 @@ function calcTotal(form: Partial<Reservation>): number {
   return Math.max(0, total)
 }
 
-function calcCheckoutTime(time: number, courseDuration: number, extensionFee: number): number {
+function calcCheckoutTime(startHHMM: number, courseDuration: number, extensionFee: number): number {
   const extensionMinutes = Math.round((extensionFee / 3000) * 10)
-  const h = Math.floor(time / 100)
-  const m = time % 100
+  const h = Math.floor(startHHMM / 100)
+  const m = startHHMM % 100
   const totalMins = h * 60 + m + courseDuration + extensionMinutes
   return Math.floor(totalMins / 60) * 100 + (totalMins % 60)
 }
@@ -128,6 +128,90 @@ const emptyReservation = (): Partial<Reservation> => ({
 
 // ── セレクト共通スタイル ────────────────────────────────
 const sel = 'w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
+
+// ── 検索付きプルダウン ──────────────────────────────────
+interface SelectOption {
+  label: string
+  value: string | number
+}
+
+function SearchableSelect({
+  value,
+  onChange,
+  options,
+  className,
+}: {
+  value: string | number
+  onChange: (v: string) => void
+  options: SelectOption[]
+  className?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  useEffect(() => {
+    if (open) {
+      setQuery('')
+      setTimeout(() => inputRef.current?.focus(), 0)
+    }
+  }, [open])
+
+  const filtered = options.filter(o =>
+    o.label.toLowerCase().includes(query.toLowerCase())
+  )
+  const selectedLabel = options.find(o => String(o.value) === String(value))?.label ?? ''
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className={`${className} flex items-center justify-between text-left`}
+      >
+        <span className={selectedLabel ? 'text-gray-800' : 'text-gray-400'}>
+          {selectedLabel || '選択...'}
+        </span>
+        <span className="text-gray-400 text-xs ml-1">▾</span>
+      </button>
+      {open && (
+        <div className="absolute z-[100] left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-xl overflow-hidden">
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="検索..."
+            className="w-full px-2 py-1.5 text-sm border-b border-gray-200 focus:outline-none"
+          />
+          <div className="max-h-44 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <div className="px-2 py-2 text-xs text-gray-400 text-center">見つかりません</div>
+            ) : filtered.map(o => (
+              <div
+                key={String(o.value)}
+                onMouseDown={() => { onChange(String(o.value)); setOpen(false) }}
+                className={`px-2 py-1.5 text-sm cursor-pointer hover:bg-blue-50 ${
+                  String(o.value) === String(value) ? 'bg-blue-100 font-medium' : ''
+                }`}
+              >
+                {o.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function ReservationsPage() {
   const [selectedDate, setSelectedDate] = useState(todayString())
@@ -229,12 +313,14 @@ export default function ReservationsPage() {
     setSavingId(null)
   }
 
-  // 到着確認トグル → 退出時刻を自動計算
+  // 到着確認トグル → 現在時刻からコース時間分で退室時刻を自動計算
   const toggleArrival = async (r: Reservation) => {
     const newVal = !r.arrival_confirmed
     let checkout_time = r.checkout_time
-    if (newVal && r.time && r.course_duration) {
-      checkout_time = calcCheckoutTime(r.time, r.course_duration, r.extension ?? 0)
+    if (newVal && r.course_duration) {
+      const now = new Date()
+      const currentHHMM = now.getHours() * 100 + now.getMinutes()
+      checkout_time = calcCheckoutTime(currentHHMM, r.course_duration, r.extension ?? 0)
     }
     setSavingId(r.id)
     await supabase.from('reservations').update({ arrival_confirmed: newVal, checkout_time }).eq('id', r.id)
@@ -335,13 +421,13 @@ export default function ReservationsPage() {
                   <td className="px-1.5 py-1 border border-gray-200 text-right font-bold text-yellow-600">
                     {r.total_amount > 0 ? `¥${r.total_amount.toLocaleString()}` : ''}
                   </td>
-                  {/* 到着確認 → 押したら退出時刻を自動計算 */}
+                  {/* 到着確認 → 現在時刻から退室時刻を自動計算 */}
                   <td className="px-1 py-1 border border-gray-200 text-center">
                     <button
                       onClick={() => toggleArrival(r)}
                       className={`px-2 h-5 rounded-full text-xs font-bold transition-colors ${r.arrival_confirmed ? 'bg-orange-500 text-white shadow-sm' : 'bg-gray-200 text-gray-400 hover:bg-gray-300'}`}
                     >
-                      {r.arrival_confirmed ? '着' : '着'}
+                      着
                     </button>
                   </td>
                   <td className="px-1 py-1 border border-gray-200 text-center font-mono font-bold text-emerald-600">
@@ -445,18 +531,23 @@ export default function ReservationsPage() {
               {/* 店舗 */}
               <div className="col-span-2">
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">店舗</label>
-                <select value={editingReservation.store_id ?? ''} onChange={e => updateForm({ store_id: Number(e.target.value) })} className={sel}>
-                  {STORES.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                <SearchableSelect
+                  value={editingReservation.store_id ?? ''}
+                  onChange={v => updateForm({ store_id: Number(v) })}
+                  options={STORES.map(s => ({ label: s.name, value: s.id }))}
+                  className={sel}
+                />
               </div>
 
               {/* セクション / 番号 */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">セクション</label>
-                <select value={editingReservation.section ?? 'E'} onChange={e => updateForm({ section: e.target.value as 'E' | 'M' })} className={sel}>
-                  <option value="E">E</option>
-                  <option value="M">M</option>
-                </select>
+                <SearchableSelect
+                  value={editingReservation.section ?? 'E'}
+                  onChange={v => updateForm({ section: v as 'E' | 'M' })}
+                  options={[{ label: 'E', value: 'E' }, { label: 'M', value: 'M' }]}
+                  className={sel}
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">番号</label>
@@ -513,103 +604,117 @@ export default function ReservationsPage() {
               {/* 区分（新規/会員） */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">区分</label>
-                <select
+                <SearchableSelect
                   value={editingReservation.category ?? ''}
-                  onChange={e => {
-                    const cat = e.target.value
-                    updateForm({ category: cat, membership_fee: cat === '新規' ? 1100 : 0 })
-                  }}
+                  onChange={v => updateForm({ category: v, membership_fee: v === '新規' ? 1100 : 0 })}
+                  options={[{ label: '-', value: '' }, ...CATEGORIES.map(c => ({ label: c, value: c }))]}
                   className={sel}
-                >
-                  <option value="">-</option>
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                />
               </div>
 
               {/* 女性 */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">女性</label>
-                <select value={editingReservation.staff_id ?? ''} onChange={e => updateForm({ staff_id: e.target.value ? Number(e.target.value) : null })} className={sel}>
-                  <option value="">未選択</option>
-                  {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                <SearchableSelect
+                  value={editingReservation.staff_id ?? ''}
+                  onChange={v => updateForm({ staff_id: v ? Number(v) : null })}
+                  options={[{ label: '未選択', value: '' }, ...staffList.map(s => ({ label: s.name, value: s.id }))]}
+                  className={sel}
+                />
               </div>
 
               {/* 指名 */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">指名</label>
-                <select value={editingReservation.nomination_type ?? ''} onChange={e => updateForm({ nomination_type: e.target.value })} className={sel}>
-                  {NOMINATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                <SearchableSelect
+                  value={editingReservation.nomination_type ?? ''}
+                  onChange={v => updateForm({ nomination_type: v })}
+                  options={NOMINATION_OPTIONS.map(o => ({ label: o.label, value: o.value }))}
+                  className={sel}
+                />
               </div>
 
               {/* コース種別 */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">コース種別</label>
-                <select value={editingReservation.course_type ?? ''} onChange={e => updateForm({ course_type: e.target.value || null })} className={sel}>
-                  <option value="">-</option>
-                  {COURSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                <SearchableSelect
+                  value={editingReservation.course_type ?? ''}
+                  onChange={v => updateForm({ course_type: v || null })}
+                  options={[{ label: '-', value: '' }, ...COURSE_TYPES.map(t => ({ label: t, value: t }))]}
+                  className={sel}
+                />
               </div>
 
               {/* コース時間 */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">コース時間</label>
-                <select
+                <SearchableSelect
                   value={editingReservation.course_duration ?? ''}
-                  onChange={e => updateForm({ course_duration: e.target.value ? Number(e.target.value) : null })}
-                  className={sel}
-                >
-                  <option value="">-</option>
-                  {COURSE_DURATIONS.map(d => {
+                  onChange={v => updateForm({ course_duration: v ? Number(v) : null })}
+                  options={[{ label: '-', value: '' }, ...COURSE_DURATIONS.map(d => {
                     const ct = editingReservation.course_type
                     const price = ct && COURSE_PRICES[d]?.[ct] ? ` ¥${COURSE_PRICES[d][ct].toLocaleString()}` : ''
-                    return <option key={d} value={d}>{d}分{price}</option>
-                  })}
-                </select>
+                    return { label: `${d}分${price}`, value: d }
+                  })]}
+                  className={sel}
+                />
               </div>
 
               {/* OP1〜6 */}
               {(['option1','option2','option3','option4','option5','option6'] as const).map((field, i) => (
                 <div key={field}>
                   <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">OP{i + 1}</label>
-                  <select value={(editingReservation[field] as string) ?? ''} onChange={e => updateForm({ [field]: e.target.value })} className={sel}>
-                    {OP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
+                  <SearchableSelect
+                    value={(editingReservation[field] as string) ?? ''}
+                    onChange={v => updateForm({ [field]: v })}
+                    options={OP_OPTIONS.map(o => ({ label: o.label, value: o.value }))}
+                    className={sel}
+                  />
                 </div>
               ))}
 
               {/* 入会金 */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">入会金</label>
-                <select value={editingReservation.membership_fee ?? 0} onChange={e => updateForm({ membership_fee: Number(e.target.value) })} className={sel}>
-                  <option value={0}>なし</option>
-                  <option value={1100}>あり ¥1,100</option>
-                </select>
+                <SearchableSelect
+                  value={editingReservation.membership_fee ?? 0}
+                  onChange={v => updateForm({ membership_fee: Number(v) })}
+                  options={[{ label: 'なし', value: 0 }, { label: 'あり ¥1,100', value: 1100 }]}
+                  className={sel}
+                />
               </div>
 
               {/* 交通費 */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">交通費</label>
-                <select value={editingReservation.transportation_fee ?? 0} onChange={e => updateForm({ transportation_fee: Number(e.target.value) })} className={sel}>
-                  {TRANSPORTATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                <SearchableSelect
+                  value={editingReservation.transportation_fee ?? 0}
+                  onChange={v => updateForm({ transportation_fee: Number(v) })}
+                  options={TRANSPORTATION_OPTIONS.map(o => ({ label: o.label, value: o.value }))}
+                  className={sel}
+                />
               </div>
 
               {/* 延長 */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">延長</label>
-                <select value={editingReservation.extension ?? 0} onChange={e => updateForm({ extension: Number(e.target.value) })} className={sel}>
-                  {EXTENSION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                <SearchableSelect
+                  value={editingReservation.extension ?? 0}
+                  onChange={v => updateForm({ extension: Number(v) })}
+                  options={EXTENSION_OPTIONS.map(o => ({ label: o.label, value: o.value }))}
+                  className={sel}
+                />
               </div>
 
               {/* 割引 */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">割引</label>
-                <select value={editingReservation.discount ?? 0} onChange={e => updateForm({ discount: Number(e.target.value) })} className={sel}>
-                  {DISCOUNT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
+                <SearchableSelect
+                  value={editingReservation.discount ?? 0}
+                  onChange={v => updateForm({ discount: Number(v) })}
+                  options={DISCOUNT_OPTIONS.map(o => ({ label: o.label, value: o.value }))}
+                  className={sel}
+                />
               </div>
 
               {/* 合計金額（自動計算） */}
