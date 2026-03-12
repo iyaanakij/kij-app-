@@ -46,12 +46,28 @@ export default function OperationsPage() {
   const [reservations, setReservations] = useState<Reservation[]>([])
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [loading, setLoading] = useState(false)
-  const [currentTime, setCurrentTime] = useState<Date>(new Date())
+  const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null)
+  const [currentTimeLabel, setCurrentTimeLabel] = useState<string>('')
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // 10秒ごとに現在時刻を更新
+  // クライアントサイドのみで現在時刻を計算（SSRのUTC問題を回避）
   useEffect(() => {
-    const interval = setInterval(() => setCurrentTime(new Date()), 10000)
+    const update = () => {
+      const now = new Date()
+      const h = now.getHours()
+      const m = now.getMinutes()
+      const s = now.getSeconds()
+      let decimal = h + m / 60 + s / 3600
+      if (decimal < TIME_START) decimal += 24
+      setCurrentTimeDecimal(decimal)
+      setCurrentTimeLabel(
+        h < 7
+          ? `翌${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+          : `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+      )
+    }
+    update()
+    const interval = setInterval(update, 10000)
     return () => clearInterval(interval)
   }, [])
 
@@ -146,20 +162,11 @@ export default function OperationsPage() {
   // 現在時刻インジケーター
   const isToday = selectedDate === todayString()
 
-  const currentDecimalTime = useMemo(() => {
-    const h = currentTime.getHours()
-    const m = currentTime.getMinutes()
-    const s = currentTime.getSeconds()
-    const decimal = h + m / 60 + s / 3600
-    // 深夜0〜7時台は翌日扱い（+24）
-    return decimal < TIME_START ? decimal + 24 : decimal
-  }, [currentTime])
-
   const currentTimeSlotOffset = useMemo(() => {
-    if (!isToday) return null
-    if (currentDecimalTime < TIME_START || currentDecimalTime >= TIME_END) return null
-    return (currentDecimalTime - TIME_START) * (60 / SLOT_MINUTES) * CELL_WIDTH
-  }, [isToday, currentDecimalTime])
+    if (!isToday || currentTimeDecimal === null) return null
+    if (currentTimeDecimal < TIME_START || currentTimeDecimal >= TIME_END) return null
+    return (currentTimeDecimal - TIME_START) * (60 / SLOT_MINUTES) * CELL_WIDTH
+  }, [isToday, currentTimeDecimal])
 
   // ページロード時・日付変更時に現在時刻位置へ自動スクロール
   useEffect(() => {
@@ -258,10 +265,7 @@ export default function OperationsPage() {
                     padding: '0 2px',
                     borderRadius: 2,
                   }}>
-                    {currentTime.getHours() < 7
-                      ? `翌${String(currentTime.getHours()).padStart(2,'0')}:${String(currentTime.getMinutes()).padStart(2,'0')}`
-                      : `${String(currentTime.getHours()).padStart(2,'0')}:${String(currentTime.getMinutes()).padStart(2,'0')}`
-                    }
+                    {currentTimeLabel}
                   </span>
                 </div>
               )}
