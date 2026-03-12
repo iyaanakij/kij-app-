@@ -142,7 +142,7 @@ function generateTemplate(r: Reservation): string {
   return `お疲れ様です。
 お仕事の詳細をお知らせ致します。
 
-【時間】：${time}
+【時間】${time}
 【名前】${name}様
 
 【エリア】${area}
