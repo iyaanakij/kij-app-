@@ -1,0 +1,110 @@
+export interface Store {
+  id: number
+  name: string
+}
+
+export interface Staff {
+  id: number
+  name: string
+  join_date: string | null
+  notes: string | null
+  created_at: string
+  stores?: Store[]
+}
+
+export interface StaffStore {
+  staff_id: number
+  store_id: number
+}
+
+export interface Shift {
+  id: number
+  staff_id: number
+  store_id: number
+  date: string
+  start_time: number
+  end_time: number
+  status: 'normal' | 'x'
+  notes: string | null
+  created_at: string
+  staff?: Staff
+  store?: Store
+}
+
+export interface Reservation {
+  id: number
+  store_id: number
+  date: string
+  section: 'E' | 'M' | null
+  row_number: number | null
+  time: number | null
+  customer_name: string | null
+  phone: string | null
+  confirmed: boolean
+  communicated: boolean
+  area: string | null
+  hotel: string | null
+  room_number: string | null
+  category: string | null
+  staff_id: number | null
+  nomination_type: string | null
+  course_duration: number | null
+  course_type: string | null
+  nude: boolean
+  option1: string | null
+  option2: string | null
+  option3: string | null
+  option4: string | null
+  option5: string | null
+  option6: string | null
+  membership_fee: number
+  transportation_fee: number
+  extension: number
+  discount: number
+  total_amount: number
+  checkout_time: number | null
+  arrival_confirmed: boolean
+  notes: string | null
+  media: string | null
+  checked: boolean
+  created_at: string
+  staff?: Staff
+  store?: Store
+}
+
+export const STORES: Store[] = [
+  { id: 1, name: '成田' },
+  { id: 2, name: '千葉' },
+  { id: 3, name: '西船橋' },
+  { id: 4, name: '錦糸町' },
+]
+
+export function formatTime(hhmm: number | null): string {
+  if (hhmm === null || hhmm === undefined) return ''
+  const h = Math.floor(hhmm / 100)
+  const m = hhmm % 100
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+export function formatShiftTime(t: number): string {
+  if (t >= 24) {
+    return `翌${String(Math.floor(t - 24)).padStart(2, '0')}:00`
+  }
+  const h = Math.floor(t)
+  const m = Math.round((t - h) * 60)
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+export function hhmmToDecimal(hhmm: number): number {
+  const h = Math.floor(hhmm / 100)
+  const m = hhmm % 100
+  return h + m / 60
+}
+
+export function todayString(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
