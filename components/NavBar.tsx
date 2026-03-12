@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { STORES } from '@/lib/types'
 
 const navItems = [
   { href: '/reservations', label: '予約管理' },
@@ -12,6 +14,22 @@ const navItems = [
 
 export default function NavBar() {
   const pathname = usePathname()
+  const [storeName, setStoreName] = useState<string>('')
+
+  useEffect(() => {
+    const update = () => {
+      const saved = localStorage.getItem('kij_store')
+      if (saved) {
+        const store = STORES.find(s => s.id === Number(saved))
+        setStoreName(store?.name ?? '')
+      } else {
+        setStoreName('')
+      }
+    }
+    update()
+    window.addEventListener('kij_store_changed', update)
+    return () => window.removeEventListener('kij_store_changed', update)
+  }, [pathname])
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-gray-950 text-white shadow-lg border-b border-gray-700">
@@ -39,6 +57,12 @@ export default function NavBar() {
             )
           })}
         </div>
+        {storeName && (
+          <div className="ml-auto flex items-center gap-1.5 bg-gray-800 px-3 py-1 rounded-full">
+            <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
+            <span className="text-xs font-semibold text-gray-200">{storeName}</span>
+          </div>
+        )}
       </div>
     </nav>
   )

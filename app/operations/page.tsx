@@ -46,6 +46,17 @@ export default function OperationsPage() {
   const [reservations, setReservations] = useState<Reservation[]>([])
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [loading, setLoading] = useState(false)
+
+  // マウント時にlocalStorageから店舗を復元
+  useEffect(() => {
+    const saved = localStorage.getItem('kij_store')
+    if (saved && !isNaN(Number(saved))) setSelectedStoreId(Number(saved))
+  }, [])
+
+  const selectStore = (id: number) => {
+    setSelectedStoreId(id)
+    localStorage.setItem('kij_store', String(id))
+  }
   const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null)
   const [currentTimeLabel, setCurrentTimeLabel] = useState<string>('')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -211,7 +222,7 @@ export default function OperationsPage() {
             {STORES.map(s => (
               <button
                 key={s.id}
-                onClick={() => setSelectedStoreId(s.id)}
+                onClick={() => selectStore(s.id)}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                   selectedStoreId === s.id
                     ? 'bg-blue-600 text-white shadow-sm'

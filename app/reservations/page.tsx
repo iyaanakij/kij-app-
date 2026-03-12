@@ -253,6 +253,17 @@ export default function ReservationsPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingReservation, setEditingReservation] = useState<Partial<Reservation>>(emptyReservation())
   const [isEditing, setIsEditing] = useState(false)
+
+  // マウント時にlocalStorageから店舗を復元
+  useEffect(() => {
+    const saved = localStorage.getItem('kij_store')
+    if (saved && !isNaN(Number(saved))) setSelectedStoreId(Number(saved))
+  }, [])
+
+  const selectStore = (id: number | null) => {
+    setSelectedStoreId(id)
+    if (id !== null) localStorage.setItem('kij_store', String(id))
+  }
   const [savingId, setSavingId] = useState<number | null>(null)
   const [templateText, setTemplateText] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -531,7 +542,7 @@ export default function ReservationsPage() {
           </div>
           <div className="flex gap-1.5 flex-wrap">
             <button
-              onClick={() => setSelectedStoreId(null)}
+              onClick={() => selectStore(null)}
               className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === null ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               全店舗
@@ -539,7 +550,7 @@ export default function ReservationsPage() {
             {STORES.map(s => (
               <button
                 key={s.id}
-                onClick={() => setSelectedStoreId(s.id)}
+                onClick={() => selectStore(s.id)}
                 className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
               >
                 {s.name}
