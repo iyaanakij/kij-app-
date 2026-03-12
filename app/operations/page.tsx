@@ -184,14 +184,28 @@ export default function OperationsPage() {
       {/* Controls */}
       <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-semibold text-gray-600">日付</label>
+          <div className="flex items-center gap-1">
+            <label className="text-sm font-semibold text-gray-600 mr-1">日付</label>
+            <button
+              onClick={() => {
+                const d = new Date(selectedDate); d.setDate(d.getDate() - 1)
+                setSelectedDate(d.toISOString().split('T')[0])
+              }}
+              className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors"
+            >◀</button>
             <input
               type="date"
               value={selectedDate}
               onChange={e => setSelectedDate(e.target.value)}
               className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
             />
+            <button
+              onClick={() => {
+                const d = new Date(selectedDate); d.setDate(d.getDate() + 1)
+                setSelectedDate(d.toISOString().split('T')[0])
+              }}
+              className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors"
+            >▶</button>
           </div>
           <div className="flex gap-1.5 flex-wrap">
             {STORES.map(s => (
