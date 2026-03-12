@@ -270,7 +270,7 @@ export default function OperationsPage() {
                 </div>
               )}
 
-              <table className="text-xs border-collapse" style={{ width: STAFF_COL_WIDTH + TOTAL_SLOTS * CELL_WIDTH }}>
+              <table className="text-xs border-collapse" style={{ width: STAFF_COL_WIDTH + TOTAL_SLOTS * CELL_WIDTH, tableLayout: 'fixed' }}>
                 <thead>
                   <tr className="bg-gray-900 text-white">
                     <th
