@@ -127,7 +127,7 @@ const emptyReservation = (): Partial<Reservation> => ({
 })
 
 // ── セレクト共通スタイル ────────────────────────────────
-const sel = 'w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+const sel = 'w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
 
 export default function ReservationsPage() {
   const [selectedDate, setSelectedDate] = useState(todayString())
@@ -247,33 +247,36 @@ export default function ReservationsPage() {
 
   const renderSection = (section: 'E' | 'M', label: string) => {
     const rows = reservations.filter(r => r.section === section)
-    const bgHeader = section === 'E' ? 'bg-pink-200' : 'bg-orange-200'
+    const bgHeader = section === 'E' ? 'bg-pink-200 text-pink-900' : 'bg-amber-200 text-amber-900'
     const bgRow    = section === 'E' ? 'bg-pink-50'  : 'bg-orange-50'
 
     return (
-      <div className="mb-4">
-        <div className={`flex items-center gap-3 px-3 py-2 ${bgHeader} rounded-t font-bold text-gray-800`}>
-          <span>{label} ({section === 'E' ? eCount : mCount}件)</span>
+      <div className="mb-5">
+        <div className={`flex items-center gap-3 px-4 py-2.5 ${bgHeader} rounded-t-lg font-bold`}>
+          <span className="text-sm">{label}</span>
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${section === 'E' ? 'bg-pink-400 text-white' : 'bg-amber-500 text-white'}`}>
+            {section === 'E' ? eCount : mCount}件
+          </span>
           <button
             onClick={() => openAddModal(section)}
-            className="ml-auto bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded"
+            className="ml-auto bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded-full font-medium transition-colors shadow-sm"
           >
             + 追加
           </button>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto border border-t-0 border-gray-200 rounded-b-lg">
           <table className="w-full text-xs border-collapse min-w-[1400px]">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="bg-gray-700 text-white">
                 {['CS','番号','時間','お客様名','確電','伝達','電話番号','エリア','ホテル','部屋','区分','女性','指名','種別','コース','OP1','OP2','OP3','OP4','OP5','OP6','入会金','交通費','延長','割引','金額','到着','退出','注釈','媒体','操作'].map(h => (
-                  <th key={h} className="px-1 py-1 border border-gray-600 whitespace-nowrap">{h}</th>
+                  <th key={h} className="px-1.5 py-1.5 border border-gray-600 whitespace-nowrap font-semibold">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={28} className={`text-center py-4 text-gray-400 ${bgRow}`}>予約なし</td>
+                  <td colSpan={28} className={`text-center py-5 text-gray-400 ${bgRow}`}>予約なし</td>
                 </tr>
               )}
               {rows.map((r) => (
@@ -281,66 +284,85 @@ export default function ReservationsPage() {
                   key={r.id}
                   className={`${bgRow} hover:brightness-95 transition-all ${savingId === r.id ? 'opacity-50' : ''}`}
                 >
-                  <td className="px-1 py-0.5 border border-gray-200 text-center">
-                    <input type="checkbox" checked={r.checked} onChange={() => toggleField(r.id, 'checked', r.checked)} className="cursor-pointer" />
+                  <td className="px-1 py-1 border border-gray-200 text-center">
+                    <input
+                      type="checkbox"
+                      checked={r.checked}
+                      onChange={() => toggleField(r.id, 'checked', r.checked)}
+                      className="cursor-pointer accent-blue-600 w-3.5 h-3.5"
+                    />
                   </td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-center text-gray-600">{r.row_number}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-center font-mono font-bold">{formatTime(r.time)}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 font-medium">{r.customer_name}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-center">
-                    <button onClick={() => toggleField(r.id, 'confirmed', r.confirmed)}
-                      className={`w-5 h-5 rounded text-xs font-bold ${r.confirmed ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                  <td className="px-1 py-1 border border-gray-200 text-center text-gray-600 font-mono">{r.row_number}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-mono font-bold text-gray-800">{formatTime(r.time)}</td>
+                  <td className="px-1.5 py-1 border border-gray-200 font-semibold text-gray-800">{r.customer_name}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center">
+                    <button
+                      onClick={() => toggleField(r.id, 'confirmed', r.confirmed)}
+                      className={`w-6 h-5 rounded text-xs font-bold transition-colors ${r.confirmed ? 'bg-green-500 text-white shadow-sm' : 'bg-gray-200 text-gray-400 hover:bg-gray-300'}`}
+                    >
                       {r.confirmed ? '○' : ''}
                     </button>
                   </td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-center">
-                    <button onClick={() => toggleField(r.id, 'communicated', r.communicated)}
-                      className={`w-5 h-5 rounded text-xs font-bold ${r.communicated ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                  <td className="px-1 py-1 border border-gray-200 text-center">
+                    <button
+                      onClick={() => toggleField(r.id, 'communicated', r.communicated)}
+                      className={`w-6 h-5 rounded text-xs font-bold transition-colors ${r.communicated ? 'bg-blue-500 text-white shadow-sm' : 'bg-gray-200 text-gray-400 hover:bg-gray-300'}`}
+                    >
                       {r.communicated ? '○' : ''}
                     </button>
                   </td>
-                  <td className="px-1 py-0.5 border border-gray-200 font-mono">{r.phone}</td>
-                  <td className="px-1 py-0.5 border border-gray-200">{r.area}</td>
-                  <td className="px-1 py-0.5 border border-gray-200">{r.hotel}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-center">{r.room_number}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-center font-medium">{r.category}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-center text-purple-700 font-medium">
+                  <td className="px-1 py-1 border border-gray-200 font-mono text-gray-700">{r.phone}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-700">{r.area}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-700">{r.hotel}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center text-gray-700">{r.room_number}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-semibold text-gray-700">{r.category}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center text-purple-700 font-semibold">
                     {(r.staff as Staff)?.name ?? ''}
                   </td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-center">{r.nomination_type}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-center text-xs font-medium">{r.course_type}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-center">{r.course_duration ? `${r.course_duration}分` : ''}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-xs">{r.option1}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-xs">{r.option2}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-xs">{r.option3}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-xs">{r.option4}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-xs">{r.option5}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-xs">{r.option6}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-right">{r.membership_fee > 0 ? r.membership_fee.toLocaleString() : ''}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-right">{r.transportation_fee > 0 ? r.transportation_fee.toLocaleString() : ''}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-right">{r.extension > 0 ? r.extension.toLocaleString() : ''}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-right text-red-600">{r.discount > 0 ? `-${r.discount.toLocaleString()}` : ''}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-right font-bold text-blue-700">
+                  <td className="px-1 py-1 border border-gray-200 text-center text-gray-700">{r.nomination_type}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-medium text-gray-700">{r.course_type}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-medium text-gray-700">{r.course_duration ? `${r.course_duration}分` : ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option1}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option2}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option3}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option4}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option5}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option6}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-right text-gray-700">{r.membership_fee > 0 ? r.membership_fee.toLocaleString() : ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-right text-gray-700">{r.transportation_fee > 0 ? r.transportation_fee.toLocaleString() : ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-right text-gray-700">{r.extension > 0 ? r.extension.toLocaleString() : ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-right text-red-600 font-medium">{r.discount > 0 ? `-${r.discount.toLocaleString()}` : ''}</td>
+                  <td className="px-1.5 py-1 border border-gray-200 text-right font-bold text-yellow-600">
                     {r.total_amount > 0 ? `¥${r.total_amount.toLocaleString()}` : ''}
                   </td>
                   {/* 到着確認 → 押したら退出時刻を自動計算 */}
-                  <td className="px-1 py-0.5 border border-gray-200 text-center">
-                    <button onClick={() => toggleArrival(r)}
-                      className={`w-6 h-5 rounded text-xs font-bold ${r.arrival_confirmed ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
-                      {r.arrival_confirmed ? '着' : ''}
+                  <td className="px-1 py-1 border border-gray-200 text-center">
+                    <button
+                      onClick={() => toggleArrival(r)}
+                      className={`px-2 h-5 rounded-full text-xs font-bold transition-colors ${r.arrival_confirmed ? 'bg-orange-500 text-white shadow-sm' : 'bg-gray-200 text-gray-400 hover:bg-gray-300'}`}
+                    >
+                      {r.arrival_confirmed ? '着' : '着'}
                     </button>
                   </td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-center font-mono font-bold text-green-700">
+                  <td className="px-1 py-1 border border-gray-200 text-center font-mono font-bold text-emerald-600">
                     {formatTime(r.checkout_time)}
                   </td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-gray-600 text-xs">{r.notes}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-xs">{r.media}</td>
-                  <td className="px-1 py-0.5 border border-gray-200 text-center">
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.notes}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.media}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center">
                     <div className="flex gap-1 justify-center">
-                      <button onClick={() => openEditModal(r)}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white text-xs px-1.5 py-0.5 rounded">編集</button>
-                      <button onClick={() => deleteReservation(r.id)}
-                        className="bg-red-500 hover:bg-red-600 text-white text-xs px-1.5 py-0.5 rounded">削除</button>
+                      <button
+                        onClick={() => openEditModal(r)}
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white text-xs px-2 py-0.5 rounded transition-colors"
+                      >
+                        編集
+                      </button>
+                      <button
+                        onClick={() => deleteReservation(r.id)}
+                        className="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-0.5 rounded transition-colors"
+                      >
+                        削除
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -355,42 +377,53 @@ export default function ReservationsPage() {
   return (
     <div className="p-3">
       {/* ヘッダー */}
-      <div className="bg-white rounded-lg shadow p-3 mb-4">
+      <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700">日付</label>
+            <label className="text-sm font-semibold text-gray-600">日付</label>
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
             />
           </div>
-          <div className="flex gap-1 flex-wrap">
-            <button onClick={() => setSelectedStoreId(null)}
-              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${selectedStoreId === null ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+          <div className="flex gap-1.5 flex-wrap">
+            <button
+              onClick={() => setSelectedStoreId(null)}
+              className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === null ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            >
               全店舗
             </button>
             {STORES.map(s => (
-              <button key={s.id} onClick={() => setSelectedStoreId(s.id)}
-                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
+              <button
+                key={s.id}
+                onClick={() => setSelectedStoreId(s.id)}
+                className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
                 {s.name}
               </button>
             ))}
           </div>
-          <div className="ml-auto flex gap-4 text-sm font-medium">
-            <span className="bg-pink-100 text-pink-800 px-2 py-1 rounded">E成約: {eCount}件</span>
-            <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded">M成約: {mCount}件</span>
+          <div className="ml-auto flex gap-3 text-sm font-medium">
+            <span className="bg-pink-100 text-pink-800 px-3 py-1 rounded-full flex items-center gap-1.5">
+              E成約
+              <span className="bg-pink-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">{eCount}</span>
+            </span>
+            <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full flex items-center gap-1.5">
+              M成約
+              <span className="bg-amber-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">{mCount}</span>
+            </span>
           </div>
         </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="text-gray-500">読み込み中...</div>
+          <div className="text-gray-500 animate-pulse">読み込み中...</div>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow p-3">
+        <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4">
           {renderSection('E', 'E 予約')}
           {renderSection('M', 'M 予約')}
         </div>
@@ -399,18 +432,19 @@ export default function ReservationsPage() {
       {/* モーダル */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center overflow-y-auto pt-6 pb-10">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl mx-4">
-            <div className="bg-gray-800 text-white px-4 py-3 rounded-t-lg flex items-center justify-between">
-              <h2 className="font-bold text-lg">
-                {isEditing ? '予約編集' : '新規予約追加'} — {editingReservation.section}セクション
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4">
+            <div className="bg-gray-900 text-white px-5 py-4 rounded-t-xl flex items-center justify-between">
+              <h2 className="font-bold text-base">
+                {isEditing ? '予約編集' : '新規予約追加'}
+                <span className="ml-2 text-gray-400 font-normal text-sm">— {editingReservation.section}セクション</span>
               </h2>
-              <button onClick={() => setModalOpen(false)} className="text-gray-300 hover:text-white text-xl">✕</button>
+              <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-white text-xl leading-none transition-colors">✕</button>
             </div>
 
-            <div className="p-4 grid grid-cols-2 gap-3 text-sm">
+            <div className="p-5 grid grid-cols-2 gap-3 text-sm">
               {/* 店舗 */}
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-600 mb-1">店舗</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">店舗</label>
                 <select value={editingReservation.store_id ?? ''} onChange={e => updateForm({ store_id: Number(e.target.value) })} className={sel}>
                   {STORES.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
@@ -418,20 +452,20 @@ export default function ReservationsPage() {
 
               {/* セクション / 番号 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">セクション</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">セクション</label>
                 <select value={editingReservation.section ?? 'E'} onChange={e => updateForm({ section: e.target.value as 'E' | 'M' })} className={sel}>
                   <option value="E">E</option>
                   <option value="M">M</option>
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">番号</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">番号</label>
                 <input type="number" value={editingReservation.row_number ?? ''} onChange={e => updateForm({ row_number: Number(e.target.value) })} className={sel} />
               </div>
 
               {/* 時間 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">時間</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">時間</label>
                 <input
                   type="time"
                   value={editingReservation.time !== null && editingReservation.time !== undefined
@@ -448,37 +482,37 @@ export default function ReservationsPage() {
 
               {/* お客様名 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">お客様名</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">お客様名</label>
                 <input type="text" value={editingReservation.customer_name ?? ''} onChange={e => updateForm({ customer_name: e.target.value })} className={sel} />
               </div>
 
               {/* 電話番号 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">電話番号</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">電話番号</label>
                 <input type="text" value={editingReservation.phone ?? ''} onChange={e => updateForm({ phone: e.target.value })} className={sel} />
               </div>
 
               {/* エリア */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">エリア</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">エリア</label>
                 <input type="text" value={editingReservation.area ?? ''} onChange={e => updateForm({ area: e.target.value })} className={sel} />
               </div>
 
               {/* ホテル */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">ホテル</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">ホテル</label>
                 <input type="text" value={editingReservation.hotel ?? ''} onChange={e => updateForm({ hotel: e.target.value })} className={sel} />
               </div>
 
               {/* 部屋番号 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">部屋番号</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">部屋番号</label>
                 <input type="text" value={editingReservation.room_number ?? ''} onChange={e => updateForm({ room_number: e.target.value })} className={sel} />
               </div>
 
               {/* 区分（新規/会員） */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">区分</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">区分</label>
                 <select
                   value={editingReservation.category ?? ''}
                   onChange={e => {
@@ -494,7 +528,7 @@ export default function ReservationsPage() {
 
               {/* 女性 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">女性</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">女性</label>
                 <select value={editingReservation.staff_id ?? ''} onChange={e => updateForm({ staff_id: e.target.value ? Number(e.target.value) : null })} className={sel}>
                   <option value="">未選択</option>
                   {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -503,7 +537,7 @@ export default function ReservationsPage() {
 
               {/* 指名 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">指名</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">指名</label>
                 <select value={editingReservation.nomination_type ?? ''} onChange={e => updateForm({ nomination_type: e.target.value })} className={sel}>
                   {NOMINATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -511,7 +545,7 @@ export default function ReservationsPage() {
 
               {/* コース種別 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">コース種別</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">コース種別</label>
                 <select value={editingReservation.course_type ?? ''} onChange={e => updateForm({ course_type: e.target.value || null })} className={sel}>
                   <option value="">-</option>
                   {COURSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
@@ -520,7 +554,7 @@ export default function ReservationsPage() {
 
               {/* コース時間 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">コース時間</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">コース時間</label>
                 <select
                   value={editingReservation.course_duration ?? ''}
                   onChange={e => updateForm({ course_duration: e.target.value ? Number(e.target.value) : null })}
@@ -538,7 +572,7 @@ export default function ReservationsPage() {
               {/* OP1〜6 */}
               {(['option1','option2','option3','option4','option5','option6'] as const).map((field, i) => (
                 <div key={field}>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">OP{i + 1}</label>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">OP{i + 1}</label>
                   <select value={(editingReservation[field] as string) ?? ''} onChange={e => updateForm({ [field]: e.target.value })} className={sel}>
                     {OP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
@@ -547,7 +581,7 @@ export default function ReservationsPage() {
 
               {/* 入会金 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">入会金</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">入会金</label>
                 <select value={editingReservation.membership_fee ?? 0} onChange={e => updateForm({ membership_fee: Number(e.target.value) })} className={sel}>
                   <option value={0}>なし</option>
                   <option value={1100}>あり ¥1,100</option>
@@ -556,7 +590,7 @@ export default function ReservationsPage() {
 
               {/* 交通費 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">交通費</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">交通費</label>
                 <select value={editingReservation.transportation_fee ?? 0} onChange={e => updateForm({ transportation_fee: Number(e.target.value) })} className={sel}>
                   {TRANSPORTATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -564,7 +598,7 @@ export default function ReservationsPage() {
 
               {/* 延長 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">延長</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">延長</label>
                 <select value={editingReservation.extension ?? 0} onChange={e => updateForm({ extension: Number(e.target.value) })} className={sel}>
                   {EXTENSION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -572,7 +606,7 @@ export default function ReservationsPage() {
 
               {/* 割引 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">割引</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">割引</label>
                 <select value={editingReservation.discount ?? 0} onChange={e => updateForm({ discount: Number(e.target.value) })} className={sel}>
                   {DISCOUNT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -580,49 +614,49 @@ export default function ReservationsPage() {
 
               {/* 合計金額（自動計算） */}
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-600 mb-1">合計金額（自動計算）</label>
-                <div className="w-full border border-blue-300 bg-blue-50 rounded px-3 py-2 text-lg font-bold text-blue-700">
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">合計金額（自動計算）</label>
+                <div className="w-full border-2 border-yellow-400 bg-yellow-50 rounded-lg px-4 py-2.5 text-xl font-bold text-yellow-700">
                   ¥{(editingReservation.total_amount ?? 0).toLocaleString()}
                 </div>
               </div>
 
               {/* 媒体 */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">媒体</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">媒体</label>
                 <input type="text" value={editingReservation.media ?? ''} onChange={e => updateForm({ media: e.target.value })} className={sel} />
               </div>
 
               {/* 注釈 */}
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-600 mb-1">注釈</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">注釈</label>
                 <textarea value={editingReservation.notes ?? ''} onChange={e => updateForm({ notes: e.target.value })} rows={2} className={sel} />
               </div>
 
               {/* チェックボックス群 */}
-              <div className="col-span-2 flex gap-6">
+              <div className="col-span-2 flex gap-6 pt-1">
                 {([
                   { field: 'confirmed',    label: '確電' },
                   { field: 'communicated', label: '伝達' },
                   { field: 'checked',      label: 'CS' },
                 ] as const).map(({ field, label }) => (
-                  <label key={field} className="flex items-center gap-2 cursor-pointer">
+                  <label key={field} className="flex items-center gap-2 cursor-pointer group">
                     <input
                       type="checkbox"
                       checked={(editingReservation[field] as boolean) ?? false}
                       onChange={e => updateForm({ [field]: e.target.checked })}
-                      className="w-4 h-4"
+                      className="w-4 h-4 accent-blue-600 cursor-pointer"
                     />
-                    <span className="text-sm">{label}</span>
+                    <span className="text-sm text-gray-700 group-hover:text-gray-900">{label}</span>
                   </label>
                 ))}
               </div>
             </div>
 
-            <div className="px-4 py-3 bg-gray-50 rounded-b-lg flex gap-2 justify-end">
-              <button onClick={() => setModalOpen(false)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded font-medium">
+            <div className="px-5 py-4 bg-gray-50 rounded-b-xl flex gap-2 justify-end border-t border-gray-200">
+              <button onClick={() => setModalOpen(false)} className="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors">
                 キャンセル
               </button>
-              <button onClick={saveReservation} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium">
+              <button onClick={saveReservation} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-sm transition-colors">
                 {isEditing ? '更新' : '追加'}
               </button>
             </div>

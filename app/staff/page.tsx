@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Staff, Store, STORES } from '@/lib/types'
+import { Staff, STORES } from '@/lib/types'
 
 interface StaffWithStores extends Staff {
   storeIds: number[]
@@ -104,12 +104,15 @@ export default function StaffPage() {
 
   return (
     <div className="p-3">
-      <div className="bg-white rounded-lg shadow p-3 mb-4">
+      <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4 mb-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-gray-800">スタッフ管理</h1>
+          <div>
+            <h1 className="text-lg font-bold text-gray-800">スタッフ管理</h1>
+            <p className="text-xs text-gray-500 mt-0.5">登録スタッフ: {staffList.length}名</p>
+          </div>
           <button
             onClick={openAdd}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium text-sm transition-colors"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-medium text-sm transition-colors shadow-sm"
           >
             + 新規追加
           </button>
@@ -118,24 +121,25 @@ export default function StaffPage() {
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="text-gray-500">読み込み中...</div>
+          <div className="text-gray-500 animate-pulse">読み込み中...</div>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="bg-gray-800 text-white">
-                <th className="px-4 py-3 text-left font-medium">名前</th>
-                <th className="px-4 py-3 text-left font-medium">入店日</th>
-                <th className="px-4 py-3 text-left font-medium">所属店舗</th>
-                <th className="px-4 py-3 text-left font-medium">メモ</th>
-                <th className="px-4 py-3 text-center font-medium w-24">操作</th>
+              <tr className="bg-gray-900 text-white">
+                <th className="px-4 py-3 text-left font-semibold">名前</th>
+                <th className="px-4 py-3 text-left font-semibold">入店日</th>
+                <th className="px-4 py-3 text-left font-semibold">所属店舗</th>
+                <th className="px-4 py-3 text-left font-semibold">メモ</th>
+                <th className="px-4 py-3 text-center font-semibold w-28">操作</th>
               </tr>
             </thead>
             <tbody>
               {staffList.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="text-center py-12 text-gray-400">
+                  <td colSpan={5} className="text-center py-16 text-gray-400">
+                    <div className="text-3xl mb-2">👤</div>
                     スタッフが登録されていません
                   </td>
                 </tr>
@@ -143,21 +147,21 @@ export default function StaffPage() {
               {staffList.map((s, i) => (
                 <tr
                   key={s.id}
-                  className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors`}
+                  className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'} hover:bg-blue-50 transition-colors`}
                 >
                   <td className="px-4 py-3 font-bold text-gray-800">{s.name}</td>
-                  <td className="px-4 py-3 text-gray-600 font-mono">
-                    {s.join_date ? s.join_date.replace(/-/g, '/') : '-'}
+                  <td className="px-4 py-3 text-gray-600 font-mono text-sm">
+                    {s.join_date ? s.join_date.replace(/-/g, '/') : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-1 flex-wrap">
+                    <div className="flex gap-1.5 flex-wrap">
                       {s.storeIds.length === 0 ? (
                         <span className="text-gray-400 text-xs">未設定</span>
                       ) : (
                         s.storeIds.map(sid => {
                           const store = STORES.find(st => st.id === sid)
                           return store ? (
-                            <span key={sid} className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">
+                            <span key={sid} className="bg-blue-100 text-blue-800 text-xs px-2.5 py-0.5 rounded-full font-medium">
                               {store.name}
                             </span>
                           ) : null
@@ -165,18 +169,20 @@ export default function StaffPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-600 max-w-xs truncate">{s.notes || '-'}</td>
+                  <td className="px-4 py-3 text-gray-600 max-w-xs truncate text-sm">
+                    {s.notes || <span className="text-gray-300">—</span>}
+                  </td>
                   <td className="px-4 py-3 text-center">
                     <div className="flex gap-2 justify-center">
                       <button
                         onClick={() => openEdit(s)}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white text-xs px-3 py-1.5 rounded transition-colors"
+                        className="bg-amber-500 hover:bg-amber-600 text-white text-xs px-3 py-1.5 rounded-full transition-colors font-medium shadow-sm"
                       >
                         編集
                       </button>
                       <button
                         onClick={() => deleteStaff(s.id, s.name)}
-                        className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded transition-colors"
+                        className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-full transition-colors font-medium shadow-sm"
                       >
                         削除
                       </button>
@@ -186,42 +192,46 @@ export default function StaffPage() {
               ))}
             </tbody>
           </table>
-          <div className="p-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-600">
-            合計: <span className="font-bold text-gray-900">{staffList.length}名</span>
-          </div>
+          {staffList.length > 0 && (
+            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-500">
+              合計: <span className="font-bold text-gray-800">{staffList.length}名</span>
+            </div>
+          )}
         </div>
       )}
 
       {/* Modal */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-md mx-4">
-            <div className="bg-gray-800 text-white px-4 py-3 rounded-t-lg flex items-center justify-between">
-              <h2 className="font-bold text-lg">{isEdit ? 'スタッフ編集' : '新規スタッフ追加'}</h2>
-              <button onClick={() => setModalOpen(false)} className="text-gray-300 hover:text-white text-xl">✕</button>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div className="bg-gray-900 text-white px-5 py-4 rounded-t-xl flex items-center justify-between">
+              <h2 className="font-bold text-base">{isEdit ? 'スタッフ編集' : '新規スタッフ追加'}</h2>
+              <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-white text-xl leading-none transition-colors">✕</button>
             </div>
-            <div className="p-4 space-y-4 text-sm">
+            <div className="p-5 space-y-4 text-sm">
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">名前 <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">
+                  名前 <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
                   value={editing.name ?? ''}
                   onChange={e => setEditing(p => ({ ...p, name: e.target.value }))}
                   placeholder="スタッフ名"
-                  className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">入店日</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">入店日</label>
                 <input
                   type="date"
                   value={editing.join_date ?? ''}
                   onChange={e => setEditing(p => ({ ...p, join_date: e.target.value }))}
-                  className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-2">所属店舗（複数選択可）</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">所属店舗（複数選択可）</label>
                 <div className="flex gap-2 flex-wrap">
                   {STORES.map(s => {
                     const selected = (editing.storeIds ?? []).includes(s.id)
@@ -229,10 +239,10 @@ export default function StaffPage() {
                       <button
                         key={s.id}
                         onClick={() => toggleStore(s.id)}
-                        className={`px-3 py-1.5 rounded text-sm font-medium border-2 transition-all ${
+                        className={`px-4 py-1.5 rounded-full text-sm font-medium border-2 transition-all ${
                           selected
-                            ? 'bg-blue-600 border-blue-600 text-white'
-                            : 'bg-white border-gray-300 text-gray-600 hover:border-blue-400'
+                            ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600'
                         }`}
                       >
                         {s.name}
@@ -242,27 +252,27 @@ export default function StaffPage() {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">メモ</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">メモ</label>
                 <textarea
                   value={editing.notes ?? ''}
                   onChange={e => setEditing(p => ({ ...p, notes: e.target.value }))}
                   rows={3}
                   placeholder="備考・メモ"
-                  className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
                 />
               </div>
             </div>
-            <div className="px-4 py-3 bg-gray-50 rounded-b-lg flex gap-2 justify-end">
+            <div className="px-5 py-4 bg-gray-50 rounded-b-xl flex gap-2 justify-end border-t border-gray-200">
               <button
                 onClick={() => setModalOpen(false)}
-                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded font-medium transition-colors"
+                className="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors"
               >
                 キャンセル
               </button>
               <button
                 onClick={saveStaff}
                 disabled={saving}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium transition-colors disabled:opacity-50"
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 shadow-sm"
               >
                 {saving ? '保存中...' : isEdit ? '更新' : '追加'}
               </button>
