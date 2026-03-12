@@ -443,182 +443,110 @@ export default function ReservationsPage() {
                 </tr>
               )}
               {rows.map((r) => {
-                const isInline = inlineEditId === r.id
-                const d = isInline ? inlineData : r
-                const td = 'border border-gray-200 px-1 py-0.5'
+                const isOpen = inlineEditId === r.id
+                const d = inlineData
+                const COLS = 31
+                const fld = 'flex flex-col gap-0.5'
+                const lbl = 'text-xs font-semibold text-gray-500 uppercase tracking-wide'
+                const inp = 'border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white w-full'
                 return (
+                <>
                 <tr
                   key={r.id}
-                  onClick={() => { if (!isInline) startInlineEdit(r) }}
-                  className={`transition-all cursor-pointer ${savingId === r.id ? 'opacity-50' : ''} ${isInline ? 'bg-blue-50 outline outline-2 outline-blue-400 outline-offset-[-2px]' : `${bgRow} hover:brightness-95`}`}
+                  onClick={() => isOpen ? setInlineEditId(null) : startInlineEdit(r)}
+                  className={`transition-all cursor-pointer text-xs ${savingId === r.id ? 'opacity-50' : ''} ${isOpen ? 'bg-blue-50 border-l-2 border-blue-400' : `${bgRow} hover:brightness-95`}`}
                 >
-                  {/* CS */}
-                  <td className={`${td} text-center`} onClick={e => e.stopPropagation()}>
+                  <td className="px-1 py-1 border border-gray-200 text-center" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" checked={r.checked} onChange={() => toggleField(r.id, 'checked', r.checked)} className="cursor-pointer accent-blue-600 w-3.5 h-3.5" />
                   </td>
-                  {/* 番号 */}
-                  <td className={`${td} text-center font-mono`}>
-                    {isInline
-                      ? <input type="number" className={iText + ' text-center w-10'} value={d.row_number ?? ''} onChange={e => updateInlineLocal({ row_number: Number(e.target.value) })} onBlur={e => saveInlineField({ row_number: Number(e.target.value) })} />
-                      : <span className="text-gray-600">{r.row_number}</span>}
-                  </td>
-                  {/* 時間 */}
-                  <td className={`${td} text-center font-mono font-bold`}>
-                    {isInline
-                      ? <input type="time" className={iText + ' text-center w-16'} value={d.time != null ? `${String(Math.floor(d.time/100)).padStart(2,'0')}:${String(d.time%100).padStart(2,'0')}` : ''} onChange={e => { if (!e.target.value) { updateInlineLocal({ time: null }); return } const [h,m]=e.target.value.split(':').map(Number); updateInlineLocal({ time: h*100+m }) }} onBlur={e => { if (!e.target.value) { saveInlineField({ time: null }); return } const [h,m]=e.target.value.split(':').map(Number); saveInlineField({ time: h*100+m }) }} />
-                      : <span className="text-gray-800">{formatTime(r.time)}</span>}
-                  </td>
-                  {/* お客様名 */}
-                  <td className={`${td} font-semibold`}>
-                    {isInline
-                      ? <input className={iText} value={d.customer_name ?? ''} onChange={e => updateInlineLocal({ customer_name: e.target.value })} onBlur={e => saveInlineField({ customer_name: e.target.value })} />
-                      : <span className="text-gray-800">{r.customer_name}</span>}
-                  </td>
-                  {/* 確電 */}
-                  <td className={`${td} text-center`} onClick={e => e.stopPropagation()}>
+                  <td className="px-1 py-1 border border-gray-200 text-center text-gray-600 font-mono">{r.row_number}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-mono font-bold text-gray-800">{formatTime(r.time)}</td>
+                  <td className="px-1.5 py-1 border border-gray-200 font-semibold text-gray-800">{r.customer_name}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center" onClick={e => e.stopPropagation()}>
                     <button onClick={() => toggleField(r.id, 'confirmed', r.confirmed)} className={`w-6 h-5 rounded text-xs font-bold transition-colors ${r.confirmed ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400 hover:bg-gray-300'}`}>{r.confirmed ? '○' : ''}</button>
                   </td>
-                  {/* 伝達 */}
-                  <td className={`${td} text-center`} onClick={e => e.stopPropagation()}>
+                  <td className="px-1 py-1 border border-gray-200 text-center" onClick={e => e.stopPropagation()}>
                     <button onClick={() => toggleField(r.id, 'communicated', r.communicated)} className={`w-6 h-5 rounded text-xs font-bold transition-colors ${r.communicated ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-400 hover:bg-gray-300'}`}>{r.communicated ? '○' : ''}</button>
                   </td>
-                  {/* 電話番号 */}
-                  <td className={`${td} font-mono`}>
-                    {isInline
-                      ? <input className={iText} value={d.phone ?? ''} onChange={e => updateInlineLocal({ phone: e.target.value })} onBlur={e => saveInlineField({ phone: e.target.value })} />
-                      : <span className="text-gray-700">{r.phone}</span>}
-                  </td>
-                  {/* エリア */}
-                  <td className={td}>
-                    {isInline
-                      ? <input className={iText} value={d.area ?? ''} onChange={e => updateInlineLocal({ area: e.target.value })} onBlur={e => saveInlineField({ area: e.target.value })} />
-                      : <span className="text-gray-700">{r.area}</span>}
-                  </td>
-                  {/* ホテル */}
-                  <td className={td}>
-                    {isInline
-                      ? <input className={iText} value={d.hotel ?? ''} onChange={e => updateInlineLocal({ hotel: e.target.value })} onBlur={e => saveInlineField({ hotel: e.target.value })} />
-                      : <span className="text-gray-700">{r.hotel}</span>}
-                  </td>
-                  {/* 部屋 */}
-                  <td className={`${td} text-center`}>
-                    {isInline
-                      ? <input className={iText + ' text-center'} value={d.room_number ?? ''} onChange={e => updateInlineLocal({ room_number: e.target.value })} onBlur={e => saveInlineField({ room_number: e.target.value })} />
-                      : <span className="text-gray-700">{r.room_number}</span>}
-                  </td>
-                  {/* 区分 */}
-                  <td className={`${td} text-center`}>
-                    {isInline
-                      ? <select className={iSel} value={d.category ?? ''} onChange={e => { const v=e.target.value; saveInlineField({ category: v, membership_fee: v==='新規'?1100:0 }) }}>
-                          <option value="">-</option>{CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
-                        </select>
-                      : <span className="font-semibold text-gray-700">{r.category}</span>}
-                  </td>
-                  {/* 女性 */}
-                  <td className={`${td} text-center`}>
-                    {isInline
-                      ? <select className={iSel + ' text-purple-700'} value={d.staff_id ?? ''} onChange={e => saveInlineField({ staff_id: e.target.value ? Number(e.target.value) : null })}>
-                          <option value="">-</option>{staffList.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
-                      : <span className="text-purple-700 font-semibold">{(r.staff as Staff)?.name ?? ''}</span>}
-                  </td>
-                  {/* 指名 */}
-                  <td className={`${td} text-center`}>
-                    {isInline
-                      ? <select className={iSel} value={d.nomination_type ?? ''} onChange={e => saveInlineField({ nomination_type: e.target.value })}>
-                          {NOMINATION_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                      : <span className="text-gray-700">{r.nomination_type}</span>}
-                  </td>
-                  {/* 種別 */}
-                  <td className={`${td} text-center`}>
-                    {isInline
-                      ? <select className={iSel} value={d.course_type ?? ''} onChange={e => saveInlineField({ course_type: e.target.value || null })}>
-                          <option value="">-</option>{COURSE_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
-                        </select>
-                      : <span className="font-medium text-gray-700">{r.course_type}</span>}
-                  </td>
-                  {/* コース */}
-                  <td className={`${td} text-center`}>
-                    {isInline
-                      ? <select className={iSel} value={d.course_duration ?? ''} onChange={e => saveInlineField({ course_duration: e.target.value ? Number(e.target.value) : null })}>
-                          <option value="">-</option>{COURSE_DURATIONS.map(dur=><option key={dur} value={dur}>{dur}分</option>)}
-                        </select>
-                      : <span className="font-medium text-gray-700">{r.course_duration ? `${r.course_duration}分` : ''}</span>}
-                  </td>
-                  {/* OP1-6 */}
-                  {(['option1','option2','option3','option4','option5','option6'] as const).map(f => (
-                    <td key={f} className={td}>
-                      {isInline
-                        ? <select className={iSel} value={(d[f] as string) ?? ''} onChange={e => saveInlineField({ [f]: e.target.value })}>
-                            {OP_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-                          </select>
-                        : <span className="text-gray-600">{r[f]}</span>}
-                    </td>
-                  ))}
-                  {/* 入会金 */}
-                  <td className={`${td} text-right`}>
-                    {isInline
-                      ? <select className={iSel} value={d.membership_fee ?? 0} onChange={e => saveInlineField({ membership_fee: Number(e.target.value) })}>
-                          <option value={0}>-</option><option value={1100}>¥1,100</option>
-                        </select>
-                      : <span className="text-gray-700">{r.membership_fee > 0 ? r.membership_fee.toLocaleString() : ''}</span>}
-                  </td>
-                  {/* 交通費 */}
-                  <td className={`${td} text-right`}>
-                    {isInline
-                      ? <select className={iSel} value={d.transportation_fee ?? 0} onChange={e => saveInlineField({ transportation_fee: Number(e.target.value) })}>
-                          {TRANSPORTATION_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                      : <span className="text-gray-700">{r.transportation_fee > 0 ? r.transportation_fee.toLocaleString() : ''}</span>}
-                  </td>
-                  {/* 延長 */}
-                  <td className={`${td} text-right`}>
-                    {isInline
-                      ? <select className={iSel} value={d.extension ?? 0} onChange={e => saveInlineField({ extension: Number(e.target.value) })}>
-                          {EXTENSION_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                      : <span className="text-gray-700">{r.extension > 0 ? r.extension.toLocaleString() : ''}</span>}
-                  </td>
-                  {/* 割引 */}
-                  <td className={`${td} text-right`}>
-                    {isInline
-                      ? <select className={iSel} value={d.discount ?? 0} onChange={e => saveInlineField({ discount: Number(e.target.value) })}>
-                          {DISCOUNT_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                      : <span className="text-red-600 font-medium">{r.discount > 0 ? `-${r.discount.toLocaleString()}` : ''}</span>}
-                  </td>
-                  {/* 金額 */}
-                  <td className={`${td} text-right font-bold text-yellow-600`}>
-                    {(d.total_amount ?? 0) > 0 ? `¥${(d.total_amount ?? 0).toLocaleString()}` : ''}
-                  </td>
-                  {/* 到着 */}
-                  <td className={`${td} text-center`} onClick={e => e.stopPropagation()}>
+                  <td className="px-1 py-1 border border-gray-200 font-mono text-gray-700">{r.phone}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-700">{r.area}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-700">{r.hotel}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center text-gray-700">{r.room_number}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-semibold text-gray-700">{r.category}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center text-purple-700 font-semibold">{(r.staff as Staff)?.name ?? ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center text-gray-700">{r.nomination_type}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-medium text-gray-700">{r.course_type}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-medium text-gray-700">{r.course_duration ? `${r.course_duration}分` : ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option1}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option2}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option3}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option4}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option5}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option6}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-right text-gray-700">{r.membership_fee > 0 ? r.membership_fee.toLocaleString() : ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-right text-gray-700">{r.transportation_fee > 0 ? r.transportation_fee.toLocaleString() : ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-right text-gray-700">{r.extension > 0 ? r.extension.toLocaleString() : ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-right text-red-600 font-medium">{r.discount > 0 ? `-${r.discount.toLocaleString()}` : ''}</td>
+                  <td className="px-1.5 py-1 border border-gray-200 text-right font-bold text-yellow-600">{r.total_amount > 0 ? `¥${r.total_amount.toLocaleString()}` : ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center" onClick={e => e.stopPropagation()}>
                     <button onClick={() => toggleArrival(r)} className={`px-2 h-5 rounded-full text-xs font-bold transition-colors ${r.arrival_confirmed ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-400 hover:bg-gray-300'}`}>着</button>
                   </td>
-                  {/* 退出 */}
-                  <td className={`${td} text-center font-mono font-bold text-emerald-600`}>{formatTime(r.checkout_time)}</td>
-                  {/* 注釈 */}
-                  <td className={td}>
-                    {isInline
-                      ? <input className={iText} value={d.notes ?? ''} onChange={e => updateInlineLocal({ notes: e.target.value })} onBlur={e => saveInlineField({ notes: e.target.value })} />
-                      : <span className="text-gray-600">{r.notes}</span>}
-                  </td>
-                  {/* 媒体 */}
-                  <td className={td}>
-                    {isInline
-                      ? <input className={iText} value={d.media ?? ''} onChange={e => updateInlineLocal({ media: e.target.value })} onBlur={e => saveInlineField({ media: e.target.value })} />
-                      : <span className="text-gray-600">{r.media}</span>}
-                  </td>
-                  {/* 操作 */}
-                  <td className={`${td} text-center`} onClick={e => e.stopPropagation()}>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-mono font-bold text-emerald-600">{formatTime(r.checkout_time)}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.notes}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.media}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center" onClick={e => e.stopPropagation()}>
                     <div className="flex gap-1 justify-center">
-                      <button onClick={() => { setTemplateText(generateTemplate(r)); setCopied(false) }} className="bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-0.5 rounded transition-colors">テンプレ</button>
-                      <button onClick={() => openEditModal(r)} className="bg-yellow-500 hover:bg-yellow-600 text-white text-xs px-2 py-0.5 rounded transition-colors">編集</button>
-                      <button onClick={() => deleteReservation(r.id)} className="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-0.5 rounded transition-colors">削除</button>
+                      <button onClick={() => { setTemplateText(generateTemplate(r)); setCopied(false) }} className="bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-0.5 rounded">テンプレ</button>
+                      <button onClick={() => openEditModal(r)} className="bg-yellow-500 hover:bg-yellow-600 text-white text-xs px-2 py-0.5 rounded">編集</button>
+                      <button onClick={() => deleteReservation(r.id)} className="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-0.5 rounded">削除</button>
                     </div>
                   </td>
                 </tr>
+                {isOpen && (
+                  <tr key={`${r.id}-edit`} className="bg-white border-l-2 border-blue-400">
+                    <td colSpan={COLS} className="px-4 py-3 border-b border-blue-200">
+                      <div className="grid grid-cols-4 gap-x-4 gap-y-2 text-sm">
+                        {/* 行1: 番号 時間 お客様名 電話 */}
+                        <div className={fld}><span className={lbl}>番号</span><input type="number" className={inp} value={d.row_number ?? ''} onChange={e => updateInlineLocal({ row_number: Number(e.target.value) })} onBlur={e => saveInlineField({ row_number: Number(e.target.value) })} /></div>
+                        <div className={fld}><span className={lbl}>時間</span><input type="time" className={inp} value={d.time != null ? `${String(Math.floor(d.time/100)).padStart(2,'0')}:${String(d.time%100).padStart(2,'0')}` : ''} onChange={e => { if (!e.target.value){updateInlineLocal({time:null});return} const [h,m]=e.target.value.split(':').map(Number); updateInlineLocal({time:h*100+m}) }} onBlur={e => { if (!e.target.value){saveInlineField({time:null});return} const [h,m]=e.target.value.split(':').map(Number); saveInlineField({time:h*100+m}) }} /></div>
+                        <div className={fld}><span className={lbl}>お客様名</span><input className={inp} value={d.customer_name ?? ''} onChange={e => updateInlineLocal({ customer_name: e.target.value })} onBlur={e => saveInlineField({ customer_name: e.target.value })} /></div>
+                        <div className={fld}><span className={lbl}>電話番号</span><input className={inp} value={d.phone ?? ''} onChange={e => updateInlineLocal({ phone: e.target.value })} onBlur={e => saveInlineField({ phone: e.target.value })} /></div>
+                        {/* 行2: エリア ホテル 部屋 区分 */}
+                        <div className={fld}><span className={lbl}>エリア</span><input className={inp} value={d.area ?? ''} onChange={e => updateInlineLocal({ area: e.target.value })} onBlur={e => saveInlineField({ area: e.target.value })} /></div>
+                        <div className={fld}><span className={lbl}>ホテル</span><input className={inp} value={d.hotel ?? ''} onChange={e => updateInlineLocal({ hotel: e.target.value })} onBlur={e => saveInlineField({ hotel: e.target.value })} /></div>
+                        <div className={fld}><span className={lbl}>部屋番号</span><input className={inp} value={d.room_number ?? ''} onChange={e => updateInlineLocal({ room_number: e.target.value })} onBlur={e => saveInlineField({ room_number: e.target.value })} /></div>
+                        <div className={fld}><span className={lbl}>区分</span><select className={inp} value={d.category ?? ''} onChange={e => { const v=e.target.value; saveInlineField({ category: v, membership_fee: v==='新規'?1100:0 }) }}><option value="">-</option>{CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+                        {/* 行3: 女性 指名 種別 コース */}
+                        <div className={fld}><span className={lbl}>女性</span><select className={inp} value={d.staff_id ?? ''} onChange={e => saveInlineField({ staff_id: e.target.value ? Number(e.target.value) : null })}><option value="">-</option>{staffList.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+                        <div className={fld}><span className={lbl}>指名</span><select className={inp} value={d.nomination_type ?? ''} onChange={e => saveInlineField({ nomination_type: e.target.value })}>{NOMINATION_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+                        <div className={fld}><span className={lbl}>種別</span><select className={inp} value={d.course_type ?? ''} onChange={e => saveInlineField({ course_type: e.target.value || null })}><option value="">-</option>{COURSE_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
+                        <div className={fld}><span className={lbl}>コース</span><select className={inp} value={d.course_duration ?? ''} onChange={e => saveInlineField({ course_duration: e.target.value ? Number(e.target.value) : null })}><option value="">-</option>{COURSE_DURATIONS.map(dur=><option key={dur} value={dur}>{dur}分</option>)}</select></div>
+                        {/* 行4: OP1-4 */}
+                        {(['option1','option2','option3','option4'] as const).map((f,i)=>(
+                          <div key={f} className={fld}><span className={lbl}>OP{i+1}</span><select className={inp} value={(d[f] as string) ?? ''} onChange={e => saveInlineField({ [f]: e.target.value })}>{OP_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+                        ))}
+                        {/* 行5: OP5-6 入会金 交通費 */}
+                        {(['option5','option6'] as const).map((f,i)=>(
+                          <div key={f} className={fld}><span className={lbl}>OP{i+5}</span><select className={inp} value={(d[f] as string) ?? ''} onChange={e => saveInlineField({ [f]: e.target.value })}>{OP_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+                        ))}
+                        <div className={fld}><span className={lbl}>入会金</span><select className={inp} value={d.membership_fee ?? 0} onChange={e => saveInlineField({ membership_fee: Number(e.target.value) })}><option value={0}>なし</option><option value={1100}>あり ¥1,100</option></select></div>
+                        <div className={fld}><span className={lbl}>交通費</span><select className={inp} value={d.transportation_fee ?? 0} onChange={e => saveInlineField({ transportation_fee: Number(e.target.value) })}>{TRANSPORTATION_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+                        {/* 行6: 延長 割引 注釈 媒体 */}
+                        <div className={fld}><span className={lbl}>延長</span><select className={inp} value={d.extension ?? 0} onChange={e => saveInlineField({ extension: Number(e.target.value) })}>{EXTENSION_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+                        <div className={fld}><span className={lbl}>割引</span><select className={inp} value={d.discount ?? 0} onChange={e => saveInlineField({ discount: Number(e.target.value) })}>{DISCOUNT_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+                        <div className={fld}><span className={lbl}>注釈</span><input className={inp} value={d.notes ?? ''} onChange={e => updateInlineLocal({ notes: e.target.value })} onBlur={e => saveInlineField({ notes: e.target.value })} /></div>
+                        <div className={fld}><span className={lbl}>媒体</span><input className={inp} value={d.media ?? ''} onChange={e => updateInlineLocal({ media: e.target.value })} onBlur={e => saveInlineField({ media: e.target.value })} /></div>
+                      </div>
+                      {/* 合計金額 */}
+                      <div className="mt-3 flex items-center gap-3">
+                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">合計金額</span>
+                        <span className="text-xl font-bold text-yellow-600">¥{(d.total_amount ?? 0).toLocaleString()}</span>
+                        <button onClick={() => setInlineEditId(null)} className="ml-auto px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-full transition-colors">閉じる</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </>
                 )
               })}
             </tbody>
