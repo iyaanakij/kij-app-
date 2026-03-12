@@ -49,9 +49,9 @@ export default function OperationsPage() {
   const [currentTime, setCurrentTime] = useState<Date>(new Date())
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Update current time every minute
+  // 10秒ごとに現在時刻を更新
   useEffect(() => {
-    const interval = setInterval(() => setCurrentTime(new Date()), 60000)
+    const interval = setInterval(() => setCurrentTime(new Date()), 10000)
     return () => clearInterval(interval)
   }, [])
 
@@ -143,18 +143,32 @@ export default function OperationsPage() {
 
   const slots = Array.from({ length: TOTAL_SLOTS }, (_, i) => i)
 
-  // Current time indicator position
+  // 現在時刻インジケーター
   const isToday = selectedDate === todayString()
-  const currentTimeSlotOffset = useMemo(() => {
-    if (!isToday) return null
+
+  const currentDecimalTime = useMemo(() => {
     const h = currentTime.getHours()
     const m = currentTime.getMinutes()
-    const decimalTime = h + m / 60
-    // Normalize past-midnight times
-    const normalizedTime = decimalTime < TIME_START ? decimalTime + 24 : decimalTime
-    if (normalizedTime < TIME_START || normalizedTime >= TIME_END) return null
-    return (normalizedTime - TIME_START) / (SLOT_MINUTES / 60) * CELL_WIDTH
-  }, [isToday, currentTime])
+    const s = currentTime.getSeconds()
+    const decimal = h + m / 60 + s / 3600
+    // 深夜0〜7時台は翌日扱い（+24）
+    return decimal < TIME_START ? decimal + 24 : decimal
+  }, [currentTime])
+
+  const currentTimeSlotOffset = useMemo(() => {
+    if (!isToday) return null
+    if (currentDecimalTime < TIME_START || currentDecimalTime >= TIME_END) return null
+    return (currentDecimalTime - TIME_START) * (60 / SLOT_MINUTES) * CELL_WIDTH
+  }, [isToday, currentDecimalTime])
+
+  // ページロード時・日付変更時に現在時刻位置へ自動スクロール
+  useEffect(() => {
+    if (!isToday || currentTimeSlotOffset === null) return
+    const el = containerRef.current
+    if (!el) return
+    const scrollTarget = STAFF_COL_WIDTH + currentTimeSlotOffset - el.clientWidth / 2
+    el.scrollLeft = Math.max(0, scrollTarget)
+  }, [isToday, currentTimeSlotOffset, loading])
 
   const STAFF_COL_WIDTH = 160
 
@@ -218,7 +232,7 @@ export default function OperationsPage() {
         <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto" ref={containerRef}>
             <div style={{ position: 'relative', minWidth: `${STAFF_COL_WIDTH + TOTAL_SLOTS * CELL_WIDTH}px` }}>
-              {/* Current time vertical red line */}
+              {/* 現在時刻インジケーター */}
               {isToday && currentTimeSlotOffset !== null && (
                 <div
                   style={{
@@ -231,7 +245,25 @@ export default function OperationsPage() {
                     zIndex: 20,
                     pointerEvents: 'none',
                   }}
-                />
+                >
+                  <span style={{
+                    position: 'absolute',
+                    top: 2,
+                    left: 3,
+                    fontSize: 9,
+                    color: '#ef4444',
+                    fontWeight: 'bold',
+                    whiteSpace: 'nowrap',
+                    background: 'white',
+                    padding: '0 2px',
+                    borderRadius: 2,
+                  }}>
+                    {currentTime.getHours() < 7
+                      ? `翌${String(currentTime.getHours()).padStart(2,'0')}:${String(currentTime.getMinutes()).padStart(2,'0')}`
+                      : `${String(currentTime.getHours()).padStart(2,'0')}:${String(currentTime.getMinutes()).padStart(2,'0')}`
+                    }
+                  </span>
+                </div>
               )}
 
               <table className="text-xs border-collapse w-full">
