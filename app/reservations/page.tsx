@@ -321,6 +321,8 @@ export default function ReservationsPage() {
       const now = new Date()
       const currentHHMM = now.getHours() * 100 + now.getMinutes()
       checkout_time = calcCheckoutTime(currentHHMM, r.course_duration, r.extension ?? 0)
+    } else if (!newVal) {
+      checkout_time = null
     }
     setSavingId(r.id)
     await supabase.from('reservations').update({ arrival_confirmed: newVal, checkout_time }).eq('id', r.id)
