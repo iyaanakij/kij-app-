@@ -126,6 +126,37 @@ const emptyReservation = (): Partial<Reservation> => ({
   checked: false,
 })
 
+// ── テンプレート生成 ────────────────────────────────────
+function generateTemplate(r: Reservation): string {
+  const time = r.time !== null && r.time !== undefined
+    ? `${String(Math.floor(r.time / 100)).padStart(2,'0')}:${String(r.time % 100).padStart(2,'0')}`
+    : '-'
+  const name = r.customer_name || '-'
+  const area = [r.area, r.hotel, r.room_number].filter(Boolean).join('　')
+  const section = r.section || '-'
+  const category = r.category || ''
+  const nomination = r.nomination_type || 'フリー'
+  const course = r.course_duration ? `${r.course_duration}分` : '-'
+  const amount = `${(r.total_amount ?? 0).toLocaleString()}円`
+
+  return `お疲れ様です。
+お仕事の詳細をお知らせ致します。
+
+【時間】：${time}
+【名前】${name}様
+
+【エリア】${area}
+
+【EorM】${section}
+【会員】${category}
+【指名】${nomination}
+【コース】${course}
+
+【料金】${amount}
+
+ご確認下さいm(_ _)m`
+}
+
 // ── セレクト共通スタイル ────────────────────────────────
 const sel = 'w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
 
@@ -223,6 +254,8 @@ export default function ReservationsPage() {
   const [editingReservation, setEditingReservation] = useState<Partial<Reservation>>(emptyReservation())
   const [isEditing, setIsEditing] = useState(false)
   const [savingId, setSavingId] = useState<number | null>(null)
+  const [templateText, setTemplateText] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const fetchStaff = useCallback(async () => {
     const { data } = await supabase.from('staff').select('*').order('name')
@@ -440,6 +473,12 @@ export default function ReservationsPage() {
                   <td className="px-1 py-1 border border-gray-200 text-center">
                     <div className="flex gap-1 justify-center">
                       <button
+                        onClick={() => { setTemplateText(generateTemplate(r)); setCopied(false) }}
+                        className="bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-0.5 rounded transition-colors"
+                      >
+                        テンプレ
+                      </button>
+                      <button
                         onClick={() => openEditModal(r)}
                         className="bg-yellow-500 hover:bg-yellow-600 text-white text-xs px-2 py-0.5 rounded transition-colors"
                       >
@@ -528,6 +567,39 @@ export default function ReservationsPage() {
         <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4">
           {renderSection('E', 'E 予約')}
           {renderSection('M', 'M 予約')}
+        </div>
+      )}
+
+      {/* テンプレートモーダル */}
+      {templateText !== null && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm">
+            <div className="bg-gray-900 text-white px-5 py-3 rounded-t-xl flex items-center justify-between">
+              <h2 className="font-bold text-sm">テンプレート</h2>
+              <button onClick={() => setTemplateText(null)} className="text-gray-400 hover:text-white text-xl leading-none">✕</button>
+            </div>
+            <div className="p-4">
+              <textarea
+                readOnly
+                value={templateText}
+                rows={14}
+                className="w-full border border-gray-200 rounded-lg p-3 text-sm font-mono bg-gray-50 resize-none focus:outline-none"
+                onClick={e => (e.target as HTMLTextAreaElement).select()}
+              />
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(templateText)
+                  setCopied(true)
+                  setTimeout(() => setCopied(false), 2000)
+                }}
+                className={`mt-3 w-full py-2.5 rounded-lg font-bold text-sm transition-colors ${
+                  copied ? 'bg-green-500 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+              >
+                {copied ? '✓ コピーしました' : 'クリップボードにコピー'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
