@@ -163,6 +163,24 @@ const sel = 'w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:
 const iText = 'w-full bg-transparent border-b border-transparent focus:border-blue-400 outline-none text-xs px-0.5 min-w-0'
 const iSel  = 'w-full bg-transparent border-0 outline-none text-xs cursor-pointer min-w-0 focus:bg-blue-50 rounded'
 
+// ── ダブルブッキングチェック ────────────────────────────
+function checkDoubleBooking(form: Partial<Reservation>, existing: Reservation[], skipId?: number): Reservation | null {
+  if (!form.staff_id || !form.time || !form.course_duration) return null
+  const newStart = Math.floor(form.time / 100) * 60 + (form.time % 100)
+  const newExtMins = Math.round(((form.extension ?? 0) / 3000) * 10)
+  const newEnd = newStart + form.course_duration + newExtMins
+  for (const r of existing) {
+    if (r.id === skipId) continue
+    if (r.staff_id !== form.staff_id) continue
+    if (!r.time || !r.course_duration) continue
+    const rStart = Math.floor(r.time / 100) * 60 + (r.time % 100)
+    const rExtMins = Math.round(((r.extension ?? 0) / 3000) * 10)
+    const rEnd = rStart + r.course_duration + rExtMins
+    if (newStart < rEnd && newEnd > rStart) return r
+  }
+  return null
+}
+
 // ── 検索付きプルダウン ──────────────────────────────────
 interface SelectOption {
   label: string
@@ -270,6 +288,7 @@ export default function ReservationsPage() {
   const [savingId, setSavingId] = useState<number | null>(null)
   const [templateText, setTemplateText] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [conflictError, setConflictError] = useState<Reservation | null>(null)
 
   // インライン編集
   const [inlineEditId, setInlineEditId] = useState<number | null>(null)
@@ -351,17 +370,29 @@ export default function ReservationsPage() {
       date: selectedDate,
     })
     setIsEditing(false)
+    setConflictError(null)
     setModalOpen(true)
   }
 
   const openEditModal = (r: Reservation) => {
     setEditingReservation({ ...r })
     setIsEditing(true)
+    setConflictError(null)
     setModalOpen(true)
   }
 
   const saveReservation = async () => {
     if (!editingReservation.store_id || !editingReservation.date) return
+    const conflict = checkDoubleBooking(
+      editingReservation,
+      reservations,
+      isEditing ? editingReservation.id : undefined
+    )
+    if (conflict) {
+      setConflictError(conflict)
+      return
+    }
+    setConflictError(null)
     if (isEditing && editingReservation.id) {
       setSavingId(editingReservation.id)
       const { id, staff, store, created_at, ...updateData } = editingReservation as Reservation
@@ -901,6 +932,18 @@ export default function ReservationsPage() {
               </div>
             </div>
 
+            {conflictError && (
+              <div className="mx-5 mb-1 p-3 bg-red-50 border border-red-300 rounded-lg text-sm text-red-700 flex items-start gap-2">
+                <span className="text-lg leading-none">⚠️</span>
+                <div>
+                  <span className="font-bold">ダブルブッキング</span>
+                  <span className="ml-1">
+                    {staffList.find(s => s.id === conflictError.staff_id)?.name ?? 'スタッフ'} は {formatTime(conflictError.time)} 〜 に
+                    「{conflictError.customer_name ?? '予約あり'}」({conflictError.course_duration}分) が入っています。
+                  </span>
+                </div>
+              </div>
+            )}
             <div className="px-5 py-4 bg-gray-50 rounded-b-xl flex gap-2 justify-end border-t border-gray-200">
               <button onClick={() => setModalOpen(false)} className="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors">
                 キャンセル
