@@ -170,6 +170,11 @@ const iSel  = 'w-full bg-transparent border-0 outline-none text-xs cursor-pointe
 // ── 成田エリア・ホテルマスタ ────────────────────────────
 const NARITA_AREAS = ['富里','駅','寺台','空港','大栄','カメリア','八千代','八街','酒々井','佐倉','芝山','栄町','神崎','香取','三里塚']
 const NARITA_HOTELS = ['ルサン','ブーゲン','レインボー','バロン','パリシアン','富ファ','成ファ','レモン','湯楽城(ラディソン)','カメリア','WG','チャペル','デュアラ','ビムズ','アパ','コンフォート','リッチモンド','ウェルコ','Uシティ','ヒルトン','マイステイズ','ゲートウェイ','アートホテル','ANA','マロウド','日航','東横','東武','デイジー','ウィルスイート','フェスタ','K&K','自宅','富里予定','駅前予定','空港予定']
+const CHIBA_AREAS = ['栄町','駅','祐光町','千葉みなと','幕張','幕張本郷','千葉北','西船橋','船橋','蘇我','浜野','市原','都賀']
+const CHIBA_HOTELS = ['ガーネット','センチュリー','センチュリANEX','ビバリーヒルズ','ピーコック','Nホテル','パーマン','パインズ','ダイワロイネット千葉','ダイワロイネット中央','バリアン','マイス','リオ','ドンキーズジャングル','十色','アリア','自宅','栄町予定']
+
+const STORE_AREAS: Record<number, string[]> = { 1: NARITA_AREAS, 2: CHIBA_AREAS }
+const STORE_HOTELS: Record<number, string[]> = { 1: NARITA_HOTELS, 2: CHIBA_HOTELS }
 
 // ── ダブルブッキングチェック ────────────────────────────
 function checkDoubleBooking(form: Partial<Reservation>, existing: Reservation[], skipId?: number): Reservation | null {
@@ -612,8 +617,8 @@ export default function ReservationsPage() {
                         <div className={fld}><span className={lbl}>お客様名</span><input className={inp} value={d.customer_name ?? ''} onChange={e => updateInlineLocal({ customer_name: e.target.value })} onBlur={e => saveInlineField({ customer_name: e.target.value })} /></div>
                         <div className={fld}><span className={lbl}>電話番号</span><input className={inp} value={d.phone ?? ''} onChange={e => updateInlineLocal({ phone: e.target.value })} onBlur={e => saveInlineField({ phone: e.target.value })} /></div>
                         {/* 行2: エリア ホテル 部屋 区分 */}
-                        <div className={fld}><span className={lbl}>エリア</span><ComboInput value={d.area ?? ''} onChange={v => updateInlineLocal({ area: v })} onBlur={v => saveInlineField({ area: v })} options={d.store_id === 1 ? NARITA_AREAS : []} className={inp} /></div>
-                        <div className={fld}><span className={lbl}>ホテル</span><ComboInput value={d.hotel ?? ''} onChange={v => updateInlineLocal({ hotel: v })} onBlur={v => saveInlineField({ hotel: v })} options={d.store_id === 1 ? NARITA_HOTELS : []} className={inp} /></div>
+                        <div className={fld}><span className={lbl}>エリア</span><ComboInput value={d.area ?? ''} onChange={v => updateInlineLocal({ area: v })} onBlur={v => saveInlineField({ area: v })} options={STORE_AREAS[d.store_id ?? 0] ?? []} className={inp} /></div>
+                        <div className={fld}><span className={lbl}>ホテル</span><ComboInput value={d.hotel ?? ''} onChange={v => updateInlineLocal({ hotel: v })} onBlur={v => saveInlineField({ hotel: v })} options={STORE_HOTELS[d.store_id ?? 0] ?? []} className={inp} /></div>
                         <div className={fld}><span className={lbl}>部屋番号</span><input className={inp} value={d.room_number ?? ''} onChange={e => updateInlineLocal({ room_number: e.target.value })} onBlur={e => saveInlineField({ room_number: e.target.value })} /></div>
                         <div className={fld}><span className={lbl}>区分</span><SearchableSelect value={d.category ?? ''} onChange={v => saveInlineField({ category: v, membership_fee: v==='新規'?1100:0 })} options={[{ label: '-', value: '' }, ...CATEGORIES.map(c => ({ label: c, value: c }))]} className={inp} /></div>
                         {/* 行3: 女性 指名 種別 コース */}
@@ -833,7 +838,7 @@ export default function ReservationsPage() {
                 <ComboInput
                   value={editingReservation.area ?? ''}
                   onChange={v => updateForm({ area: v })}
-                  options={editingReservation.store_id === 1 ? NARITA_AREAS : []}
+                  options={STORE_AREAS[editingReservation.store_id ?? 0] ?? []}
                   className={sel}
                 />
               </div>
@@ -844,7 +849,7 @@ export default function ReservationsPage() {
                 <ComboInput
                   value={editingReservation.hotel ?? ''}
                   onChange={v => updateForm({ hotel: v })}
-                  options={editingReservation.store_id === 1 ? NARITA_HOTELS : []}
+                  options={STORE_HOTELS[editingReservation.store_id ?? 0] ?? []}
                   className={sel}
                 />
               </div>
