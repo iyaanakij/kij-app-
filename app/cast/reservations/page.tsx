@@ -25,7 +25,10 @@ export default function CastReservationsPage() {
     if (!user?.staff_id) return
     const today = new Date()
     if (today.getHours() < 7) today.setDate(today.getDate() - 1)
-    const todayStr = today.toISOString().split('T')[0]
+    const y = today.getFullYear()
+    const m = String(today.getMonth() + 1).padStart(2, '0')
+    const d = String(today.getDate()).padStart(2, '0')
+    const todayStr = `${y}-${m}-${d}`
 
     let query = supabase
       .from('reservations')
