@@ -172,7 +172,7 @@ export default function StaffPage() {
                 <th className="px-4 py-3 text-left font-semibold">入店日</th>
                 <th className="px-4 py-3 text-left font-semibold">所属店舗</th>
                 <th className="px-4 py-3 text-left font-semibold">メモ</th>
-                <th className="px-4 py-3 text-center font-semibold w-28">操作</th>
+                <th className="px-4 py-3 text-center font-semibold w-48">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -212,23 +212,23 @@ export default function StaffPage() {
                   <td className="px-4 py-3 text-gray-600 max-w-xs truncate text-sm">
                     {s.notes || <span className="text-gray-300">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex gap-2 justify-center flex-wrap">
+                  <td className="px-3 py-3 text-center">
+                    <div className="flex gap-1.5 justify-center items-center">
                       <button
                         onClick={() => openEdit(s)}
-                        className="bg-amber-500 hover:bg-amber-600 text-white text-xs px-3 py-1.5 rounded-full transition-colors font-medium shadow-sm"
+                        className="bg-amber-500 hover:bg-amber-600 text-white text-xs px-2.5 py-1.5 rounded-md transition-colors font-medium whitespace-nowrap"
                       >
                         編集
                       </button>
                       <button
                         onClick={() => openAccountModal(s)}
-                        className="bg-purple-500 hover:bg-purple-600 text-white text-xs px-3 py-1.5 rounded-full transition-colors font-medium shadow-sm"
+                        className="bg-purple-500 hover:bg-purple-600 text-white text-xs px-2.5 py-1.5 rounded-md transition-colors font-medium whitespace-nowrap"
                       >
                         アカウント
                       </button>
                       <button
                         onClick={() => deleteStaff(s.id, s.name)}
-                        className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-full transition-colors font-medium shadow-sm"
+                        className="bg-red-500 hover:bg-red-600 text-white text-xs px-2.5 py-1.5 rounded-md transition-colors font-medium whitespace-nowrap"
                       >
                         削除
                       </button>
