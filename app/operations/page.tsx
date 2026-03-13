@@ -138,7 +138,11 @@ export default function OperationsPage() {
       }
     })
 
-    rows.sort((a, b) => a.staff.name.localeCompare(b.staff.name, 'ja'))
+    rows.sort((a, b) => {
+      const aStart = a.shift?.start_time ?? 99
+      const bStart = b.shift?.start_time ?? 99
+      return aStart - bStart
+    })
     return rows
   }, [shifts, reservations, staffList])
 
