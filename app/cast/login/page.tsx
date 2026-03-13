@@ -12,8 +12,12 @@ export default function CastLoginPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) router.replace('/cast/shift')
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) return
+      const { getCurrentUser } = await import('@/lib/auth')
+      const u = await getCurrentUser()
+      if (u?.role === 'cast') router.replace('/cast/shift')
+      // user_rolesが未設定の場合はログイン画面に留まる
     })
   }, [router])
 

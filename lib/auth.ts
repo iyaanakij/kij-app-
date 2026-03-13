@@ -17,7 +17,7 @@ export async function getCurrentUser(): Promise<UserInfo | null> {
     .from('user_roles')
     .select('role, staff_id')
     .eq('id', user.id)
-    .single()
+    .maybeSingle()
 
   if (!data) return null
 

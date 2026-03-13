@@ -16,7 +16,7 @@ export default function CastReservationsPage() {
   useEffect(() => {
     getCurrentUser().then(u => {
       if (!u) { router.replace('/cast/login'); return }
-      if (u.role !== 'cast') { router.replace('/'); return }
+      if (u.role !== 'cast') { router.replace('/cast/login'); return }
       setUser(u)
     })
   }, [router])
