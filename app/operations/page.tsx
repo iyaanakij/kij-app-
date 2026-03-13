@@ -145,26 +145,23 @@ export default function OperationsPage() {
   function getCellStatus(staffId: number, slotIdx: number): { status: CellStatus; reservation?: Reservation } {
     const slotTime = TIME_START + slotIdx * (SLOT_MINUTES / 60)
 
-    const shift = shifts.find(s => s.staff_id === staffId)
-    let inShift = false
-    if (shift) {
-      inShift = slotTime >= shift.start_time && slotTime < shift.end_time
-    }
-
-    if (!inShift) return { status: 'outside' }
-
-    // Check if any reservation occupies this slot
+    // Check reservations first (may extend beyond shift end)
     const occupying = reservations.find(r => {
       if (r.staff_id !== staffId) return false
       if (!r.time || !r.course_duration) return false
       const resStart = hhmmToDecimal(r.time)
-      const extensionMinutes = Math.round((( r.extension ?? 0) / 3000) * 10)
+      const extensionMinutes = Math.round(((r.extension ?? 0) / 3000) * 10)
       const totalDuration = r.course_duration + extensionMinutes
       const resEnd = resStart + totalDuration / 60
       return slotTime >= resStart && slotTime < resEnd
     })
 
     if (occupying) return { status: 'occupied', reservation: occupying }
+
+    const shift = shifts.find(s => s.staff_id === staffId)
+    const inShift = shift ? slotTime >= shift.start_time && slotTime < shift.end_time : false
+
+    if (!inShift) return { status: 'outside' }
     return { status: 'available' }
   }
 
