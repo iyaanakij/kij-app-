@@ -132,7 +132,9 @@ function generateTemplate(r: Reservation): string {
     ? `${String(Math.floor(r.time / 100)).padStart(2,'0')}:${String(r.time % 100).padStart(2,'0')}`
     : '-'
   const name = r.customer_name || '-'
-  const area = [r.area, r.hotel, r.room_number].filter(Boolean).join('　')
+  const area = r.area || '-'
+  const hotel = r.hotel || '-'
+  const room = r.room_number || '-'
   const section = r.section || '-'
   const category = r.category || ''
   const nomination = r.nomination_type || 'フリー'
@@ -146,6 +148,8 @@ function generateTemplate(r: Reservation): string {
 【名前】${name}様
 
 【エリア】${area}
+【ホテル】${hotel}
+【部屋番号】${room}
 
 【EorM】${section}
 【会員】${category}
