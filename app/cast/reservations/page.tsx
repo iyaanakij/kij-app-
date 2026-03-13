@@ -27,7 +27,7 @@ export default function CastReservationsPage() {
     if (today.getHours() < 7) today.setDate(today.getDate() - 1)
     const todayStr = today.toISOString().split('T')[0]
 
-    const query = supabase
+    let query = supabase
       .from('reservations')
       .select('*')
       .eq('staff_id', user.staff_id)
@@ -35,9 +35,9 @@ export default function CastReservationsPage() {
       .order('time', { ascending: true })
 
     if (filter === 'upcoming') {
-      query.gte('date', todayStr)
+      query = query.gte('date', todayStr)
     } else {
-      query.lt('date', todayStr)
+      query = query.lt('date', todayStr)
     }
 
     const { data } = await query
