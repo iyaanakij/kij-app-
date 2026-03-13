@@ -173,8 +173,11 @@ const NARITA_HOTELS = ['ルサン','ブーゲン','レインボー','バロン',
 const CHIBA_AREAS = ['栄町','駅','祐光町','千葉みなと','幕張','幕張本郷','千葉北','西船橋','船橋','蘇我','浜野','市原','都賀']
 const CHIBA_HOTELS = ['ガーネット','センチュリー','センチュリANEX','ビバリーヒルズ','ピーコック','Nホテル','パーマン','パインズ','ダイワロイネット千葉','ダイワロイネット中央','バリアン','マイス','リオ','ドンキーズジャングル','十色','アリア','自宅','栄町予定']
 
-const STORE_AREAS: Record<number, string[]> = { 1: NARITA_AREAS, 2: CHIBA_AREAS }
-const STORE_HOTELS: Record<number, string[]> = { 1: NARITA_HOTELS, 2: CHIBA_HOTELS }
+const NISHIFUNABASHI_AREAS = ['西船','錦糸町','原木','海神','船橋','東船橋','船橋競馬場','幕張','市川塩浜','市川','行徳','浦安','新浦安','舞浜','葛西','小岩','新小岩','松戸','栄','津田沼','祐光','千葉中央']
+const NISHIFUNABASHI_HOTELS = ['プラザ','Kスリット','アリュール','アランド','MG','10セゾン','OPERAリゾート','OPERA～YOU～','クイーンエリザベス','ホワイトスクエア','ウィルベイシティ','セピア','トニーワン','31','自宅','ルーナ3','ベーネ','ルボ','ピュアアジアン','弐番館','グランスカイ','DUO','サラ','サラスイート','ミュージック','555アレー','ロハス','クレスト','明日香村','メタルウェーブ','ハンズTOKYO(徒歩)','コーレー','シークレットベニー']
+
+const STORE_AREAS: Record<number, string[]> = { 1: NARITA_AREAS, 2: CHIBA_AREAS, 3: NISHIFUNABASHI_AREAS }
+const STORE_HOTELS: Record<number, string[]> = { 1: NARITA_HOTELS, 2: CHIBA_HOTELS, 3: NISHIFUNABASHI_HOTELS }
 
 // ── ダブルブッキングチェック ────────────────────────────
 function checkDoubleBooking(form: Partial<Reservation>, existing: Reservation[], skipId?: number): Reservation | null {
