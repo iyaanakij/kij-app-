@@ -14,6 +14,7 @@ const navItems = [
 
 export default function NavBar() {
   const pathname = usePathname()
+  if (pathname.startsWith('/cast')) return null
   const [storeName, setStoreName] = useState<string>('')
 
   useEffect(() => {

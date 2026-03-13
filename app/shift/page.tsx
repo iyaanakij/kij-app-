@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Shift, Staff, STORES } from '@/lib/types'
+import { Shift, Staff, ShiftRequest, STORES, formatShiftTime } from '@/lib/types'
 
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
@@ -41,6 +41,10 @@ export default function ShiftPage() {
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
   const [loading, setLoading] = useState(false)
+  const [tab, setTab] = useState<'calendar' | 'requests'>('calendar')
+  const [requests, setRequests] = useState<ShiftRequest[]>([])
+  const [rejectModalId, setRejectModalId] = useState<number | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
 
   // Inline editing
   const [editingCell, setEditingCell] = useState<{ staffId: number; day: number } | null>(null)
@@ -73,8 +77,40 @@ export default function ShiftPage() {
     setLoading(false)
   }, [year, month, selectedStoreId, daysInMonth])
 
+  const fetchRequests = useCallback(async () => {
+    const { data } = await supabase
+      .from('shift_requests')
+      .select('*, staff(id, name)')
+      .order('created_at', { ascending: false })
+    if (data) setRequests(data as ShiftRequest[])
+  }, [])
+
   useEffect(() => { fetchStaff() }, [fetchStaff])
   useEffect(() => { fetchShifts() }, [fetchShifts])
+  useEffect(() => { fetchRequests() }, [fetchRequests])
+
+  const approveRequest = async (req: ShiftRequest) => {
+    await supabase.from('shifts').insert({
+      staff_id: req.staff_id,
+      store_id: req.store_id,
+      date: req.date,
+      start_time: req.start_time,
+      end_time: req.end_time,
+      status: 'normal',
+      notes: req.notes ?? '',
+    })
+    await supabase.from('shift_requests').update({ status: 'approved' }).eq('id', req.id)
+    fetchRequests()
+    fetchShifts()
+  }
+
+  const rejectRequest = async () => {
+    if (rejectModalId === null) return
+    await supabase.from('shift_requests').update({ status: 'rejected', reject_reason: rejectReason || null }).eq('id', rejectModalId)
+    setRejectModalId(null)
+    setRejectReason('')
+    fetchRequests()
+  }
 
   function getShift(staffId: number, day: number): Shift | undefined {
     const dateStr = formatDateStr(year, month, day)
@@ -212,8 +248,110 @@ export default function ShiftPage() {
     else setMonth(m => m + 1)
   }
 
+  const pendingCount = requests.filter(r => r.status === 'pending').length
+
   return (
     <div className="p-3">
+      {/* Tab切替 */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setTab('calendar')}
+          className={`px-5 py-2 rounded-full text-sm font-medium transition-colors ${tab === 'calendar' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}
+        >
+          シフトカレンダー
+        </button>
+        <button
+          onClick={() => setTab('requests')}
+          className={`px-5 py-2 rounded-full text-sm font-medium transition-colors flex items-center gap-2 ${tab === 'requests' ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'}`}
+        >
+          申請管理
+          {pendingCount > 0 && (
+            <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">{pendingCount}</span>
+          )}
+        </button>
+      </div>
+
+      {/* 申請管理タブ */}
+      {tab === 'requests' && (
+        <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
+          {requests.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">申請はありません</div>
+          ) : (
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-gray-900 text-white">
+                  <th className="px-4 py-3 text-left font-semibold">キャスト</th>
+                  <th className="px-4 py-3 text-left font-semibold">日付</th>
+                  <th className="px-4 py-3 text-left font-semibold">店舗</th>
+                  <th className="px-4 py-3 text-left font-semibold">時間</th>
+                  <th className="px-4 py-3 text-left font-semibold">メモ</th>
+                  <th className="px-4 py-3 text-center font-semibold">ステータス</th>
+                  <th className="px-4 py-3 text-center font-semibold w-36">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requests.map((r, i) => (
+                  <tr key={r.id} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
+                    <td className="px-4 py-3 font-semibold text-gray-800">{(r.staff as { name: string })?.name ?? '-'}</td>
+                    <td className="px-4 py-3 text-gray-700 font-mono">{r.date.replace(/-/g, '/')}</td>
+                    <td className="px-4 py-3 text-gray-600">{STORES.find(s => s.id === r.store_id)?.name ?? '-'}</td>
+                    <td className="px-4 py-3 text-gray-700">{formatShiftTime(r.start_time)} 〜 {formatShiftTime(r.end_time)}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs max-w-xs truncate">{r.notes ?? ''}</td>
+                    <td className="px-4 py-3 text-center">
+                      {r.status === 'pending' && <span className="bg-yellow-100 text-yellow-700 text-xs font-bold px-2.5 py-1 rounded-full">審査中</span>}
+                      {r.status === 'approved' && <span className="bg-green-100 text-green-700 text-xs font-bold px-2.5 py-1 rounded-full">承認済</span>}
+                      {r.status === 'rejected' && (
+                        <div>
+                          <span className="bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full">却下</span>
+                          {r.reject_reason && <div className="text-xs text-red-400 mt-0.5">{r.reject_reason}</div>}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {r.status === 'pending' && (
+                        <div className="flex gap-1.5 justify-center">
+                          <button onClick={() => approveRequest(r)} className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-full font-medium transition-colors">承認</button>
+                          <button onClick={() => { setRejectModalId(r.id); setRejectReason('') }} className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-full font-medium transition-colors">却下</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* 却下モーダル */}
+      {rejectModalId !== null && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm">
+            <div className="bg-gray-900 text-white px-5 py-4 rounded-t-xl flex items-center justify-between">
+              <h2 className="font-bold text-base">却下理由</h2>
+              <button onClick={() => setRejectModalId(null)} className="text-gray-400 hover:text-white text-xl leading-none">✕</button>
+            </div>
+            <div className="p-5">
+              <input
+                type="text"
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                placeholder="理由（任意）"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+              />
+            </div>
+            <div className="px-5 pb-5 flex gap-2 justify-end">
+              <button onClick={() => setRejectModalId(null)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors">キャンセル</button>
+              <button onClick={rejectRequest} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors">却下する</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* シフトカレンダー（既存） */}
+      {tab === 'calendar' && (
+      <div>
       {/* Controls */}
       <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -351,6 +489,8 @@ export default function ShiftPage() {
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-red-50 inline-block rounded border border-red-200"></span> 日曜</span>
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-sky-50 inline-block rounded border border-sky-200"></span> 土曜</span>
       </div>
+      </div>
+      )}
     </div>
   )
 }

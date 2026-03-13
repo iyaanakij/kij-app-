@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { createClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { Staff, STORES } from '@/lib/types'
 
@@ -22,6 +23,12 @@ export default function StaffPage() {
   const [editing, setEditing] = useState<Partial<StaffWithStores>>(emptyStaff())
   const [isEdit, setIsEdit] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [accountModalOpen, setAccountModalOpen] = useState(false)
+  const [accountStaff, setAccountStaff] = useState<StaffWithStores | null>(null)
+  const [accountEmail, setAccountEmail] = useState('')
+  const [accountPassword, setAccountPassword] = useState('')
+  const [accountSaving, setAccountSaving] = useState(false)
+  const [accountMessage, setAccountMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const fetchStaff = useCallback(async () => {
     setLoading(true)
@@ -83,6 +90,39 @@ export default function StaffPage() {
     setSaving(false)
     setModalOpen(false)
     fetchStaff()
+  }
+
+  function openAccountModal(s: StaffWithStores) {
+    setAccountStaff(s)
+    setAccountEmail('')
+    setAccountPassword('')
+    setAccountMessage(null)
+    setAccountModalOpen(true)
+  }
+
+  async function createCastAccount() {
+    if (!accountStaff || !accountEmail || !accountPassword) return
+    setAccountSaving(true)
+    setAccountMessage(null)
+    // 別インスタンスで作成（現在のセッションに影響しない）
+    const tempClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+    const { data, error } = await tempClient.auth.signUp({ email: accountEmail, password: accountPassword })
+    if (error || !data.user) {
+      setAccountMessage({ type: 'error', text: error?.message ?? 'アカウント作成に失敗しました' })
+      setAccountSaving(false)
+      return
+    }
+    // user_rolesにキャストとして登録
+    await supabase.from('user_roles').upsert({
+      id: data.user.id,
+      role: 'cast',
+      staff_id: accountStaff.id,
+    })
+    setAccountMessage({ type: 'success', text: 'アカウントを作成しました' })
+    setAccountSaving(false)
   }
 
   async function deleteStaff(id: number, name: string) {
@@ -173,12 +213,18 @@ export default function StaffPage() {
                     {s.notes || <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <div className="flex gap-2 justify-center">
+                    <div className="flex gap-2 justify-center flex-wrap">
                       <button
                         onClick={() => openEdit(s)}
                         className="bg-amber-500 hover:bg-amber-600 text-white text-xs px-3 py-1.5 rounded-full transition-colors font-medium shadow-sm"
                       >
                         編集
+                      </button>
+                      <button
+                        onClick={() => openAccountModal(s)}
+                        className="bg-purple-500 hover:bg-purple-600 text-white text-xs px-3 py-1.5 rounded-full transition-colors font-medium shadow-sm"
+                      >
+                        アカウント
                       </button>
                       <button
                         onClick={() => deleteStaff(s.id, s.name)}
@@ -197,6 +243,59 @@ export default function StaffPage() {
               合計: <span className="font-bold text-gray-800">{staffList.length}名</span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* アカウント作成モーダル */}
+      {accountModalOpen && accountStaff && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div className="bg-gray-900 text-white px-5 py-4 rounded-t-xl flex items-center justify-between">
+              <div>
+                <h2 className="font-bold text-base">キャストアカウント作成</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{accountStaff.name}</p>
+              </div>
+              <button onClick={() => setAccountModalOpen(false)} className="text-gray-400 hover:text-white text-xl leading-none transition-colors">✕</button>
+            </div>
+            <div className="p-5 space-y-4 text-sm">
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">メールアドレス</label>
+                <input
+                  type="email"
+                  value={accountEmail}
+                  onChange={e => setAccountEmail(e.target.value)}
+                  placeholder="cast@example.com"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">パスワード</label>
+                <input
+                  type="text"
+                  value={accountPassword}
+                  onChange={e => setAccountPassword(e.target.value)}
+                  placeholder="8文字以上"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
+                />
+              </div>
+              {accountMessage && (
+                <div className={`px-4 py-2.5 rounded-lg text-sm ${accountMessage.type === 'success' ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+                  {accountMessage.text}
+                </div>
+              )}
+              <p className="text-xs text-gray-400">作成したメールアドレス・パスワードをキャストに共有してください。ログインURL: <span className="font-mono">/cast/login</span></p>
+            </div>
+            <div className="px-5 py-4 bg-gray-50 rounded-b-xl flex gap-2 justify-end border-t border-gray-200">
+              <button onClick={() => setAccountModalOpen(false)} className="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors">閉じる</button>
+              <button
+                onClick={createCastAccount}
+                disabled={accountSaving || !accountEmail || !accountPassword}
+                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 shadow-sm"
+              >
+                {accountSaving ? '作成中...' : '作成'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -72,6 +72,21 @@ export interface Reservation {
   store?: Store
 }
 
+export interface ShiftRequest {
+  id: number
+  staff_id: number
+  store_id: number
+  date: string
+  start_time: number
+  end_time: number
+  status: 'pending' | 'approved' | 'rejected'
+  notes: string | null
+  reject_reason: string | null
+  created_at: string
+  staff?: Staff
+  store?: Store
+}
+
 export const STORES: Store[] = [
   { id: 1, name: '成田' },
   { id: 2, name: '千葉' },
