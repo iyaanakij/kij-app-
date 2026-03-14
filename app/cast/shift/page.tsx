@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ShiftRequest, Staff, STORES, formatShiftTime } from '@/lib/types'
@@ -23,7 +23,7 @@ const LINE_LINK_URL =
     scope: 'profile openid',
   }).toString()
 
-export default function CastShiftPage() {
+function CastShiftPageInner() {
   const router = useRouter()
   const params = useSearchParams()
   const [user, setUser] = useState<UserInfo | null>(null)
@@ -318,5 +318,17 @@ export default function CastShiftPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function CastShiftPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-gray-400 animate-pulse">読み込み中...</div>
+      </div>
+    }>
+      <CastShiftPageInner />
+    </Suspense>
   )
 }

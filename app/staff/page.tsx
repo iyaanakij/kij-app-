@@ -27,6 +27,7 @@ export default function StaffPage() {
   const [accountStaff, setAccountStaff] = useState<StaffWithStores | null>(null)
   const [accountEmail, setAccountEmail] = useState('')
   const [accountPassword, setAccountPassword] = useState('')
+  const [accountLineId, setAccountLineId] = useState('')
   const [accountSaving, setAccountSaving] = useState(false)
   const [accountMessage, setAccountMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -96,6 +97,7 @@ export default function StaffPage() {
     setAccountStaff(s)
     setAccountEmail('')
     setAccountPassword('')
+    setAccountLineId('')
     setAccountMessage(null)
     setAccountModalOpen(true)
   }
@@ -120,6 +122,7 @@ export default function StaffPage() {
       id: data.user.id,
       role: 'cast',
       staff_id: accountStaff.id,
+      ...(accountLineId.trim() ? { line_user_id: accountLineId.trim() } : {}),
     })
     setAccountMessage({ type: 'success', text: 'アカウントを作成しました' })
     setAccountSaving(false)
@@ -277,6 +280,17 @@ export default function StaffPage() {
                   placeholder="8文字以上"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
                 />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">LINEユーザーID <span className="font-normal text-gray-400">（任意）</span></label>
+                <input
+                  type="text"
+                  value={accountLineId}
+                  onChange={e => setAccountLineId(e.target.value)}
+                  placeholder="Uxxxxxxxxxxxxxxxxxxxx"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-gray-50"
+                />
+                <p className="text-xs text-gray-400 mt-1">後からキャスト自身がLINE連携することも可能です</p>
               </div>
               {accountMessage && (
                 <div className={`px-4 py-2.5 rounded-lg text-sm ${accountMessage.type === 'success' ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
