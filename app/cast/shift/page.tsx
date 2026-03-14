@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ShiftRequest, Staff, STORES, formatShiftTime } from '@/lib/types'
 import { getCurrentUser, UserInfo } from '@/lib/auth'
@@ -13,10 +13,22 @@ function getDaysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate()
 }
 
+const LINE_LINK_URL =
+  `https://access.line.me/oauth2/v2.1/authorize?` +
+  new URLSearchParams({
+    response_type: 'code',
+    client_id: process.env.NEXT_PUBLIC_LINE_LOGIN_CHANNEL_ID ?? '',
+    redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://kij-app.vercel.app'}/api/line/callback`,
+    state: 'link',
+    scope: 'profile openid',
+  }).toString()
+
 export default function CastShiftPage() {
   const router = useRouter()
+  const params = useSearchParams()
   const [user, setUser] = useState<UserInfo | null>(null)
   const [staffName, setStaffName] = useState('')
+  const [lineLinked, setLineLinked] = useState<boolean | null>(null)
   const [requests, setRequests] = useState<ShiftRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -40,9 +52,16 @@ export default function CastShiftPage() {
         const { data } = await supabase.from('staff').select('name').eq('id', u.staff_id).single()
         if (data) setStaffName(data.name)
       }
+      // LINE連携状態を確認
+      const { data: role } = await supabase.from('user_roles').select('line_user_id').eq('id', u.id).single()
+      setLineLinked(!!role?.line_user_id)
       setLoading(false)
     })
   }, [router])
+
+  useEffect(() => {
+    if (params.get('line_linked') === '1') setLineLinked(true)
+  }, [params])
 
   const fetchRequests = useCallback(async () => {
     if (!user?.staff_id) return
@@ -129,6 +148,27 @@ export default function CastShiftPage() {
       </div>
 
       <div className="p-4 max-w-lg mx-auto">
+
+        {/* LINE連携バナー */}
+        {lineLinked === false && (
+          <div className="bg-[#06C755]/10 border border-[#06C755]/30 rounded-2xl p-4 mb-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-bold text-[#05a347]">LINE通知を受け取る</div>
+              <div className="text-xs text-gray-500 mt-0.5">予約・シフト承認をLINEでお知らせします</div>
+            </div>
+            <a
+              href={LINE_LINK_URL}
+              className="flex items-center gap-1.5 bg-[#06C755] hover:bg-[#05b34c] text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap transition-colors"
+            >
+              LINE連携
+            </a>
+          </div>
+        )}
+        {lineLinked === true && params.get('line_linked') === '1' && (
+          <div className="bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-3 rounded-2xl mb-4 text-center font-bold">
+            ✅ LINE連携が完了しました！
+          </div>
+        )}
 
         {/* カレンダー */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-5">

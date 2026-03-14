@@ -89,6 +89,14 @@ export default function ShiftPage() {
   useEffect(() => { fetchShifts() }, [fetchShifts])
   useEffect(() => { fetchRequests() }, [fetchRequests])
 
+  const notifyLine = (staff_id: number, message: string) => {
+    fetch('/api/line/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staff_id, message }),
+    }).catch(() => {})
+  }
+
   const approveRequest = async (req: ShiftRequest) => {
     await supabase.from('shifts').insert({
       staff_id: req.staff_id,
@@ -100,13 +108,19 @@ export default function ShiftPage() {
       notes: req.notes ?? '',
     })
     await supabase.from('shift_requests').update({ status: 'approved' }).eq('id', req.id)
+    notifyLine(req.staff_id, `✅ シフト申請が承認されました\n📅 ${req.date}\n🕐 ${req.start_time}〜${req.end_time}`)
     fetchRequests()
     fetchShifts()
   }
 
   const rejectRequest = async () => {
     if (rejectModalId === null) return
+    const req = requests.find(r => r.id === rejectModalId)
     await supabase.from('shift_requests').update({ status: 'rejected', reject_reason: rejectReason || null }).eq('id', rejectModalId)
+    if (req) {
+      const reason = rejectReason ? `\n理由: ${rejectReason}` : ''
+      notifyLine(req.staff_id, `❌ シフト申請が却下されました\n📅 ${req.date}${reason}`)
+    }
     setRejectModalId(null)
     setRejectReason('')
     fetchRequests()
