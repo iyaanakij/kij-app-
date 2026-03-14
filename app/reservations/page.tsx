@@ -369,6 +369,7 @@ export default function ReservationsPage() {
   const [templateText, setTemplateText] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [conflictError, setConflictError] = useState<Reservation | null>(null)
+  const [confirmedStaffIds, setConfirmedStaffIds] = useState<Set<number>>(new Set())
 
   // インライン編集
   const [inlineEditId, setInlineEditId] = useState<number | null>(null)
@@ -403,6 +404,17 @@ export default function ReservationsPage() {
     if (data) setStaffList(data)
   }, [])
 
+  const fetchConfirmedShifts = useCallback(async () => {
+    if (!selectedDate || selectedStoreId === null) { setConfirmedStaffIds(new Set()); return }
+    const { data } = await supabase
+      .from('shifts')
+      .select('staff_id')
+      .eq('date', selectedDate)
+      .eq('store_id', selectedStoreId)
+      .eq('status', 'normal')
+    setConfirmedStaffIds(new Set((data ?? []).map((s: { staff_id: number }) => s.staff_id)))
+  }, [selectedDate, selectedStoreId])
+
   const fetchReservations = useCallback(async () => {
     setLoading(true)
     let query = supabase
@@ -420,6 +432,7 @@ export default function ReservationsPage() {
 
   useEffect(() => { fetchStaff() }, [fetchStaff])
   useEffect(() => { fetchReservations() }, [fetchReservations])
+  useEffect(() => { fetchConfirmedShifts() }, [fetchConfirmedShifts])
 
   useEffect(() => {
     const channel = supabase
@@ -628,7 +641,7 @@ export default function ReservationsPage() {
                         <div className={fld}><span className={lbl}>部屋番号</span><input className={inp} value={d.room_number ?? ''} onChange={e => updateInlineLocal({ room_number: e.target.value })} onBlur={e => saveInlineField({ room_number: e.target.value })} /></div>
                         <div className={fld}><span className={lbl}>区分</span><SearchableSelect value={d.category ?? ''} onChange={v => saveInlineField({ category: v, membership_fee: v==='新規'?1100:0 })} options={[{ label: '-', value: '' }, ...CATEGORIES.map(c => ({ label: c, value: c }))]} className={inp} /></div>
                         {/* 行3: 女性 指名 種別 コース */}
-                        <div className={fld}><span className={lbl}>女性</span><SearchableSelect value={d.staff_id ?? ''} onChange={v => saveInlineField({ staff_id: v ? Number(v) : null })} options={[{ label: '-', value: '' }, ...staffList.map(s => ({ label: s.name, value: s.id }))]} className={inp} /></div>
+                        <div className={fld}><span className={lbl}>女性</span><SearchableSelect value={d.staff_id ?? ''} onChange={v => saveInlineField({ staff_id: v ? Number(v) : null })} options={[{ label: '-', value: '' }, ...staffList.filter(s => confirmedStaffIds.has(s.id)).map(s => ({ label: s.name, value: s.id }))]} className={inp} /></div>
                         <div className={fld}><span className={lbl}>指名</span><SearchableSelect value={d.nomination_type ?? ''} onChange={v => saveInlineField({ nomination_type: v })} options={NOMINATION_OPTIONS.map(o => ({ label: o.label, value: o.value }))} className={inp} /></div>
                         <div className={fld}><span className={lbl}>種別</span><SearchableSelect value={d.course_type ?? ''} onChange={v => saveInlineField({ course_type: v || null })} options={[{ label: '-', value: '' }, ...COURSE_TYPES.map(t => ({ label: t, value: t }))]} className={inp} /></div>
                         <div className={fld}><span className={lbl}>コース</span><SearchableSelect value={d.course_duration ?? ''} onChange={v => saveInlineField({ course_duration: v ? Number(v) : null })} options={[{ label: '-', value: '' }, ...COURSE_DURATIONS.map(dur => ({ label: `${dur}分`, value: dur }))]} className={inp} /></div>
@@ -883,7 +896,7 @@ export default function ReservationsPage() {
                 <SearchableSelect
                   value={editingReservation.staff_id ?? ''}
                   onChange={v => updateForm({ staff_id: v ? Number(v) : null })}
-                  options={[{ label: '未選択', value: '' }, ...staffList.map(s => ({ label: s.name, value: s.id }))]}
+                  options={[{ label: '未選択', value: '' }, ...staffList.filter(s => confirmedStaffIds.has(s.id)).map(s => ({ label: s.name, value: s.id }))]}
                   className={sel}
                 />
               </div>
