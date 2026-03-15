@@ -70,6 +70,53 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(linkData.properties.action_link)
   }
 
+  // ── LINE新規登録 ────────────────────────────────────────
+  if (state?.startsWith('register:')) {
+    const staffId = parseInt(state.slice(9))
+    if (!staffId) return NextResponse.redirect(`${appUrl}/cast/register?error=register_failed`)
+
+    // すでにLINE IDが登録済みか確認
+    const { data: existing } = await adminSupabase
+      .from('user_roles')
+      .select('id')
+      .eq('line_user_id', lineUserId)
+      .maybeSingle()
+    if (existing) {
+      return NextResponse.redirect(`${appUrl}/cast/register?error=already_registered`)
+    }
+
+    // Supabaseユーザーを作成（LINE専用の内部メールを使用）
+    const dummyEmail = `line_${lineUserId}@kij-line.internal`
+    const dummyPassword = crypto.randomUUID()
+    const { data: newUser, error: createError } = await adminSupabase.auth.admin.createUser({
+      email: dummyEmail,
+      password: dummyPassword,
+      email_confirm: true,
+    })
+    if (createError || !newUser.user) {
+      console.error('[LINE register] createUser error:', createError)
+      return NextResponse.redirect(`${appUrl}/cast/register?error=register_failed`)
+    }
+
+    await adminSupabase.from('user_roles').insert({
+      id: newUser.user.id,
+      role: 'cast',
+      staff_id: staffId,
+      line_user_id: lineUserId,
+    })
+
+    // マジックリンクでログイン
+    const { data: linkData, error: linkError } = await adminSupabase.auth.admin.generateLink({
+      type: 'magiclink',
+      email: dummyEmail,
+      options: { redirectTo: `${appUrl}/cast/shift` },
+    })
+    if (linkError || !linkData?.properties?.action_link) {
+      return NextResponse.redirect(`${appUrl}/cast/login?error=session_failed`)
+    }
+    return NextResponse.redirect(linkData.properties.action_link)
+  }
+
   // ── LINE連携（既存ログイン済みユーザーがLINEを紐付け）─────────
   if (state?.startsWith('link:')) {
     const currentUserId = state.slice(5)

@@ -114,6 +114,10 @@ function LoginForm() {
           {loading ? 'ログイン中...' : 'メールでログイン'}
         </button>
       </form>
+      <p className="text-center text-xs text-gray-400 pt-1">
+        アカウントをお持ちでない方は{' '}
+        <a href="/cast/register" className="text-pink-500 underline">新規登録</a>
+      </p>
     </div>
   )
 }
