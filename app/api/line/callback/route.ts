@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+function fixActionLink(actionLink: string, appUrl: string): string {
+  try {
+    const url = new URL(actionLink)
+    const redirectTo = url.searchParams.get('redirect_to')
+    if (redirectTo) {
+      const fixed = new URL(redirectTo)
+      const correct = new URL(appUrl)
+      fixed.hostname = correct.hostname
+      fixed.protocol = correct.protocol
+      fixed.port = correct.port
+      url.searchParams.set('redirect_to', fixed.toString())
+    }
+    return url.toString()
+  } catch {
+    return actionLink
+  }
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const code = searchParams.get('code')
@@ -67,7 +85,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(`${appUrl}/cast/login?error=session_failed`)
     }
 
-    return NextResponse.redirect(linkData.properties.action_link)
+    return NextResponse.redirect(fixActionLink(linkData.properties.action_link, appUrl))
   }
 
   // ── LINE新規登録 ────────────────────────────────────────
@@ -114,7 +132,7 @@ export async function GET(req: NextRequest) {
     if (linkError || !linkData?.properties?.action_link) {
       return NextResponse.redirect(`${appUrl}/cast/login?error=session_failed`)
     }
-    return NextResponse.redirect(linkData.properties.action_link)
+    return NextResponse.redirect(fixActionLink(linkData.properties.action_link, appUrl))
   }
 
   // ── LINE連携（既存ログイン済みユーザーがLINEを紐付け）─────────
