@@ -94,7 +94,7 @@ export default function OperationsPage() {
     end_hhmm: string;   end_next: boolean
     color: string; memo: string
   }>({ staff_id: null, start_hhmm: '13:00', start_next: false, end_hhmm: '14:00', end_next: false, color: 'yellow', memo: '' })
-  const [deleteConfirm, setDeleteConfirm] = useState<BoardAnnotation | null>(null)
+  const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null)
 
   useEffect(() => {
     const saved = localStorage.getItem('kij_store')
@@ -238,12 +238,26 @@ export default function OperationsPage() {
     setAnnotationModal(true)
   }
 
+  const openEditAnnotation = (ann: BoardAnnotation) => {
+    const s = slotToTimeLabel(ann.start_time)
+    const e = slotToTimeLabel(ann.end_time)
+    setEditAnnotation({
+      staff_id: ann.staff_id,
+      start_hhmm: s.hhmm, start_next: s.next,
+      end_hhmm: e.hhmm,   end_next: e.next,
+      color: ann.color,
+      memo: ann.memo ?? '',
+    })
+    setEditingAnnotationId(ann.id)
+    setAnnotationModal(true)
+  }
+
   const saveAnnotation = async () => {
     if (!editAnnotation.staff_id) return
     const startTime = hhmmStringToDecimal(editAnnotation.start_hhmm, editAnnotation.start_next)
     const endTime   = hhmmStringToDecimal(editAnnotation.end_hhmm,   editAnnotation.end_next)
     if (startTime >= endTime) return
-    await supabase.from('board_annotations').insert({
+    const payload = {
       staff_id: editAnnotation.staff_id,
       date: selectedDate,
       start_time: startTime,
@@ -251,15 +265,22 @@ export default function OperationsPage() {
       color: editAnnotation.color,
       memo: editAnnotation.memo,
       store_id: selectedStoreId,
-    })
+    }
+    if (editingAnnotationId) {
+      await supabase.from('board_annotations').update(payload).eq('id', editingAnnotationId)
+    } else {
+      await supabase.from('board_annotations').insert(payload)
+    }
     setAnnotationModal(false)
+    setEditingAnnotationId(null)
     setDrag(null)
     fetchData()
   }
 
-  const deleteAnnotation = async (ann: BoardAnnotation) => {
-    await supabase.from('board_annotations').delete().eq('id', ann.id)
-    setDeleteConfirm(null)
+  const deleteAnnotation = async (id: string) => {
+    await supabase.from('board_annotations').delete().eq('id', id)
+    setAnnotationModal(false)
+    setEditingAnnotationId(null)
     fetchData()
   }
 
@@ -410,7 +431,7 @@ export default function OperationsPage() {
                             }}
                             onClick={() => {
                               if (!dragMovedRef.current && annotation && status !== 'occupied') {
-                                setDeleteConfirm(annotation)
+                                openEditAnnotation(annotation)
                               }
                             }}
                           >
@@ -440,7 +461,7 @@ export default function OperationsPage() {
       {annotationModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">メモ追加</h2>
+            <h2 className="text-lg font-bold text-gray-800 mb-4">{editingAnnotationId ? 'メモ編集' : 'メモ追加'}</h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">スタッフ</label>
@@ -480,28 +501,16 @@ export default function OperationsPage() {
               </div>
             </div>
             <div className="flex gap-2 mt-5">
-              <button onClick={() => setAnnotationModal(false)} className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">キャンセル</button>
+              <button onClick={() => { setAnnotationModal(false); setEditingAnnotationId(null) }} className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">キャンセル</button>
+              {editingAnnotationId && (
+                <button onClick={() => deleteAnnotation(editingAnnotationId)} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors">削除</button>
+              )}
               <button onClick={saveAnnotation} className="flex-1 py-2 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 rounded-lg text-sm font-bold transition-colors">保存</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 削除確認モーダル */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs p-6">
-            <h2 className="text-base font-bold text-gray-800 mb-3">このメモを削除しますか？</h2>
-            <p className="text-sm text-gray-600">{staffList.find(s => s.id === deleteConfirm.staff_id)?.name}</p>
-            <p className="text-sm text-gray-600">{decimalToHHMM(deleteConfirm.start_time)} 〜 {decimalToHHMM(deleteConfirm.end_time)}</p>
-            {deleteConfirm.memo && <p className="text-sm font-medium text-gray-800 mt-1">「{deleteConfirm.memo}」</p>}
-            <div className="flex gap-2 mt-5">
-              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">キャンセル</button>
-              <button onClick={() => deleteAnnotation(deleteConfirm)} className="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-bold transition-colors">削除</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
