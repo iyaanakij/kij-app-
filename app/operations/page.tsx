@@ -151,14 +151,9 @@ export default function OperationsPage() {
     return () => { supabase.removeChannel(channel) }
   }, [fetchData])
 
-  // Global mouseup: finish drag → keep selection, don't open modal yet
+  // Global mouseup: just clean up drag tracking refs, keep visual selection
   useEffect(() => {
     const handleMouseUp = () => {
-      if (!dragMovedRef.current) {
-        // single click, not a drag — clear selection
-        if (dragStartRef.current) setDrag(null)
-      }
-      // if dragged, keep drag state highlighted
       dragStartRef.current = null
       dragMovedRef.current = false
     }
@@ -404,12 +399,12 @@ export default function OperationsPage() {
                               e.preventDefault()
                               dragStartRef.current = { staffId: staff.id, slot: slotIdx }
                               dragMovedRef.current = false
-                              setDrag({ staffId: staff.id, startSlot: slotIdx, endSlot: slotIdx })
+                              // don't reset drag state yet — wait until mouse moves
                             }}
                             onMouseEnter={() => {
-                              if (dragStartRef.current && dragStartRef.current.staffId === staff.id) {
+                              if (dragStartRef.current) {
                                 dragMovedRef.current = true
-                                setDrag({ staffId: staff.id, startSlot: dragStartRef.current.slot, endSlot: slotIdx })
+                                setDrag({ staffId: dragStartRef.current.staffId, startSlot: dragStartRef.current.slot, endSlot: dragStartRef.current.staffId === staff.id ? slotIdx : dragStartRef.current.slot })
                               }
                             }}
                             onClick={() => {
