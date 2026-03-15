@@ -106,7 +106,7 @@ const emptyReservation = (): Partial<Reservation> => ({
   staff_id: null,
   nomination_type: '',
   course_duration: null,
-  course_type: null,
+  course_type: 'ランジェリー',
   nude: false,
   option1: '',
   option2: '',
