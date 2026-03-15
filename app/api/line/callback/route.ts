@@ -73,13 +73,15 @@ export async function GET(req: NextRequest) {
   // ── LINE連携（既存ログイン済みユーザーがLINEを紐付け）─────────
   if (state?.startsWith('link:')) {
     const currentUserId = state.slice(5)
+    console.log('[LINE link] userId:', currentUserId, 'lineUserId:', lineUserId)
     if (!currentUserId) {
       return NextResponse.redirect(`${appUrl}/cast/login?error=not_logged_in`)
     }
-    await adminSupabase
+    const { error: updateError } = await adminSupabase
       .from('user_roles')
       .update({ line_user_id: lineUserId })
       .eq('id', currentUserId)
+    console.log('[LINE link] update error:', updateError)
 
     return NextResponse.redirect(`${appUrl}/cast/shift?line_linked=1`)
   }
