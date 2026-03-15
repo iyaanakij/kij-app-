@@ -17,6 +17,10 @@ export async function sendLineMessage(lineUserId: string, message: string): Prom
       messages: [{ type: 'text', text: message }],
     }),
   })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    console.error('[LINE] push failed', res.status, body)
+  }
   return res.ok
 }
 

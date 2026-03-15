@@ -25,5 +25,5 @@ export async function POST(req: NextRequest) {
   }
 
   const ok = await sendLineMessage(data.line_user_id, message)
-  return NextResponse.json({ success: ok })
+  return NextResponse.json({ success: ok, line_user_id: data.line_user_id })
 }
