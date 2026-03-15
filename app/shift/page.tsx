@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Shift, Staff, ShiftRequest, STORES, formatShiftTime } from '@/lib/types'
+import { Shift, Staff, ShiftRequest, STORES, formatShiftTime, todayString } from '@/lib/types'
 
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
@@ -34,9 +34,10 @@ function parseShiftValue(value: string): { mode: 'delete' | 'x' | 'normal'; star
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土']
 
 export default function ShiftPage() {
-  const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  const todayStr = todayString()
+  const todayDate = new Date(todayStr)
+  const [year, setYear] = useState(todayDate.getFullYear())
+  const [month, setMonth] = useState(todayDate.getMonth() + 1)
   const [selectedStoreId, setSelectedStoreId] = useState(1)
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
@@ -51,9 +52,9 @@ export default function ShiftPage() {
   const [editValue, setEditValue] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
 
-  const todayYear = now.getFullYear()
-  const todayMonth = now.getMonth() + 1
-  const todayDay = now.getDate()
+  const todayYear = todayDate.getFullYear()
+  const todayMonth = todayDate.getMonth() + 1
+  const todayDay = todayDate.getDate()
 
   const daysInMonth = getDaysInMonth(year, month)
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
@@ -98,7 +99,7 @@ export default function ShiftPage() {
   }
 
   const approveRequest = async (req: ShiftRequest) => {
-    await supabase.from('shifts').insert({
+    const payload = {
       staff_id: req.staff_id,
       store_id: req.store_id,
       date: req.date,
@@ -106,7 +107,18 @@ export default function ShiftPage() {
       end_time: req.end_time,
       status: 'normal',
       notes: req.notes ?? '',
-    })
+    }
+    const { data: existing } = await supabase
+      .from('shifts')
+      .select('id')
+      .eq('staff_id', req.staff_id)
+      .eq('date', req.date)
+      .maybeSingle()
+    if (existing?.id) {
+      await supabase.from('shifts').update(payload).eq('id', existing.id)
+    } else {
+      await supabase.from('shifts').insert(payload)
+    }
     await supabase.from('shift_requests').update({ status: 'approved' }).eq('id', req.id)
     notifyLine(req.staff_id, `✅ シフト申請が承認されました\n📅 ${req.date}\n🕐 ${req.start_time}〜${req.end_time}`)
     fetchRequests()
