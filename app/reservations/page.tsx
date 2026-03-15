@@ -370,6 +370,8 @@ export default function ReservationsPage() {
   const [copied, setCopied] = useState(false)
   const [conflictError, setConflictError] = useState<Reservation | null>(null)
   const [pastTimeError, setPastTimeError] = useState(false)
+  const [annotationOverlap, setAnnotationOverlap] = useState<{ memo: string | null } | null>(null)
+  const [pendingSave, setPendingSave] = useState(false)
   const [confirmedStaffIds, setConfirmedStaffIds] = useState<Set<number>>(new Set())
 
   // インライン編集
@@ -433,6 +435,9 @@ export default function ReservationsPage() {
 
   useEffect(() => { fetchStaff() }, [fetchStaff])
   useEffect(() => { fetchReservations() }, [fetchReservations])
+
+  // アノテーション確認後に自動保存
+  useEffect(() => { if (pendingSave) saveReservation() }, [pendingSave]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { fetchConfirmedShifts() }, [fetchConfirmedShifts])
 
   useEffect(() => {
@@ -498,6 +503,27 @@ export default function ReservationsPage() {
       return
     }
     setConflictError(null)
+
+    // メモ（アノテーション）との重複チェック（新規のみ・確認前のみ）
+    if (!isEditing && !pendingSave && editingReservation.staff_id && editingReservation.time != null && editingReservation.course_duration) {
+      const resStartDecimal = Math.floor(editingReservation.time / 100) + (editingReservation.time % 100) / 60
+      const resEndDecimal = resStartDecimal + editingReservation.course_duration / 60
+      const { data: overlapping } = await supabase
+        .from('board_annotations')
+        .select('memo')
+        .eq('date', editingReservation.date)
+        .eq('staff_id', editingReservation.staff_id)
+        .lt('start_time', resEndDecimal)
+        .gt('end_time', resStartDecimal)
+        .limit(1)
+        .maybeSingle()
+      if (overlapping) {
+        setAnnotationOverlap(overlapping)
+        return
+      }
+    }
+    setPendingSave(false)
+
     if (isEditing && editingReservation.id) {
       setSavingId(editingReservation.id)
       const { id, staff, store, created_at, ...updateData } = editingReservation as Reservation
@@ -1065,6 +1091,25 @@ export default function ReservationsPage() {
               </div>
             </div>
 
+            {annotationOverlap && (
+              <div className="mx-5 mb-1 p-3 bg-yellow-50 border border-yellow-400 rounded-lg text-sm text-yellow-800 flex items-start gap-2">
+                <span className="text-lg leading-none">⚠️</span>
+                <div>
+                  <div className="font-bold mb-1">メモが設定されています{annotationOverlap.memo ? `：「${annotationOverlap.memo}」` : ''}</div>
+                  <div className="text-xs mb-2">この時間帯に被せて予約を取りますか？</div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setAnnotationOverlap(null) }}
+                      className="px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded text-xs font-medium"
+                    >キャンセル</button>
+                    <button
+                      onClick={() => { setAnnotationOverlap(null); setPendingSave(true) }}
+                      className="px-3 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded text-xs font-bold"
+                    >被せて予約する</button>
+                  </div>
+                </div>
+              </div>
+            )}
             {pastTimeError && (
               <div className="mx-5 mb-1 p-3 bg-red-50 border border-red-300 rounded-lg text-sm text-red-700 flex items-start gap-2">
                 <span className="text-lg leading-none">⚠️</span>
