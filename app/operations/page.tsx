@@ -318,7 +318,8 @@ export default function OperationsPage() {
                 className="text-xs border-collapse select-none"
                 style={{ width: STAFF_COL_WIDTH + TOTAL_SLOTS * CELL_WIDTH, tableLayout:'fixed' }}
                 onMouseLeave={() => {
-                  if (!dragMovedRef.current) {
+                  // ドラッグ中（dragStartRef がセット済み）のみキャンセル
+                  if (dragStartRef.current && !dragMovedRef.current) {
                     dragStartRef.current = null
                     setDrag(null)
                   }
