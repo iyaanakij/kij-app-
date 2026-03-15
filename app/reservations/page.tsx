@@ -127,9 +127,21 @@ const emptyReservation = (): Partial<Reservation> => ({
 })
 
 // ── キャスト給計算 ──────────────────────────────────────
-const COURSE_CAST_PAY: Record<number, number> = {
-  60: 7000, 80: 9000, 100: 11000, 120: 13000, 150: 16000, 180: 19000,
+// コース種別ごとの給与テーブル（未入力はランジェリー扱い）
+const COURSE_CAST_PAY: Record<number, Partial<Record<string, number>>> = {
+  60:  { ランジェリー: 7000  /* トップレス: ?, ヌード: ? */ },
+  80:  { ランジェリー: 9000  },
+  100: { ランジェリー: 11000 },
+  120: { ランジェリー: 13000 },
+  150: { ランジェリー: 16000 },
+  180: { ランジェリー: 19000 },
 }
+function getCourseCastPay(duration: number | null, courseType: string | null): number {
+  if (!duration) return 0
+  const key = courseType || 'ランジェリー'
+  return COURSE_CAST_PAY[duration]?.[key] ?? COURSE_CAST_PAY[duration]?.['ランジェリー'] ?? 0
+}
+
 const OP_CAST_PAY: Record<string, number> = {
   '聖水': 2000,
   'ロープ': 1000,
@@ -140,7 +152,7 @@ const OP_CAST_PAY: Record<string, number> = {
 }
 function calculateCastPay(r: Reservation): number {
   let pay = 0
-  if (r.course_duration) pay += COURSE_CAST_PAY[r.course_duration] ?? 0
+  pay += getCourseCastPay(r.course_duration, r.course_type)
   if (r.nomination_type && r.nomination_type !== 'フリー' && r.nomination_type !== '') pay += 2000
   if (r.extension) pay += Math.round(r.extension * 0.5)
   if (r.transportation_fee) pay += r.transportation_fee
