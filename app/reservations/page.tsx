@@ -532,18 +532,9 @@ export default function ReservationsPage() {
     } else {
       const { id, staff, store, created_at, ...insertData } = editingReservation as Reservation
       await supabase.from('reservations').insert(insertData)
-      // 担当キャストにLINE通知
+      // 担当キャストにLINE通知（テンプレート形式）
       if (editingReservation.staff_id) {
-        const timeStr = editingReservation.time
-          ? `${String(editingReservation.time).slice(0, -2).padStart(2, '0')}:${String(editingReservation.time).slice(-2)}`
-          : '未定'
-        const msg = [
-          '📋 新しい予約が入りました',
-          `📅 ${editingReservation.date} ${timeStr}`,
-          editingReservation.area ? `📍 ${editingReservation.area}` : '',
-          editingReservation.hotel ? `🏨 ${editingReservation.hotel}` : '',
-          editingReservation.course_duration ? `⏱ ${editingReservation.course_duration}分` : '',
-        ].filter(Boolean).join('\n')
+        const msg = generateTemplate(editingReservation as Reservation)
         fetch('/api/line/notify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
