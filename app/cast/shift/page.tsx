@@ -17,8 +17,8 @@ const LINE_LINK_URL =
   `https://access.line.me/oauth2/v2.1/authorize?` +
   new URLSearchParams({
     response_type: 'code',
-    client_id: process.env.NEXT_PUBLIC_LINE_LOGIN_CHANNEL_ID ?? '',
-    redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://kij-app.vercel.app'}/api/line/callback`,
+    client_id: '2009450638',
+    redirect_uri: 'https://kij-app.vercel.app/api/line/callback',
     state: 'link',
     scope: 'profile openid',
   }).toString()
