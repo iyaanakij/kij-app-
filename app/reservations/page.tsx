@@ -369,6 +369,7 @@ export default function ReservationsPage() {
   const [templateText, setTemplateText] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [conflictError, setConflictError] = useState<Reservation | null>(null)
+  const [pastTimeError, setPastTimeError] = useState(false)
   const [confirmedStaffIds, setConfirmedStaffIds] = useState<Set<number>>(new Set())
 
   // インライン編集
@@ -482,10 +483,11 @@ export default function ReservationsPage() {
       const todayStr = todayString()
       if (editingReservation.date < todayStr ||
           (editingReservation.date === todayStr && editingReservation.time < currentTime)) {
-        setConflictError('過去の日時には予約を入力できません')
+        setPastTimeError(true)
         return
       }
     }
+    setPastTimeError(false)
     const conflict = checkDoubleBooking(
       editingReservation,
       reservations,
@@ -1063,6 +1065,12 @@ export default function ReservationsPage() {
               </div>
             </div>
 
+            {pastTimeError && (
+              <div className="mx-5 mb-1 p-3 bg-red-50 border border-red-300 rounded-lg text-sm text-red-700 flex items-start gap-2">
+                <span className="text-lg leading-none">⚠️</span>
+                <span>過去の日時には予約を入力できません</span>
+              </div>
+            )}
             {conflictError && (
               <div className="mx-5 mb-1 p-3 bg-red-50 border border-red-300 rounded-lg text-sm text-red-700 flex items-start gap-2">
                 <span className="text-lg leading-none">⚠️</span>
