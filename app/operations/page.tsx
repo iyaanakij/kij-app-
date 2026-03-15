@@ -436,7 +436,7 @@ export default function OperationsPage() {
                             }}
                           >
                             {cellText && (
-                              <span className={`font-bold flex items-center h-full overflow-hidden whitespace-nowrap ${status === 'occupied' ? 'text-white' : 'text-gray-700'}`} style={{ fontSize:8, paddingLeft:1 }}>
+                              <span className={`font-bold flex items-center h-full whitespace-nowrap pointer-events-none ${status === 'occupied' ? 'text-white' : 'text-gray-700'}`} style={{ fontSize: 11, paddingLeft: 2, overflow: 'visible', position: 'relative', zIndex: 5 }}>
                                 {cellText}
                               </span>
                             )}
