@@ -8,7 +8,7 @@ const LINE_LOGIN_URL =
   `https://access.line.me/oauth2/v2.1/authorize?` +
   new URLSearchParams({
     response_type: 'code',
-    client_id: '2009450708',
+    client_id: '2009450638',
     redirect_uri: 'https://kij-app.vercel.app/api/line/callback',
     state: 'login',
     scope: 'profile openid',
