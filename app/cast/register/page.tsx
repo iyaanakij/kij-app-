@@ -20,6 +20,8 @@ function RegisterForm() {
   const params = useSearchParams()
   const [staffList, setStaffList] = useState<{ id: number; name: string }[]>([])
   const [selectedStaffId, setSelectedStaffId] = useState<number | ''>('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [dropdownOpen, setDropdownOpen] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showEmail, setShowEmail] = useState(false)
@@ -71,19 +73,47 @@ function RegisterForm() {
     <div className="bg-white rounded-2xl shadow-lg p-6 space-y-5">
       <h1 className="text-lg font-bold text-gray-800 text-center">アカウント登録</h1>
 
-      {/* 名前選択 */}
-      <div>
+      {/* 名前選択（検索付き） */}
+      <div className="relative">
         <label className="block text-xs font-semibold text-gray-500 mb-1.5">あなたの名前</label>
-        <select
-          value={selectedStaffId}
-          onChange={e => setSelectedStaffId(e.target.value ? Number(e.target.value) : '')}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-gray-50"
+        <div
+          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm bg-gray-50 cursor-pointer flex items-center justify-between"
+          onClick={() => setDropdownOpen(v => !v)}
         >
-          <option value="">選択してください</option>
-          {staffList.map(s => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
+          <span className={selectedStaffId ? 'text-gray-800' : 'text-gray-400'}>
+            {selectedStaffId ? staffList.find(s => s.id === selectedStaffId)?.name : '選択してください'}
+          </span>
+          <span className="text-gray-400 text-xs">{dropdownOpen ? '▲' : '▼'}</span>
+        </div>
+        {dropdownOpen && (
+          <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 overflow-hidden">
+            <div className="p-2 border-b border-gray-100">
+              <input
+                type="text"
+                autoFocus
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="名前で検索..."
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-400 bg-gray-50"
+              />
+            </div>
+            <div className="max-h-48 overflow-y-auto">
+              {staffList.filter(s => s.name.includes(searchQuery)).length === 0 ? (
+                <div className="px-4 py-3 text-sm text-gray-400 text-center">見つかりません</div>
+              ) : (
+                staffList.filter(s => s.name.includes(searchQuery)).map(s => (
+                  <div
+                    key={s.id}
+                    className={`px-4 py-3 text-sm cursor-pointer hover:bg-pink-50 transition-colors ${selectedStaffId === s.id ? 'bg-pink-50 text-pink-600 font-bold' : 'text-gray-700'}`}
+                    onClick={() => { setSelectedStaffId(s.id); setDropdownOpen(false); setSearchQuery('') }}
+                  >
+                    {s.name}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* LINEで登録 */}
