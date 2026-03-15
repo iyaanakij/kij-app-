@@ -124,6 +124,19 @@ export default function StaffPage() {
     setAccountLoading(false)
   }
 
+  async function resetLineId() {
+    if (!accountStaff || !confirm(`${accountStaff.name} のLINE連携をリセットしますか？`)) return
+    setAccountSaving(true)
+    await supabase
+      .from('user_roles')
+      .update({ line_user_id: null })
+      .eq('staff_id', accountStaff.id)
+      .eq('role', 'cast')
+    setAccountLineId('')
+    setAccountMessage({ type: 'success', text: 'LINE連携をリセットしました' })
+    setAccountSaving(false)
+  }
+
   async function saveAccountInfo() {
     if (!accountStaff) return
     setAccountSaving(true)
@@ -361,17 +374,30 @@ export default function StaffPage() {
               )}
             </div>
             )}
-            <div className="px-5 py-4 bg-gray-50 rounded-b-xl flex gap-2 justify-end border-t border-gray-200">
-              <button onClick={() => setAccountModalOpen(false)} className="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors">閉じる</button>
-              {!accountLoading && (
-                <button
-                  onClick={saveAccountInfo}
-                  disabled={accountSaving}
-                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 shadow-sm"
-                >
-                  {accountSaving ? '保存中...' : accountExists ? '更新' : '作成'}
-                </button>
-              )}
+            <div className="px-5 py-4 bg-gray-50 rounded-b-xl flex gap-2 justify-between border-t border-gray-200">
+              <div>
+                {accountExists && accountLineId && !accountLoading && (
+                  <button
+                    onClick={resetLineId}
+                    disabled={accountSaving}
+                    className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg font-medium text-sm transition-colors disabled:opacity-50"
+                  >
+                    LINE連携リセット
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setAccountModalOpen(false)} className="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors">閉じる</button>
+                {!accountLoading && (
+                  <button
+                    onClick={saveAccountInfo}
+                    disabled={accountSaving}
+                    className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 shadow-sm"
+                  >
+                    {accountSaving ? '保存中...' : accountExists ? '更新' : '作成'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
