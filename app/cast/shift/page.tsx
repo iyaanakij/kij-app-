@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { ShiftRequest, Staff, STORES, formatShiftTime } from '@/lib/types'
+import { Shift, ShiftRequest, Staff, STORES, formatShiftTime, todayString } from '@/lib/types'
 import { getCurrentUser, UserInfo } from '@/lib/auth'
 
 const HOURS = Array.from({ length: 25 }, (_, i) => i + 8)
@@ -31,6 +31,7 @@ function CastShiftPageInner() {
   const [staffName, setStaffName] = useState('')
   const [lineLinked, setLineLinked] = useState<boolean | null>(null)
   const [requests, setRequests] = useState<ShiftRequest[]>([])
+  const [confirmedShifts, setConfirmedShifts] = useState<Shift[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -74,7 +75,17 @@ function CastShiftPageInner() {
     if (data) setRequests(data as ShiftRequest[])
   }, [user])
 
-  useEffect(() => { fetchRequests() }, [fetchRequests])
+  const fetchConfirmedShifts = useCallback(async () => {
+    if (!user?.staff_id) return
+    const { data } = await supabase
+      .from('shifts')
+      .select('*')
+      .eq('staff_id', user.staff_id)
+      .eq('status', 'normal')
+    if (data) setConfirmedShifts(data as Shift[])
+  }, [user])
+
+  useEffect(() => { fetchRequests(); fetchConfirmedShifts() }, [fetchRequests, fetchConfirmedShifts])
 
   const submitRequest = async () => {
     if (!user?.staff_id || !form.date) return
@@ -108,6 +119,8 @@ function CastShiftPageInner() {
   const firstDow = new Date(calYear, calMonth - 1, 1).getDay()
   const requestMap = new Map<string, ShiftRequest>()
   requests.forEach(r => { requestMap.set(r.date, r) })
+  const confirmedShiftMap = new Map<string, Shift>()
+  confirmedShifts.forEach(s => { confirmedShiftMap.set(s.date, s) })
 
   const prevMonth = () => {
     if (calMonth === 1) { setCalYear(y => y - 1); setCalMonth(12) }
@@ -191,17 +204,19 @@ function CastShiftPageInner() {
             {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => {
               const dateStr = `${calYear}-${String(calMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`
               const req = requestMap.get(dateStr)
+              const confirmed = confirmedShiftMap.get(dateStr)
               const dow = new Date(calYear, calMonth - 1, d).getDay()
-              const isToday = dateStr === new Date().toISOString().split('T')[0]
+              const isToday = dateStr === todayString()
               let dotColor = ''
-              if (req?.status === 'approved') dotColor = 'bg-green-400'
+              if (confirmed) dotColor = 'bg-blue-400'
+              else if (req?.status === 'approved') dotColor = 'bg-green-400'
               else if (req?.status === 'pending') dotColor = 'bg-yellow-400'
               else if (req?.status === 'rejected') dotColor = 'bg-red-400'
               return (
                 <button
                   key={d}
                   onClick={() => openModalWithDate(dateStr)}
-                  className={`flex flex-col items-center py-1.5 rounded-xl mx-0.5 transition-colors ${req ? 'bg-pink-50' : 'hover:bg-gray-50'}`}
+                  className={`flex flex-col items-center py-1.5 rounded-xl mx-0.5 transition-colors ${confirmed ? 'bg-blue-50' : req ? 'bg-pink-50' : 'hover:bg-gray-50'}`}
                 >
                   <span className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-medium ${
                     isToday ? 'bg-pink-500 text-white' :
@@ -209,8 +224,12 @@ function CastShiftPageInner() {
                     dow === 6 ? 'text-blue-400' : 'text-gray-700'
                   }`}>{d}</span>
                   {dotColor && <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${dotColor}`} />}
-                  {req && (
-                    <span className="text-xs text-gray-500 leading-tight mt-0.5" style={{ fontSize: 9 }}>
+                  {confirmed ? (
+                    <span className="text-blue-500 leading-tight mt-0.5 font-medium" style={{ fontSize: 9 }}>
+                      {formatShiftTime(confirmed.start_time).replace(':00','')}〜
+                    </span>
+                  ) : req && (
+                    <span className="text-gray-500 leading-tight mt-0.5" style={{ fontSize: 9 }}>
                       {formatShiftTime(req.start_time).replace(':00','')}〜
                     </span>
                   )}
