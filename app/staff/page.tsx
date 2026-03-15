@@ -30,11 +30,17 @@ export default function StaffPage() {
   const [accountLineId, setAccountLineId] = useState('')
   const [accountSaving, setAccountSaving] = useState(false)
   const [accountMessage, setAccountMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [accountExists, setAccountExists] = useState(false)
+  const [accountLoading, setAccountLoading] = useState(false)
+  const [registeredStaffIds, setRegisteredStaffIds] = useState<Set<number>>(new Set())
 
   const fetchStaff = useCallback(async () => {
     setLoading(true)
-    const { data: staffData } = await supabase.from('staff').select('*').order('name')
-    const { data: staffStores } = await supabase.from('staff_stores').select('*')
+    const [{ data: staffData }, { data: staffStores }, { data: roles }] = await Promise.all([
+      supabase.from('staff').select('*').order('name'),
+      supabase.from('staff_stores').select('*'),
+      supabase.from('user_roles').select('staff_id').eq('role', 'cast'),
+    ])
 
     if (staffData) {
       const enriched: StaffWithStores[] = staffData.map(s => ({
@@ -43,6 +49,7 @@ export default function StaffPage() {
       }))
       setStaffList(enriched)
     }
+    setRegisteredStaffIds(new Set((roles ?? []).map((r: { staff_id: number }) => r.staff_id)))
     setLoading(false)
   }, [])
 
@@ -93,38 +100,74 @@ export default function StaffPage() {
     fetchStaff()
   }
 
-  function openAccountModal(s: StaffWithStores) {
+  async function openAccountModal(s: StaffWithStores) {
     setAccountStaff(s)
     setAccountEmail('')
     setAccountPassword('')
     setAccountLineId('')
     setAccountMessage(null)
+    setAccountExists(false)
+    setAccountLoading(true)
     setAccountModalOpen(true)
+
+    const { data } = await supabase
+      .from('user_roles')
+      .select('line_user_id')
+      .eq('staff_id', s.id)
+      .eq('role', 'cast')
+      .maybeSingle()
+
+    if (data) {
+      setAccountExists(true)
+      setAccountLineId(data.line_user_id ?? '')
+    }
+    setAccountLoading(false)
   }
 
-  async function createCastAccount() {
-    if (!accountStaff || !accountEmail || !accountPassword) return
+  async function saveAccountInfo() {
+    if (!accountStaff) return
     setAccountSaving(true)
     setAccountMessage(null)
-    // 別インスタンスで作成（現在のセッションに影響しない）
-    const tempClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-    const { data, error } = await tempClient.auth.signUp({ email: accountEmail, password: accountPassword })
-    if (error || !data.user) {
-      setAccountMessage({ type: 'error', text: error?.message ?? 'アカウント作成に失敗しました' })
-      setAccountSaving(false)
-      return
+
+    if (accountExists) {
+      // 既存アカウント: LINE IDのみ更新
+      const { error } = await supabase
+        .from('user_roles')
+        .update({ line_user_id: accountLineId.trim() || null })
+        .eq('staff_id', accountStaff.id)
+        .eq('role', 'cast')
+      if (error) {
+        setAccountMessage({ type: 'error', text: '更新に失敗しました' })
+      } else {
+        setAccountMessage({ type: 'success', text: 'LINE IDを更新しました' })
+      }
+    } else {
+      // 新規アカウント作成
+      if (!accountEmail || !accountPassword) {
+        setAccountMessage({ type: 'error', text: 'メールとパスワードを入力してください' })
+        setAccountSaving(false)
+        return
+      }
+      const tempClient = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+      const { data, error } = await tempClient.auth.signUp({ email: accountEmail, password: accountPassword })
+      if (error || !data.user) {
+        setAccountMessage({ type: 'error', text: error?.message ?? 'アカウント作成に失敗しました' })
+        setAccountSaving(false)
+        return
+      }
+      await supabase.from('user_roles').upsert({
+        id: data.user.id,
+        role: 'cast',
+        staff_id: accountStaff.id,
+        ...(accountLineId.trim() ? { line_user_id: accountLineId.trim() } : {}),
+      })
+      setAccountExists(true)
+      setRegisteredStaffIds(prev => new Set([...prev, accountStaff.id]))
+      setAccountMessage({ type: 'success', text: 'アカウントを作成しました' })
     }
-    // user_rolesにキャストとして登録
-    await supabase.from('user_roles').upsert({
-      id: data.user.id,
-      role: 'cast',
-      staff_id: accountStaff.id,
-      ...(accountLineId.trim() ? { line_user_id: accountLineId.trim() } : {}),
-    })
-    setAccountMessage({ type: 'success', text: 'アカウントを作成しました' })
     setAccountSaving(false)
   }
 
@@ -192,7 +235,14 @@ export default function StaffPage() {
                   key={s.id}
                   className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'} hover:bg-blue-50 transition-colors`}
                 >
-                  <td className="px-4 py-3 font-bold text-gray-800">{s.name}</td>
+                  <td className="px-4 py-3 font-bold text-gray-800">
+                    <div className="flex items-center gap-2">
+                      {s.name}
+                      {registeredStaffIds.has(s.id) && (
+                        <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-medium">登録済</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-gray-600 font-mono text-sm">
                     {s.join_date ? s.join_date.replace(/-/g, '/') : <span className="text-gray-300">—</span>}
                   </td>
@@ -255,32 +305,42 @@ export default function StaffPage() {
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
             <div className="bg-gray-900 text-white px-5 py-4 rounded-t-xl flex items-center justify-between">
               <div>
-                <h2 className="font-bold text-base">キャストアカウント作成</h2>
-                <p className="text-xs text-gray-400 mt-0.5">{accountStaff.name}</p>
+                <h2 className="font-bold text-base">{accountExists ? 'アカウント編集' : 'キャストアカウント作成'}</h2>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-xs text-gray-400">{accountStaff.name}</p>
+                  {accountExists && <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">登録済</span>}
+                </div>
               </div>
               <button onClick={() => setAccountModalOpen(false)} className="text-gray-400 hover:text-white text-xl leading-none transition-colors">✕</button>
             </div>
+            {accountLoading ? (
+              <div className="p-8 text-center text-gray-400 text-sm animate-pulse">読み込み中...</div>
+            ) : (
             <div className="p-5 space-y-4 text-sm">
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1.5">メールアドレス</label>
-                <input
-                  type="email"
-                  value={accountEmail}
-                  onChange={e => setAccountEmail(e.target.value)}
-                  placeholder="cast@example.com"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1.5">パスワード</label>
-                <input
-                  type="text"
-                  value={accountPassword}
-                  onChange={e => setAccountPassword(e.target.value)}
-                  placeholder="8文字以上"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
-                />
-              </div>
+              {!accountExists && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5">メールアドレス</label>
+                    <input
+                      type="email"
+                      value={accountEmail}
+                      onChange={e => setAccountEmail(e.target.value)}
+                      placeholder="cast@example.com"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1.5">パスワード</label>
+                    <input
+                      type="text"
+                      value={accountPassword}
+                      onChange={e => setAccountPassword(e.target.value)}
+                      placeholder="8文字以上"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50"
+                    />
+                  </div>
+                </>
+              )}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5">LINEユーザーID <span className="font-normal text-gray-400">（任意）</span></label>
                 <input
@@ -290,24 +350,28 @@ export default function StaffPage() {
                   placeholder="Uxxxxxxxxxxxxxxxxxxxx"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 bg-gray-50"
                 />
-                <p className="text-xs text-gray-400 mt-1">後からキャスト自身がLINE連携することも可能です</p>
               </div>
               {accountMessage && (
                 <div className={`px-4 py-2.5 rounded-lg text-sm ${accountMessage.type === 'success' ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
                   {accountMessage.text}
                 </div>
               )}
-              <p className="text-xs text-gray-400">作成したメールアドレス・パスワードをキャストに共有してください。ログインURL: <span className="font-mono">/cast/login</span></p>
+              {!accountExists && (
+                <p className="text-xs text-gray-400">作成したメールアドレス・パスワードをキャストに共有してください。ログインURL: <span className="font-mono">/cast/login</span></p>
+              )}
             </div>
+            )}
             <div className="px-5 py-4 bg-gray-50 rounded-b-xl flex gap-2 justify-end border-t border-gray-200">
               <button onClick={() => setAccountModalOpen(false)} className="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors">閉じる</button>
-              <button
-                onClick={createCastAccount}
-                disabled={accountSaving || !accountEmail || !accountPassword}
-                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 shadow-sm"
-              >
-                {accountSaving ? '作成中...' : '作成'}
-              </button>
+              {!accountLoading && (
+                <button
+                  onClick={saveAccountInfo}
+                  disabled={accountSaving}
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 shadow-sm"
+                >
+                  {accountSaving ? '保存中...' : accountExists ? '更新' : '作成'}
+                </button>
+              )}
             </div>
           </div>
         </div>
