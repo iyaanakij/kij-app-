@@ -4,12 +4,11 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Shift, Reservation, Staff, STORES, formatShiftTime, hhmmToDecimal, todayString } from '@/lib/types'
 
-// Time range: 10:00 to 30:00 (next day 6:00), each slot = 10 min
 const TIME_START = 10
 const TIME_END = 30
 const SLOT_MINUTES = 10
-const TOTAL_SLOTS = ((TIME_END - TIME_START) * 60) / SLOT_MINUTES // 120 slots
-const CELL_WIDTH = 10 // px per slot
+const TOTAL_SLOTS = ((TIME_END - TIME_START) * 60) / SLOT_MINUTES
+const CELL_WIDTH = 10
 
 function getSlotIndex(decimalTime: number): number {
   return (decimalTime - TIME_START) / (SLOT_MINUTES / 60)
@@ -32,10 +31,7 @@ const isHourlyBoundary = (i: number) => i % 6 === 0
 
 type CellStatus = 'outside' | 'available' | 'occupied'
 
-interface StaffRow {
-  staff: Staff
-  shift: Shift | null
-}
+interface StaffRow { staff: Staff; shift: Shift | null }
 
 interface BoardAnnotation {
   id: string
@@ -49,25 +45,29 @@ interface BoardAnnotation {
 }
 
 const ANNOTATION_COLORS = [
-  { key: 'yellow', label: '黄（休憩）', bg: 'bg-yellow-200', border: 'border-yellow-300' },
-  { key: 'orange', label: 'オレンジ（制限）', bg: 'bg-orange-200', border: 'border-orange-300' },
-  { key: 'red', label: '赤（不在）', bg: 'bg-red-200', border: 'border-red-300' },
-  { key: 'green', label: '緑（特記）', bg: 'bg-green-200', border: 'border-green-300' },
-  { key: 'purple', label: '紫（その他）', bg: 'bg-purple-200', border: 'border-purple-300' },
-  { key: 'gray', label: 'グレー', bg: 'bg-gray-300', border: 'border-gray-400' },
+  { key: 'yellow',  label: '黄（休憩）',    bg: 'bg-yellow-200',  border: 'border-yellow-300' },
+  { key: 'orange',  label: 'オレンジ（制限）', bg: 'bg-orange-200',  border: 'border-orange-300' },
+  { key: 'red',     label: '赤（不在）',    bg: 'bg-red-200',     border: 'border-red-300'    },
+  { key: 'green',   label: '緑（特記）',    bg: 'bg-green-200',   border: 'border-green-300'  },
+  { key: 'purple',  label: '紫（その他）',  bg: 'bg-purple-200',  border: 'border-purple-300' },
+  { key: 'gray',    label: 'グレー',        bg: 'bg-gray-300',    border: 'border-gray-400'   },
 ]
 
 function decimalToHHMM(decimal: number): string {
-  const normalized = decimal >= 24 ? decimal - 24 : decimal
-  const h = Math.floor(normalized)
-  const m = Math.round((normalized - h) * 60)
+  const h = Math.floor(decimal)
+  const m = Math.round((decimal - h) * 60)
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
 function hhmmStringToDecimal(hhmm: string, nextDay: boolean): number {
   const [h, m] = hhmm.split(':').map(Number)
-  const base = h + m / 60
-  return nextDay ? base + 24 : base
+  return h + m / 60 + (nextDay ? 24 : 0)
+}
+
+function slotToTimeLabel(slotDecimal: number): { hhmm: string; next: boolean } {
+  const next = slotDecimal >= 24
+  const d = next ? slotDecimal - 24 : slotDecimal
+  return { hhmm: decimalToHHMM(d), next }
 }
 
 export default function OperationsPage() {
@@ -79,16 +79,20 @@ export default function OperationsPage() {
   const [annotations, setAnnotations] = useState<BoardAnnotation[]>([])
   const [loading, setLoading] = useState(false)
 
+  // drag state
+  const [drag, setDrag] = useState<{ staffId: number; startSlot: number; endSlot: number } | null>(null)
+  const dragRef = useRef<typeof drag>(null)
+  const dragStartRef = useRef<{ staffId: number; slot: number } | null>(null)
+  const dragMovedRef = useRef(false)
+  useEffect(() => { dragRef.current = drag }, [drag])
+
   // annotation modal
   const [annotationModal, setAnnotationModal] = useState(false)
   const [editAnnotation, setEditAnnotation] = useState<{
     staff_id: number | null
-    start_hhmm: string
-    start_next: boolean
-    end_hhmm: string
-    end_next: boolean
-    color: string
-    memo: string
+    start_hhmm: string; start_next: boolean
+    end_hhmm: string;   end_next: boolean
+    color: string; memo: string
   }>({ staff_id: null, start_hhmm: '13:00', start_next: false, end_hhmm: '14:00', end_next: false, color: 'yellow', memo: '' })
   const [deleteConfirm, setDeleteConfirm] = useState<BoardAnnotation | null>(null)
 
@@ -109,17 +113,11 @@ export default function OperationsPage() {
   useEffect(() => {
     const update = () => {
       const now = new Date()
-      const h = now.getHours()
-      const m = now.getMinutes()
-      const s = now.getSeconds()
+      const h = now.getHours(); const m = now.getMinutes(); const s = now.getSeconds()
       let decimal = h + m / 60 + s / 3600
       if (decimal < TIME_START) decimal += 24
       setCurrentTimeDecimal(decimal)
-      setCurrentTimeLabel(
-        h < 7
-          ? `翌${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-          : `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-      )
+      setCurrentTimeLabel(h < 7 ? `翌${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}` : `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`)
     }
     update()
     const interval = setInterval(update, 10000)
@@ -153,6 +151,33 @@ export default function OperationsPage() {
     return () => { supabase.removeChannel(channel) }
   }, [fetchData])
 
+  // Global mouseup: finish drag → open modal
+  useEffect(() => {
+    const handleMouseUp = () => {
+      const d = dragRef.current
+      if (d && dragMovedRef.current) {
+        const minSlot = Math.min(d.startSlot, d.endSlot)
+        const maxSlot = Math.max(d.startSlot, d.endSlot)
+        const startDecimal = TIME_START + minSlot * (SLOT_MINUTES / 60)
+        const endDecimal   = TIME_START + (maxSlot + 1) * (SLOT_MINUTES / 60)
+        const s = slotToTimeLabel(startDecimal)
+        const e = slotToTimeLabel(endDecimal)
+        setEditAnnotation({
+          staff_id: d.staffId,
+          start_hhmm: s.hhmm, start_next: s.next,
+          end_hhmm: e.hhmm,   end_next: e.next,
+          color: 'yellow', memo: '',
+        })
+        setAnnotationModal(true)
+      }
+      dragStartRef.current = null
+      dragMovedRef.current = false
+      setDrag(null)
+    }
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => document.removeEventListener('mouseup', handleMouseUp)
+  }, [])
+
   const staffRows = useMemo((): StaffRow[] => {
     const shiftStaffIds = new Set(shifts.map(s => s.staff_id))
     const rows: StaffRow[] = []
@@ -163,9 +188,7 @@ export default function OperationsPage() {
     reservations.forEach(r => {
       if (r.staff_id && !shiftStaffIds.has(r.staff_id)) {
         const staff = staffList.find(s => s.id === r.staff_id)
-        if (staff && !rows.find(row => row.staff.id === r.staff_id)) {
-          rows.push({ staff, shift: null })
-        }
+        if (staff && !rows.find(row => row.staff.id === r.staff_id)) rows.push({ staff, shift: null })
       }
     })
     rows.sort((a, b) => (a.shift?.start_time ?? 99) - (b.shift?.start_time ?? 99))
@@ -175,29 +198,23 @@ export default function OperationsPage() {
   function getCellStatus(staffId: number, slotIdx: number): { status: CellStatus; reservation?: Reservation } {
     const slotTime = TIME_START + slotIdx * (SLOT_MINUTES / 60)
     const occupying = reservations.find(r => {
-      if (r.staff_id !== staffId) return false
-      if (!r.time || !r.course_duration) return false
+      if (r.staff_id !== staffId || !r.time || !r.course_duration) return false
       const resStart = hhmmToDecimal(r.time)
-      const extensionMinutes = Math.round(((r.extension ?? 0) / 3000) * 10)
-      const resEnd = resStart + (r.course_duration + extensionMinutes) / 60
+      const resEnd = resStart + (r.course_duration + Math.round(((r.extension ?? 0) / 3000) * 10)) / 60
       return slotTime >= resStart && slotTime < resEnd
     })
     if (occupying) return { status: 'occupied', reservation: occupying }
     const shift = shifts.find(s => s.staff_id === staffId)
-    const inShift = shift ? slotTime >= shift.start_time && slotTime < shift.end_time : false
-    return { status: inShift ? 'available' : 'outside' }
+    return { status: shift && slotTime >= shift.start_time && slotTime < shift.end_time ? 'available' : 'outside' }
   }
 
   function getCellAnnotation(staffId: number, slotIdx: number): BoardAnnotation | null {
     const slotTime = TIME_START + slotIdx * (SLOT_MINUTES / 60)
-    return annotations.find(a =>
-      a.staff_id === staffId && slotTime >= a.start_time && slotTime < a.end_time
-    ) ?? null
+    return annotations.find(a => a.staff_id === staffId && slotTime >= a.start_time && slotTime < a.end_time) ?? null
   }
 
   const slots = Array.from({ length: TOTAL_SLOTS }, (_, i) => i)
   const isToday = selectedDate === todayString()
-
   const currentTimeSlotOffset = useMemo(() => {
     if (!isToday || currentTimeDecimal === null) return null
     if (currentTimeDecimal < TIME_START || currentTimeDecimal >= TIME_END) return null
@@ -216,12 +233,9 @@ export default function OperationsPage() {
   const openAnnotationModal = () => {
     setEditAnnotation({
       staff_id: staffRows[0]?.staff.id ?? null,
-      start_hhmm: '13:00',
-      start_next: false,
-      end_hhmm: '14:00',
-      end_next: false,
-      color: 'yellow',
-      memo: '',
+      start_hhmm: '13:00', start_next: false,
+      end_hhmm: '14:00',   end_next: false,
+      color: 'yellow', memo: '',
     })
     setAnnotationModal(true)
   }
@@ -229,7 +243,7 @@ export default function OperationsPage() {
   const saveAnnotation = async () => {
     if (!editAnnotation.staff_id) return
     const startTime = hhmmStringToDecimal(editAnnotation.start_hhmm, editAnnotation.start_next)
-    const endTime = hhmmStringToDecimal(editAnnotation.end_hhmm, editAnnotation.end_next)
+    const endTime   = hhmmStringToDecimal(editAnnotation.end_hhmm,   editAnnotation.end_next)
     if (startTime >= endTime) return
     await supabase.from('board_annotations').insert({
       staff_id: editAnnotation.staff_id,
@@ -257,133 +271,91 @@ export default function OperationsPage() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1">
             <label className="text-sm font-semibold text-gray-600 mr-1">日付</label>
-            <button
-              onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]) }}
-              className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors"
-            >◀</button>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={e => setSelectedDate(e.target.value)}
-              className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-            />
-            <button
-              onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]) }}
-              className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors"
-            >▶</button>
+            <button onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate()-1); setSelectedDate(d.toISOString().split('T')[0]) }} className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors">◀</button>
+            <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" />
+            <button onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate()+1); setSelectedDate(d.toISOString().split('T')[0]) }} className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors">▶</button>
           </div>
           <div className="flex gap-1.5 flex-wrap">
             {STORES.map(s => (
-              <button
-                key={s.id}
-                onClick={() => selectStore(s.id)}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {s.name}
-              </button>
+              <button key={s.id} onClick={() => selectStore(s.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{s.name}</button>
             ))}
           </div>
-          <button
-            onClick={openAnnotationModal}
-            className="px-3 py-1.5 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-yellow-900 text-sm font-medium transition-colors"
-          >
-            ＋ メモ追加
-          </button>
+          <button onClick={openAnnotationModal} className="px-3 py-1.5 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-yellow-900 text-sm font-medium transition-colors">＋ メモ追加</button>
           <div className="ml-auto flex gap-4 text-xs flex-wrap">
-            <span className="flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded bg-blue-200 border border-blue-300 inline-block"></span>
-              <span className="text-gray-600">空き</span>
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded bg-red-400 border border-red-500 inline-block"></span>
-              <span className="text-gray-600">対応中</span>
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded bg-yellow-200 border border-yellow-300 inline-block"></span>
-              <span className="text-gray-600">メモ</span>
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded bg-gray-100 inline-block border border-gray-200"></span>
-              <span className="text-gray-600">範囲外</span>
-            </span>
-            {isToday && (
-              <span className="flex items-center gap-1.5">
-                <span className="w-0.5 h-4 bg-red-500 inline-block"></span>
-                <span className="text-gray-600">現在時刻</span>
-              </span>
-            )}
+            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-blue-200 border border-blue-300 inline-block"></span><span className="text-gray-600">空き</span></span>
+            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-red-400 border border-red-500 inline-block"></span><span className="text-gray-600">対応中</span></span>
+            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-yellow-200 border border-yellow-300 inline-block"></span><span className="text-gray-600">メモ</span></span>
+            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-gray-100 inline-block border border-gray-200"></span><span className="text-gray-600">範囲外</span></span>
+            {isToday && <span className="flex items-center gap-1.5"><span className="w-0.5 h-4 bg-red-500 inline-block"></span><span className="text-gray-600">現在時刻</span></span>}
+            <span className="text-gray-400 italic">ドラッグでメモ範囲を選択</span>
           </div>
         </div>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="text-gray-500 animate-pulse">読み込み中...</div>
-        </div>
+        <div className="flex items-center justify-center py-20"><div className="text-gray-500 animate-pulse">読み込み中...</div></div>
       ) : (
         <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto" ref={containerRef}>
             <div style={{ position: 'relative', minWidth: `${STAFF_COL_WIDTH + TOTAL_SLOTS * CELL_WIDTH}px` }}>
               {isToday && currentTimeSlotOffset !== null && (
-                <div style={{ position: 'absolute', top: 0, bottom: 0, left: STAFF_COL_WIDTH + currentTimeSlotOffset, width: 2, backgroundColor: '#ef4444', zIndex: 20, pointerEvents: 'none' }}>
-                  <span style={{ position: 'absolute', top: 2, left: 3, fontSize: 9, color: '#ef4444', fontWeight: 'bold', whiteSpace: 'nowrap', background: 'white', padding: '0 2px', borderRadius: 2 }}>
-                    {currentTimeLabel}
-                  </span>
+                <div style={{ position:'absolute', top:0, bottom:0, left: STAFF_COL_WIDTH + currentTimeSlotOffset, width:2, backgroundColor:'#ef4444', zIndex:20, pointerEvents:'none' }}>
+                  <span style={{ position:'absolute', top:2, left:3, fontSize:9, color:'#ef4444', fontWeight:'bold', whiteSpace:'nowrap', background:'white', padding:'0 2px', borderRadius:2 }}>{currentTimeLabel}</span>
                 </div>
               )}
 
-              <table className="text-xs border-collapse" style={{ width: STAFF_COL_WIDTH + TOTAL_SLOTS * CELL_WIDTH, tableLayout: 'fixed' }}>
+              <table
+                className="text-xs border-collapse select-none"
+                style={{ width: STAFF_COL_WIDTH + TOTAL_SLOTS * CELL_WIDTH, tableLayout:'fixed' }}
+                onMouseLeave={() => {
+                  if (!dragMovedRef.current) {
+                    dragStartRef.current = null
+                    setDrag(null)
+                  }
+                }}
+              >
                 <thead>
                   <tr className="bg-gray-900 text-white">
-                    <th
-                      className="sticky left-0 z-10 bg-gray-900 py-2 border-r border-gray-700 text-left"
-                      style={{ width: STAFF_COL_WIDTH, minWidth: STAFF_COL_WIDTH, paddingLeft: 8, paddingRight: 8 }}
-                    >
+                    <th className="sticky left-0 z-10 bg-gray-900 py-2 border-r border-gray-700 text-left" style={{ width: STAFF_COL_WIDTH, minWidth: STAFF_COL_WIDTH, paddingLeft:8, paddingRight:8 }}>
                       スタッフ / シフト
                     </th>
                     {slots.map(i => (
-                      <th
-                        key={i}
-                        className={`px-0 py-1 text-center font-normal ${isHourlyBoundary(i) ? 'border-l-2 border-gray-500' : 'border-l border-gray-700'}`}
-                        style={{ width: CELL_WIDTH, minWidth: CELL_WIDTH }}
-                      >
-                        {shouldShowLabel(i) ? (
-                          <span className="text-gray-300 block whitespace-nowrap" style={{ fontSize: 8 }}>{slotLabel(i)}</span>
-                        ) : null}
+                      <th key={i} className={`px-0 py-1 text-center font-normal ${isHourlyBoundary(i) ? 'border-l-2 border-gray-500' : 'border-l border-gray-700'}`} style={{ width: CELL_WIDTH, minWidth: CELL_WIDTH }}>
+                        {shouldShowLabel(i) ? <span className="text-gray-300 block whitespace-nowrap" style={{ fontSize:8 }}>{slotLabel(i)}</span> : null}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {staffRows.length === 0 && (
-                    <tr>
-                      <td colSpan={TOTAL_SLOTS + 1} className="text-center py-10 text-gray-400">シフトデータなし</td>
-                    </tr>
+                    <tr><td colSpan={TOTAL_SLOTS+1} className="text-center py-10 text-gray-400">シフトデータなし</td></tr>
                   )}
                   {staffRows.map(({ staff, shift }) => (
-                    <tr key={staff.id} className="border-b border-gray-100 hover:bg-gray-50/50">
-                      <td
-                        className="sticky left-0 z-10 bg-white border-r border-gray-200 py-1.5"
-                        style={{ width: STAFF_COL_WIDTH, minWidth: STAFF_COL_WIDTH, paddingLeft: 8, paddingRight: 8 }}
-                      >
-                        <div className="font-semibold text-gray-800 truncate" style={{ maxWidth: STAFF_COL_WIDTH - 16 }}>{staff.name}</div>
-                        {shift ? (
-                          <div className="text-gray-500" style={{ fontSize: 10 }}>{formatShiftTime(shift.start_time)} 〜 {formatShiftTime(shift.end_time)}</div>
-                        ) : (
-                          <div className="text-gray-400" style={{ fontSize: 10 }}>シフトなし</div>
-                        )}
+                    <tr key={staff.id} className="border-b border-gray-100">
+                      <td className="sticky left-0 z-10 bg-white border-r border-gray-200 py-1.5" style={{ width: STAFF_COL_WIDTH, minWidth: STAFF_COL_WIDTH, paddingLeft:8, paddingRight:8 }}>
+                        <div className="font-semibold text-gray-800 truncate" style={{ maxWidth: STAFF_COL_WIDTH-16 }}>{staff.name}</div>
+                        {shift
+                          ? <div className="text-gray-500" style={{ fontSize:10 }}>{formatShiftTime(shift.start_time)} 〜 {formatShiftTime(shift.end_time)}</div>
+                          : <div className="text-gray-400" style={{ fontSize:10 }}>シフトなし</div>
+                        }
                       </td>
                       {slots.map(slotIdx => {
                         const { status, reservation } = getCellStatus(staff.id, slotIdx)
                         const annotation = getCellAnnotation(staff.id, slotIdx)
                         const colorDef = annotation ? ANNOTATION_COLORS.find(c => c.key === annotation.color) : null
 
+                        // Drag highlight
+                        const isDragged = drag && drag.staffId === staff.id &&
+                          slotIdx >= Math.min(drag.startSlot, drag.endSlot) &&
+                          slotIdx <= Math.max(drag.startSlot, drag.endSlot)
+
                         let bgClass = 'bg-gray-100'
                         let borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-gray-400' : 'border-l border-gray-200'
 
-                        if (status === 'occupied') {
+                        if (isDragged) {
+                          bgClass = 'bg-indigo-300'
+                          borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-indigo-500' : 'border-l border-indigo-400'
+                        } else if (status === 'occupied') {
                           bgClass = 'bg-red-400'
                           borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-red-600' : 'border-l border-red-500'
                         } else if (annotation && colorDef) {
@@ -396,9 +368,7 @@ export default function OperationsPage() {
 
                         const title = status === 'occupied' && reservation
                           ? `${reservation.customer_name ?? ''} ${reservation.course_duration ?? ''}分`
-                          : annotation
-                          ? `${annotation.memo ?? ''} (${decimalToHHMM(annotation.start_time)}〜${decimalToHHMM(annotation.end_time)})`
-                          : ''
+                          : annotation ? `${annotation.memo ?? ''} (${decimalToHHMM(annotation.start_time)}〜${decimalToHHMM(annotation.end_time)}) ※クリックで削除` : ''
 
                         let cellText = ''
                         if (status === 'occupied' && reservation && reservation.time) {
@@ -412,16 +382,29 @@ export default function OperationsPage() {
                         return (
                           <td
                             key={slotIdx}
-                            className={`p-0 ${bgClass} ${borderClass} transition-colors ${annotation && status !== 'occupied' ? 'cursor-pointer' : ''}`}
+                            className={`p-0 ${bgClass} ${borderClass} transition-colors cursor-crosshair`}
                             title={title}
                             style={{ width: CELL_WIDTH, minWidth: CELL_WIDTH, height: 28 }}
-                            onClick={annotation && status !== 'occupied' ? () => setDeleteConfirm(annotation) : undefined}
+                            onMouseDown={e => {
+                              e.preventDefault()
+                              dragStartRef.current = { staffId: staff.id, slot: slotIdx }
+                              dragMovedRef.current = false
+                              setDrag({ staffId: staff.id, startSlot: slotIdx, endSlot: slotIdx })
+                            }}
+                            onMouseEnter={() => {
+                              if (dragStartRef.current && dragStartRef.current.staffId === staff.id) {
+                                dragMovedRef.current = true
+                                setDrag({ staffId: staff.id, startSlot: dragStartRef.current.slot, endSlot: slotIdx })
+                              }
+                            }}
+                            onClick={() => {
+                              if (!dragMovedRef.current && annotation && status !== 'occupied') {
+                                setDeleteConfirm(annotation)
+                              }
+                            }}
                           >
                             {cellText && (
-                              <span
-                                className={`font-bold flex items-center h-full overflow-hidden whitespace-nowrap ${status === 'occupied' ? 'text-white' : 'text-gray-700'}`}
-                                style={{ fontSize: 8, paddingLeft: 1 }}
-                              >
+                              <span className={`font-bold flex items-center h-full overflow-hidden whitespace-nowrap ${status === 'occupied' ? 'text-white' : 'text-gray-700'}`} style={{ fontSize:8, paddingLeft:1 }}>
                                 {cellText}
                               </span>
                             )}
@@ -436,12 +419,8 @@ export default function OperationsPage() {
           </div>
 
           <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-6 text-sm">
-            <div className="text-gray-600">
-              出勤スタッフ: <span className="font-bold text-gray-900">{staffRows.filter(r => r.shift).length}名</span>
-            </div>
-            <div className="text-gray-600">
-              対応中: <span className="font-bold text-red-600">{reservations.filter(r => r.staff_id && r.course_duration).length}件</span>
-            </div>
+            <div className="text-gray-600">出勤スタッフ: <span className="font-bold text-gray-900">{staffRows.filter(r => r.shift).length}名</span></div>
+            <div className="text-gray-600">対応中: <span className="font-bold text-red-600">{reservations.filter(r => r.staff_id && r.course_duration).length}件</span></div>
           </div>
         </div>
       )}
@@ -454,86 +433,44 @@ export default function OperationsPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">スタッフ</label>
-                <select
-                  value={editAnnotation.staff_id ?? ''}
-                  onChange={e => setEditAnnotation(a => ({ ...a, staff_id: Number(e.target.value) }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {staffRows.map(({ staff }) => (
-                    <option key={staff.id} value={staff.id}>{staff.name}</option>
-                  ))}
+                <select value={editAnnotation.staff_id ?? ''} onChange={e => setEditAnnotation(a => ({ ...a, staff_id: Number(e.target.value) }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  {staffRows.map(({ staff }) => <option key={staff.id} value={staff.id}>{staff.name}</option>)}
                 </select>
               </div>
-
               <div className="flex gap-3">
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">開始</label>
-                  <input
-                    type="time"
-                    value={editAnnotation.start_hhmm}
-                    onChange={e => setEditAnnotation(a => ({ ...a, start_hhmm: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <input type="time" value={editAnnotation.start_hhmm} onChange={e => setEditAnnotation(a => ({ ...a, start_hhmm: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   <label className="flex items-center gap-1 mt-1 text-xs text-gray-500 cursor-pointer">
-                    <input type="checkbox" checked={editAnnotation.start_next} onChange={e => setEditAnnotation(a => ({ ...a, start_next: e.target.checked }))} />
-                    翌日
+                    <input type="checkbox" checked={editAnnotation.start_next} onChange={e => setEditAnnotation(a => ({ ...a, start_next: e.target.checked }))} /> 翌日
                   </label>
                 </div>
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">終了</label>
-                  <input
-                    type="time"
-                    value={editAnnotation.end_hhmm}
-                    onChange={e => setEditAnnotation(a => ({ ...a, end_hhmm: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <input type="time" value={editAnnotation.end_hhmm} onChange={e => setEditAnnotation(a => ({ ...a, end_hhmm: e.target.value }))} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   <label className="flex items-center gap-1 mt-1 text-xs text-gray-500 cursor-pointer">
-                    <input type="checkbox" checked={editAnnotation.end_next} onChange={e => setEditAnnotation(a => ({ ...a, end_next: e.target.checked }))} />
-                    翌日
+                    <input type="checkbox" checked={editAnnotation.end_next} onChange={e => setEditAnnotation(a => ({ ...a, end_next: e.target.checked }))} /> 翌日
                   </label>
                 </div>
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">色</label>
                 <div className="flex gap-2 flex-wrap">
                   {ANNOTATION_COLORS.map(c => (
-                    <button
-                      key={c.key}
-                      onClick={() => setEditAnnotation(a => ({ ...a, color: c.key }))}
-                      className={`px-2 py-1 rounded-lg text-xs border-2 transition-all ${c.bg} ${editAnnotation.color === c.key ? 'border-gray-700 scale-110 shadow' : c.border}`}
-                    >
+                    <button key={c.key} onClick={() => setEditAnnotation(a => ({ ...a, color: c.key }))} className={`px-2 py-1 rounded-lg text-xs border-2 transition-all ${c.bg} ${editAnnotation.color === c.key ? 'border-gray-700 scale-110 shadow' : c.border}`}>
                       {c.label}
                     </button>
                   ))}
                 </div>
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">メモ</label>
-                <input
-                  type="text"
-                  value={editAnnotation.memo}
-                  onChange={e => setEditAnnotation(a => ({ ...a, memo: e.target.value }))}
-                  placeholder="例：休憩、80分まで対応可"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                <input type="text" value={editAnnotation.memo} onChange={e => setEditAnnotation(a => ({ ...a, memo: e.target.value }))} placeholder="例：休憩、80分まで対応可" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
-
             <div className="flex gap-2 mt-5">
-              <button
-                onClick={() => setAnnotationModal(false)}
-                className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={saveAnnotation}
-                className="flex-1 py-2 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 rounded-lg text-sm font-bold transition-colors"
-              >
-                保存
-              </button>
+              <button onClick={() => setAnnotationModal(false)} className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">キャンセル</button>
+              <button onClick={saveAnnotation} className="flex-1 py-2 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 rounded-lg text-sm font-bold transition-colors">保存</button>
             </div>
           </div>
         </div>
@@ -548,18 +485,8 @@ export default function OperationsPage() {
             <p className="text-sm text-gray-600">{decimalToHHMM(deleteConfirm.start_time)} 〜 {decimalToHHMM(deleteConfirm.end_time)}</p>
             {deleteConfirm.memo && <p className="text-sm font-medium text-gray-800 mt-1">「{deleteConfirm.memo}」</p>}
             <div className="flex gap-2 mt-5">
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={() => deleteAnnotation(deleteConfirm)}
-                className="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-bold transition-colors"
-              >
-                削除
-              </button>
+              <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">キャンセル</button>
+              <button onClick={() => deleteAnnotation(deleteConfirm)} className="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-bold transition-colors">削除</button>
             </div>
           </div>
         </div>
