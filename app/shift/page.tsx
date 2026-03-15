@@ -35,9 +35,9 @@ const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土']
 
 export default function ShiftPage() {
   const todayStr = todayString()
-  const todayDate = new Date(todayStr)
-  const [year, setYear] = useState(todayDate.getFullYear())
-  const [month, setMonth] = useState(todayDate.getMonth() + 1)
+  const [todayYear, todayMonth, todayDay2] = todayStr.split('-').map(Number)
+  const [year, setYear] = useState(todayYear)
+  const [month, setMonth] = useState(todayMonth)
   const [selectedStoreId, setSelectedStoreId] = useState(1)
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
@@ -52,9 +52,7 @@ export default function ShiftPage() {
   const [editValue, setEditValue] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
 
-  const todayYear = todayDate.getFullYear()
-  const todayMonth = todayDate.getMonth() + 1
-  const todayDay = todayDate.getDate()
+  const todayDay = todayDay2
 
   const daysInMonth = getDaysInMonth(year, month)
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
