@@ -151,28 +151,16 @@ export default function OperationsPage() {
     return () => { supabase.removeChannel(channel) }
   }, [fetchData])
 
-  // Global mouseup: finish drag → open modal
+  // Global mouseup: finish drag → keep selection, don't open modal yet
   useEffect(() => {
     const handleMouseUp = () => {
-      const d = dragRef.current
-      if (d && dragMovedRef.current) {
-        const minSlot = Math.min(d.startSlot, d.endSlot)
-        const maxSlot = Math.max(d.startSlot, d.endSlot)
-        const startDecimal = TIME_START + minSlot * (SLOT_MINUTES / 60)
-        const endDecimal   = TIME_START + (maxSlot + 1) * (SLOT_MINUTES / 60)
-        const s = slotToTimeLabel(startDecimal)
-        const e = slotToTimeLabel(endDecimal)
-        setEditAnnotation({
-          staff_id: d.staffId,
-          start_hhmm: s.hhmm, start_next: s.next,
-          end_hhmm: e.hhmm,   end_next: e.next,
-          color: 'yellow', memo: '',
-        })
-        setAnnotationModal(true)
+      if (!dragMovedRef.current) {
+        // single click, not a drag — clear selection
+        if (dragStartRef.current) setDrag(null)
       }
+      // if dragged, keep drag state highlighted
       dragStartRef.current = null
       dragMovedRef.current = false
-      setDrag(null)
     }
     document.addEventListener('mouseup', handleMouseUp)
     return () => document.removeEventListener('mouseup', handleMouseUp)
@@ -231,12 +219,27 @@ export default function OperationsPage() {
   const STAFF_COL_WIDTH = 160
 
   const openAnnotationModal = () => {
-    setEditAnnotation({
-      staff_id: staffRows[0]?.staff.id ?? null,
-      start_hhmm: '13:00', start_next: false,
-      end_hhmm: '14:00',   end_next: false,
-      color: 'yellow', memo: '',
-    })
+    if (drag) {
+      const minSlot = Math.min(drag.startSlot, drag.endSlot)
+      const maxSlot = Math.max(drag.startSlot, drag.endSlot)
+      const startDecimal = TIME_START + minSlot * (SLOT_MINUTES / 60)
+      const endDecimal   = TIME_START + (maxSlot + 1) * (SLOT_MINUTES / 60)
+      const s = slotToTimeLabel(startDecimal)
+      const e = slotToTimeLabel(endDecimal)
+      setEditAnnotation({
+        staff_id: drag.staffId,
+        start_hhmm: s.hhmm, start_next: s.next,
+        end_hhmm: e.hhmm,   end_next: e.next,
+        color: 'yellow', memo: '',
+      })
+    } else {
+      setEditAnnotation({
+        staff_id: staffRows[0]?.staff.id ?? null,
+        start_hhmm: '13:00', start_next: false,
+        end_hhmm: '14:00',   end_next: false,
+        color: 'yellow', memo: '',
+      })
+    }
     setAnnotationModal(true)
   }
 
@@ -255,6 +258,7 @@ export default function OperationsPage() {
       store_id: selectedStoreId,
     })
     setAnnotationModal(false)
+    setDrag(null)
     fetchData()
   }
 
@@ -280,14 +284,25 @@ export default function OperationsPage() {
               <button key={s.id} onClick={() => selectStore(s.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{s.name}</button>
             ))}
           </div>
-          <button onClick={openAnnotationModal} className="px-3 py-1.5 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-yellow-900 text-sm font-medium transition-colors">＋ メモ追加</button>
+          {drag ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-indigo-700 bg-indigo-100 border border-indigo-300 rounded-lg px-2 py-1">
+                {staffList.find(s => s.id === drag.staffId)?.name}
+                {slotLabel(Math.min(drag.startSlot, drag.endSlot))} 〜 {slotLabel(Math.max(drag.startSlot, drag.endSlot) + 1)}
+              </span>
+              <button onClick={openAnnotationModal} className="px-3 py-1.5 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-yellow-900 text-sm font-bold transition-colors">＋ メモ追加</button>
+              <button onClick={() => setDrag(null)} className="px-2 py-1.5 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-600 text-sm transition-colors">✕</button>
+            </div>
+          ) : (
+            <button onClick={openAnnotationModal} className="px-3 py-1.5 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-yellow-900 text-sm font-medium transition-colors">＋ メモ追加</button>
+          )}
           <div className="ml-auto flex gap-4 text-xs flex-wrap">
             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-blue-200 border border-blue-300 inline-block"></span><span className="text-gray-600">空き</span></span>
             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-red-400 border border-red-500 inline-block"></span><span className="text-gray-600">対応中</span></span>
             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-yellow-200 border border-yellow-300 inline-block"></span><span className="text-gray-600">メモ</span></span>
             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-gray-100 inline-block border border-gray-200"></span><span className="text-gray-600">範囲外</span></span>
             {isToday && <span className="flex items-center gap-1.5"><span className="w-0.5 h-4 bg-red-500 inline-block"></span><span className="text-gray-600">現在時刻</span></span>}
-            <span className="text-gray-400 italic">ドラッグでメモ範囲を選択</span>
+            <span className="text-gray-400 italic">ドラッグで範囲選択 → メモ追加</span>
           </div>
         </div>
       </div>
