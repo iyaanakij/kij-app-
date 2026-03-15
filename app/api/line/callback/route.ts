@@ -1,23 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-function fixActionLink(actionLink: string, appUrl: string): string {
-  try {
-    const url = new URL(actionLink)
-    const redirectTo = url.searchParams.get('redirect_to')
-    if (redirectTo) {
-      const fixed = new URL(redirectTo)
-      const correct = new URL(appUrl)
-      fixed.hostname = correct.hostname
-      fixed.protocol = correct.protocol
-      fixed.port = correct.port
-      url.searchParams.set('redirect_to', fixed.toString())
-    }
-    return url.toString()
-  } catch {
-    return actionLink
-  }
-}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -79,13 +62,12 @@ export async function GET(req: NextRequest) {
     const { data: linkData, error: linkError } = await adminSupabase.auth.admin.generateLink({
       type: 'magiclink',
       email: user.email,
-      options: { redirectTo: `${appUrl}/cast/shift` },
     })
-    if (linkError || !linkData?.properties?.action_link) {
+    if (linkError || !linkData?.properties?.hashed_token) {
       return NextResponse.redirect(`${appUrl}/cast/login?error=session_failed`)
     }
 
-    return NextResponse.redirect(fixActionLink(linkData.properties.action_link, appUrl))
+    return NextResponse.redirect(`${appUrl}/cast/auth?hash=${linkData.properties.hashed_token}`)
   }
 
   // ── LINE新規登録 ────────────────────────────────────────
@@ -127,12 +109,11 @@ export async function GET(req: NextRequest) {
     const { data: linkData, error: linkError } = await adminSupabase.auth.admin.generateLink({
       type: 'magiclink',
       email: dummyEmail,
-      options: { redirectTo: `${appUrl}/cast/shift` },
     })
-    if (linkError || !linkData?.properties?.action_link) {
+    if (linkError || !linkData?.properties?.hashed_token) {
       return NextResponse.redirect(`${appUrl}/cast/login?error=session_failed`)
     }
-    return NextResponse.redirect(fixActionLink(linkData.properties.action_link, appUrl))
+    return NextResponse.redirect(`${appUrl}/cast/auth?hash=${linkData.properties.hashed_token}`)
   }
 
   // ── LINE連携（既存ログイン済みユーザーがLINEを紐付け）─────────
