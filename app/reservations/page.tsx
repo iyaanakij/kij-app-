@@ -15,7 +15,7 @@ const COURSE_PRICES: Record<number, Record<string, number>> = {
 }
 
 const COURSE_DURATIONS = [60, 80, 100, 120, 150, 180]
-const COURSE_TYPES = ['ランジェリー', 'トップレス', 'ヌード']
+const COURSE_TYPES = ['トップレス', 'ヌード'] // 未選択=ランジェリー扱い
 const CATEGORIES = ['新規', '会員']
 
 const NOMINATION_OPTIONS = [
@@ -106,7 +106,7 @@ const emptyReservation = (): Partial<Reservation> => ({
   staff_id: null,
   nomination_type: '',
   course_duration: null,
-  course_type: 'ランジェリー',
+  course_type: null,
   nude: false,
   option1: '',
   option2: '',
@@ -129,12 +129,13 @@ const emptyReservation = (): Partial<Reservation> => ({
 // ── キャスト給計算 ──────────────────────────────────────
 // コース種別ごとの給与テーブル（未入力はランジェリー扱い）
 const COURSE_CAST_PAY: Record<number, Partial<Record<string, number>>> = {
-  60:  { ランジェリー: 7000  /* トップレス: ?, ヌード: ? */ },
-  80:  { ランジェリー: 9000  },
-  100: { ランジェリー: 11000 },
-  120: { ランジェリー: 13000 },
-  150: { ランジェリー: 16000 },
-  180: { ランジェリー: 19000 },
+  // ランジェリー=未入力時のデフォルト。トップレス・ヌードは単価確定後に追記
+  60:  { ランジェリー: 7000,  トップレス: 7000,  ヌード: 7000  },
+  80:  { ランジェリー: 9000,  トップレス: 9000,  ヌード: 9000  },
+  100: { ランジェリー: 11000, トップレス: 11000, ヌード: 11000 },
+  120: { ランジェリー: 13000, トップレス: 13000, ヌード: 13000 },
+  150: { ランジェリー: 16000, トップレス: 16000, ヌード: 16000 },
+  180: { ランジェリー: 19000, トップレス: 19000, ヌード: 19000 },
 }
 function getCourseCastPay(duration: number | null, courseType: string | null): number {
   if (!duration) return 0
