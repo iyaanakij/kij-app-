@@ -58,12 +58,23 @@ export default function NavBar() {
             )
           })}
         </div>
-        {storeName && (
-          <div className="ml-auto flex items-center gap-1.5 bg-gray-800 px-3 py-1 rounded-full">
-            <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
-            <span className="text-xs font-semibold text-gray-200">{storeName}</span>
-          </div>
-        )}
+        <div className="ml-auto flex items-center gap-3">
+          <Link
+            href="/cast/login"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-pink-600/20 text-pink-300 hover:bg-pink-600/40 hover:text-pink-100 border border-pink-600/30 transition-colors"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-pink-400 inline-block"></span>
+            キャストページ
+          </Link>
+          {storeName && (
+            <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1 rounded-full">
+              <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
+              <span className="text-xs font-semibold text-gray-200">{storeName}</span>
+            </div>
+          )}
+        </div>
       </div>
     </nav>
   )
