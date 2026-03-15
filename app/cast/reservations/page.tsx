@@ -44,7 +44,18 @@ export default function CastReservationsPage() {
     }
 
     const { data } = await query
-    if (data) setReservations(data as Reservation[])
+    if (data) {
+      const now = new Date()
+      const currentTime = now.getHours() * 100 + now.getMinutes()
+      const filtered = filter === 'upcoming'
+        ? (data as Reservation[]).filter(r =>
+            r.date > todayStr || r.time == null || r.time >= currentTime
+          )
+        : (data as Reservation[]).filter(r =>
+            r.date < todayStr || (r.time != null && r.time < currentTime)
+          )
+      setReservations(filtered)
+    }
     setLoading(false)
   }, [user, filter])
 
