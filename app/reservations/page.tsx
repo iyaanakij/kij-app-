@@ -126,6 +126,32 @@ const emptyReservation = (): Partial<Reservation> => ({
   checked: false,
 })
 
+// ── キャスト給計算 ──────────────────────────────────────
+const COURSE_CAST_PAY: Record<number, number> = {
+  60: 7000, 80: 9000, 100: 11000, 120: 13000, 150: 16000, 180: 19000,
+}
+const OP_CAST_PAY: Record<string, number> = {
+  '聖水': 2000,
+  'ロープ': 1000,
+  '私物パンティ': 3000,
+  'ストッキング': 500,
+  'プラスチック浣腸': 500,
+  'コスプレ': 1000,
+}
+function calculateCastPay(r: Reservation): number {
+  let pay = 0
+  if (r.course_duration) pay += COURSE_CAST_PAY[r.course_duration] ?? 0
+  if (r.nomination_type && r.nomination_type !== 'フリー' && r.nomination_type !== '') pay += 2000
+  if (r.extension) pay += Math.round(r.extension * 0.5)
+  if (r.transportation_fee) pay += r.transportation_fee
+  if (r.nude) pay += 1000
+  for (const opt of [r.option1, r.option2, r.option3, r.option4, r.option5, r.option6]) {
+    if (opt) pay += OP_CAST_PAY[opt] ?? 0
+  }
+  if (r.discount) pay -= r.discount
+  return Math.max(0, pay)
+}
+
 // ── テンプレート生成 ────────────────────────────────────
 function generateTemplate(r: Reservation): string {
   const time = r.time !== null && r.time !== undefined
@@ -785,6 +811,31 @@ export default function ReservationsPage() {
           </div>
         </div>
       </div>
+
+      {/* 日次売上サマリー */}
+      {!loading && (() => {
+        const totalSales = reservations.reduce((s, r) => s + (r.total_amount ?? 0), 0)
+        const totalCastPay = reservations.reduce((s, r) => s + calculateCastPay(r), 0)
+        const storeProft = totalSales - totalCastPay
+        return (
+          <div className="bg-white rounded-xl shadow-md border border-gray-100 px-5 py-3 mb-3 flex flex-wrap gap-6 items-center">
+            <span className="text-sm font-semibold text-gray-500">当日売上</span>
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400">売上合計</span>
+              <span className="text-lg font-bold text-gray-900">¥{totalSales.toLocaleString()}</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400">キャスト給</span>
+              <span className="text-lg font-bold text-red-600">¥{totalCastPay.toLocaleString()}</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400">店舗利益</span>
+              <span className="text-lg font-bold text-blue-600">¥{storeProft.toLocaleString()}</span>
+            </span>
+            <span className="text-xs text-gray-400 ml-auto">{reservations.length}件</span>
+          </div>
+        )
+      })()}
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
