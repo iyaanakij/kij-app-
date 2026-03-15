@@ -476,6 +476,16 @@ export default function ReservationsPage() {
 
   const saveReservation = async () => {
     if (!editingReservation.store_id || !editingReservation.date) return
+    if (!isEditing && editingReservation.time != null) {
+      const now = new Date()
+      const currentTime = now.getHours() * 100 + now.getMinutes()
+      const todayStr = todayString()
+      if (editingReservation.date < todayStr ||
+          (editingReservation.date === todayStr && editingReservation.time < currentTime)) {
+        setConflictError('過去の日時には予約を入力できません')
+        return
+      }
+    }
     const conflict = checkDoubleBooking(
       editingReservation,
       reservations,
