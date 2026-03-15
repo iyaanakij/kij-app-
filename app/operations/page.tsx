@@ -27,9 +27,7 @@ function slotLabel(slotIdx: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-// Show label only every 6 slots (= every hour)
 const shouldShowLabel = (i: number) => i % 6 === 0
-// Hourly boundary every 6 slots
 const isHourlyBoundary = (i: number) => i % 6 === 0
 
 type CellStatus = 'outside' | 'available' | 'occupied'
@@ -39,15 +37,61 @@ interface StaffRow {
   shift: Shift | null
 }
 
+interface BoardAnnotation {
+  id: string
+  staff_id: number
+  date: string
+  start_time: number
+  end_time: number
+  color: string
+  memo: string | null
+  store_id: number
+}
+
+const ANNOTATION_COLORS = [
+  { key: 'yellow', label: '黄（休憩）', bg: 'bg-yellow-200', border: 'border-yellow-300' },
+  { key: 'orange', label: 'オレンジ（制限）', bg: 'bg-orange-200', border: 'border-orange-300' },
+  { key: 'red', label: '赤（不在）', bg: 'bg-red-200', border: 'border-red-300' },
+  { key: 'green', label: '緑（特記）', bg: 'bg-green-200', border: 'border-green-300' },
+  { key: 'purple', label: '紫（その他）', bg: 'bg-purple-200', border: 'border-purple-300' },
+  { key: 'gray', label: 'グレー', bg: 'bg-gray-300', border: 'border-gray-400' },
+]
+
+function decimalToHHMM(decimal: number): string {
+  const normalized = decimal >= 24 ? decimal - 24 : decimal
+  const h = Math.floor(normalized)
+  const m = Math.round((normalized - h) * 60)
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+function hhmmStringToDecimal(hhmm: string, nextDay: boolean): number {
+  const [h, m] = hhmm.split(':').map(Number)
+  const base = h + m / 60
+  return nextDay ? base + 24 : base
+}
+
 export default function OperationsPage() {
   const [selectedDate, setSelectedDate] = useState(todayString())
   const [selectedStoreId, setSelectedStoreId] = useState<number>(1)
   const [shifts, setShifts] = useState<Shift[]>([])
   const [reservations, setReservations] = useState<Reservation[]>([])
   const [staffList, setStaffList] = useState<Staff[]>([])
+  const [annotations, setAnnotations] = useState<BoardAnnotation[]>([])
   const [loading, setLoading] = useState(false)
 
-  // マウント時にlocalStorageから店舗を復元
+  // annotation modal
+  const [annotationModal, setAnnotationModal] = useState(false)
+  const [editAnnotation, setEditAnnotation] = useState<{
+    staff_id: number | null
+    start_hhmm: string
+    start_next: boolean
+    end_hhmm: string
+    end_next: boolean
+    color: string
+    memo: string
+  }>({ staff_id: null, start_hhmm: '13:00', start_next: false, end_hhmm: '14:00', end_next: false, color: 'yellow', memo: '' })
+  const [deleteConfirm, setDeleteConfirm] = useState<BoardAnnotation | null>(null)
+
   useEffect(() => {
     const saved = localStorage.getItem('kij_store')
     if (saved && !isNaN(Number(saved))) setSelectedStoreId(Number(saved))
@@ -57,11 +101,11 @@ export default function OperationsPage() {
     setSelectedStoreId(id)
     localStorage.setItem('kij_store', String(id))
   }
+
   const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null)
   const [currentTimeLabel, setCurrentTimeLabel] = useState<string>('')
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // クライアントサイドのみで現在時刻を計算（SSRのUTC問題を回避）
   useEffect(() => {
     const update = () => {
       const now = new Date()
@@ -84,35 +128,27 @@ export default function OperationsPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true)
-    const [staffRes, shiftsRes, reservationsRes] = await Promise.all([
+    const [staffRes, shiftsRes, reservationsRes, annotationsRes] = await Promise.all([
       supabase.from('staff').select('*').order('name'),
-      supabase
-        .from('shifts')
-        .select('*')
-        .eq('date', selectedDate)
-        .eq('store_id', selectedStoreId)
-        .neq('status', 'x'),
-      supabase
-        .from('reservations')
-        .select('*')
-        .eq('date', selectedDate)
-        .eq('store_id', selectedStoreId),
+      supabase.from('shifts').select('*').eq('date', selectedDate).eq('store_id', selectedStoreId).neq('status', 'x'),
+      supabase.from('reservations').select('*').eq('date', selectedDate).eq('store_id', selectedStoreId),
+      supabase.from('board_annotations').select('*').eq('date', selectedDate).eq('store_id', selectedStoreId),
     ])
     if (staffRes.data) setStaffList(staffRes.data)
     if (shiftsRes.data) setShifts(shiftsRes.data)
     if (reservationsRes.data) setReservations(reservationsRes.data)
+    if (annotationsRes.data) setAnnotations(annotationsRes.data)
     setLoading(false)
   }, [selectedDate, selectedStoreId])
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  useEffect(() => { fetchData() }, [fetchData])
 
   useEffect(() => {
     const channel = supabase
       .channel('operations-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shifts' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'board_annotations' }, fetchData)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [fetchData])
@@ -120,15 +156,10 @@ export default function OperationsPage() {
   const staffRows = useMemo((): StaffRow[] => {
     const shiftStaffIds = new Set(shifts.map(s => s.staff_id))
     const rows: StaffRow[] = []
-
     shifts.forEach(shift => {
       const staff = staffList.find(s => s.id === shift.staff_id)
-      if (staff) {
-        rows.push({ staff, shift })
-      }
+      if (staff) rows.push({ staff, shift })
     })
-
-    // Also include staff with reservations but no shift
     reservations.forEach(r => {
       if (r.staff_id && !shiftStaffIds.has(r.staff_id)) {
         const staff = staffList.find(s => s.id === r.staff_id)
@@ -137,41 +168,34 @@ export default function OperationsPage() {
         }
       }
     })
-
-    rows.sort((a, b) => {
-      const aStart = a.shift?.start_time ?? 99
-      const bStart = b.shift?.start_time ?? 99
-      return aStart - bStart
-    })
+    rows.sort((a, b) => (a.shift?.start_time ?? 99) - (b.shift?.start_time ?? 99))
     return rows
   }, [shifts, reservations, staffList])
 
   function getCellStatus(staffId: number, slotIdx: number): { status: CellStatus; reservation?: Reservation } {
     const slotTime = TIME_START + slotIdx * (SLOT_MINUTES / 60)
-
-    // Check reservations first (may extend beyond shift end)
     const occupying = reservations.find(r => {
       if (r.staff_id !== staffId) return false
       if (!r.time || !r.course_duration) return false
       const resStart = hhmmToDecimal(r.time)
       const extensionMinutes = Math.round(((r.extension ?? 0) / 3000) * 10)
-      const totalDuration = r.course_duration + extensionMinutes
-      const resEnd = resStart + totalDuration / 60
+      const resEnd = resStart + (r.course_duration + extensionMinutes) / 60
       return slotTime >= resStart && slotTime < resEnd
     })
-
     if (occupying) return { status: 'occupied', reservation: occupying }
-
     const shift = shifts.find(s => s.staff_id === staffId)
     const inShift = shift ? slotTime >= shift.start_time && slotTime < shift.end_time : false
+    return { status: inShift ? 'available' : 'outside' }
+  }
 
-    if (!inShift) return { status: 'outside' }
-    return { status: 'available' }
+  function getCellAnnotation(staffId: number, slotIdx: number): BoardAnnotation | null {
+    const slotTime = TIME_START + slotIdx * (SLOT_MINUTES / 60)
+    return annotations.find(a =>
+      a.staff_id === staffId && slotTime >= a.start_time && slotTime < a.end_time
+    ) ?? null
   }
 
   const slots = Array.from({ length: TOTAL_SLOTS }, (_, i) => i)
-
-  // 現在時刻インジケーター
   const isToday = selectedDate === todayString()
 
   const currentTimeSlotOffset = useMemo(() => {
@@ -180,16 +204,51 @@ export default function OperationsPage() {
     return (currentTimeDecimal - TIME_START) * (60 / SLOT_MINUTES) * CELL_WIDTH
   }, [isToday, currentTimeDecimal])
 
-  // ページロード時・日付変更時に現在時刻位置へ自動スクロール
   useEffect(() => {
     if (!isToday || currentTimeSlotOffset === null) return
     const el = containerRef.current
     if (!el) return
-    const scrollTarget = STAFF_COL_WIDTH + currentTimeSlotOffset - el.clientWidth / 2
-    el.scrollLeft = Math.max(0, scrollTarget)
+    el.scrollLeft = Math.max(0, STAFF_COL_WIDTH + currentTimeSlotOffset - el.clientWidth / 2)
   }, [isToday, currentTimeSlotOffset, loading])
 
   const STAFF_COL_WIDTH = 160
+
+  const openAnnotationModal = () => {
+    setEditAnnotation({
+      staff_id: staffRows[0]?.staff.id ?? null,
+      start_hhmm: '13:00',
+      start_next: false,
+      end_hhmm: '14:00',
+      end_next: false,
+      color: 'yellow',
+      memo: '',
+    })
+    setAnnotationModal(true)
+  }
+
+  const saveAnnotation = async () => {
+    if (!editAnnotation.staff_id) return
+    const startTime = hhmmStringToDecimal(editAnnotation.start_hhmm, editAnnotation.start_next)
+    const endTime = hhmmStringToDecimal(editAnnotation.end_hhmm, editAnnotation.end_next)
+    if (startTime >= endTime) return
+    await supabase.from('board_annotations').insert({
+      staff_id: editAnnotation.staff_id,
+      date: selectedDate,
+      start_time: startTime,
+      end_time: endTime,
+      color: editAnnotation.color,
+      memo: editAnnotation.memo,
+      store_id: selectedStoreId,
+    })
+    setAnnotationModal(false)
+    fetchData()
+  }
+
+  const deleteAnnotation = async (ann: BoardAnnotation) => {
+    await supabase.from('board_annotations').delete().eq('id', ann.id)
+    setDeleteConfirm(null)
+    fetchData()
+  }
 
   return (
     <div className="p-3">
@@ -199,10 +258,7 @@ export default function OperationsPage() {
           <div className="flex items-center gap-1">
             <label className="text-sm font-semibold text-gray-600 mr-1">日付</label>
             <button
-              onClick={() => {
-                const d = new Date(selectedDate); d.setDate(d.getDate() - 1)
-                setSelectedDate(d.toISOString().split('T')[0])
-              }}
+              onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]) }}
               className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors"
             >◀</button>
             <input
@@ -212,10 +268,7 @@ export default function OperationsPage() {
               className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
             />
             <button
-              onClick={() => {
-                const d = new Date(selectedDate); d.setDate(d.getDate() + 1)
-                setSelectedDate(d.toISOString().split('T')[0])
-              }}
+              onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]) }}
               className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors"
             >▶</button>
           </div>
@@ -225,23 +278,31 @@ export default function OperationsPage() {
                 key={s.id}
                 onClick={() => selectStore(s.id)}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  selectedStoreId === s.id
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
                 {s.name}
               </button>
             ))}
           </div>
-          <div className="ml-auto flex gap-4 text-xs">
+          <button
+            onClick={openAnnotationModal}
+            className="px-3 py-1.5 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-yellow-900 text-sm font-medium transition-colors"
+          >
+            ＋ メモ追加
+          </button>
+          <div className="ml-auto flex gap-4 text-xs flex-wrap">
             <span className="flex items-center gap-1.5">
               <span className="w-4 h-4 rounded bg-blue-200 border border-blue-300 inline-block"></span>
-              <span className="text-gray-600">出勤中(空き)</span>
+              <span className="text-gray-600">空き</span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-4 h-4 rounded bg-red-400 border border-red-500 inline-block"></span>
               <span className="text-gray-600">対応中</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-4 h-4 rounded bg-yellow-200 border border-yellow-300 inline-block"></span>
+              <span className="text-gray-600">メモ</span>
             </span>
             <span className="flex items-center gap-1.5">
               <span className="w-4 h-4 rounded bg-gray-100 inline-block border border-gray-200"></span>
@@ -265,32 +326,9 @@ export default function OperationsPage() {
         <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto" ref={containerRef}>
             <div style={{ position: 'relative', minWidth: `${STAFF_COL_WIDTH + TOTAL_SLOTS * CELL_WIDTH}px` }}>
-              {/* 現在時刻インジケーター */}
               {isToday && currentTimeSlotOffset !== null && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    bottom: 0,
-                    left: STAFF_COL_WIDTH + currentTimeSlotOffset,
-                    width: 2,
-                    backgroundColor: '#ef4444',
-                    zIndex: 20,
-                    pointerEvents: 'none',
-                  }}
-                >
-                  <span style={{
-                    position: 'absolute',
-                    top: 2,
-                    left: 3,
-                    fontSize: 9,
-                    color: '#ef4444',
-                    fontWeight: 'bold',
-                    whiteSpace: 'nowrap',
-                    background: 'white',
-                    padding: '0 2px',
-                    borderRadius: 2,
-                  }}>
+                <div style={{ position: 'absolute', top: 0, bottom: 0, left: STAFF_COL_WIDTH + currentTimeSlotOffset, width: 2, backgroundColor: '#ef4444', zIndex: 20, pointerEvents: 'none' }}>
+                  <span style={{ position: 'absolute', top: 2, left: 3, fontSize: 9, color: '#ef4444', fontWeight: 'bold', whiteSpace: 'nowrap', background: 'white', padding: '0 2px', borderRadius: 2 }}>
                     {currentTimeLabel}
                   </span>
                 </div>
@@ -308,15 +346,11 @@ export default function OperationsPage() {
                     {slots.map(i => (
                       <th
                         key={i}
-                        className={`px-0 py-1 text-center font-normal ${
-                          isHourlyBoundary(i) ? 'border-l-2 border-gray-500' : 'border-l border-gray-700'
-                        }`}
+                        className={`px-0 py-1 text-center font-normal ${isHourlyBoundary(i) ? 'border-l-2 border-gray-500' : 'border-l border-gray-700'}`}
                         style={{ width: CELL_WIDTH, minWidth: CELL_WIDTH }}
                       >
                         {shouldShowLabel(i) ? (
-                          <span className="text-gray-300 block whitespace-nowrap" style={{ fontSize: 8 }}>
-                            {slotLabel(i)}
-                          </span>
+                          <span className="text-gray-300 block whitespace-nowrap" style={{ fontSize: 8 }}>{slotLabel(i)}</span>
                         ) : null}
                       </th>
                     ))}
@@ -325,9 +359,7 @@ export default function OperationsPage() {
                 <tbody>
                   {staffRows.length === 0 && (
                     <tr>
-                      <td colSpan={TOTAL_SLOTS + 1} className="text-center py-10 text-gray-400">
-                        シフトデータなし
-                      </td>
+                      <td colSpan={TOTAL_SLOTS + 1} className="text-center py-10 text-gray-400">シフトデータなし</td>
                     </tr>
                   )}
                   {staffRows.map(({ staff, shift }) => (
@@ -336,62 +368,58 @@ export default function OperationsPage() {
                         className="sticky left-0 z-10 bg-white border-r border-gray-200 py-1.5"
                         style={{ width: STAFF_COL_WIDTH, minWidth: STAFF_COL_WIDTH, paddingLeft: 8, paddingRight: 8 }}
                       >
-                        <div className="font-semibold text-gray-800 truncate" style={{ maxWidth: STAFF_COL_WIDTH - 16 }}>
-                          {staff.name}
-                        </div>
+                        <div className="font-semibold text-gray-800 truncate" style={{ maxWidth: STAFF_COL_WIDTH - 16 }}>{staff.name}</div>
                         {shift ? (
-                          <div className="text-gray-500" style={{ fontSize: 10 }}>
-                            {formatShiftTime(shift.start_time)} 〜 {formatShiftTime(shift.end_time)}
-                          </div>
+                          <div className="text-gray-500" style={{ fontSize: 10 }}>{formatShiftTime(shift.start_time)} 〜 {formatShiftTime(shift.end_time)}</div>
                         ) : (
                           <div className="text-gray-400" style={{ fontSize: 10 }}>シフトなし</div>
                         )}
                       </td>
                       {slots.map(slotIdx => {
                         const { status, reservation } = getCellStatus(staff.id, slotIdx)
+                        const annotation = getCellAnnotation(staff.id, slotIdx)
+                        const colorDef = annotation ? ANNOTATION_COLORS.find(c => c.key === annotation.color) : null
 
                         let bgClass = 'bg-gray-100'
-                        let borderClass = isHourlyBoundary(slotIdx)
-                          ? 'border-l-2 border-gray-400'
-                          : 'border-l border-gray-200'
+                        let borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-gray-400' : 'border-l border-gray-200'
 
-                        if (status === 'available') {
-                          bgClass = 'bg-blue-200'
-                          borderClass = isHourlyBoundary(slotIdx)
-                            ? 'border-l-2 border-blue-400'
-                            : 'border-l border-blue-300'
-                        } else if (status === 'occupied') {
+                        if (status === 'occupied') {
                           bgClass = 'bg-red-400'
-                          borderClass = isHourlyBoundary(slotIdx)
-                            ? 'border-l-2 border-red-600'
-                            : 'border-l border-red-500'
+                          borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-red-600' : 'border-l border-red-500'
+                        } else if (annotation && colorDef) {
+                          bgClass = colorDef.bg
+                          borderClass = isHourlyBoundary(slotIdx) ? `border-l-2 ${colorDef.border}` : `border-l ${colorDef.border}`
+                        } else if (status === 'available') {
+                          bgClass = 'bg-blue-200'
+                          borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-blue-400' : 'border-l border-blue-300'
                         }
 
                         const title = status === 'occupied' && reservation
                           ? `${reservation.customer_name ?? ''} ${reservation.course_duration ?? ''}分`
+                          : annotation
+                          ? `${annotation.memo ?? ''} (${decimalToHHMM(annotation.start_time)}〜${decimalToHHMM(annotation.end_time)})`
                           : ''
 
-                        // Show customer name only at first slot of reservation
                         let cellText = ''
                         if (status === 'occupied' && reservation && reservation.time) {
                           const resStartSlot = Math.round(getSlotIndex(hhmmToDecimal(reservation.time)))
-                          if (slotIdx === resStartSlot) {
-                            cellText = reservation.customer_name
-                              ? reservation.customer_name.slice(0, 3)
-                              : ''
-                          }
+                          if (slotIdx === resStartSlot) cellText = (reservation.customer_name ?? '').slice(0, 3)
+                        } else if (annotation && annotation.memo) {
+                          const annStartSlot = Math.round(getSlotIndex(annotation.start_time))
+                          if (slotIdx === annStartSlot) cellText = annotation.memo.slice(0, 5)
                         }
 
                         return (
                           <td
                             key={slotIdx}
-                            className={`p-0 ${bgClass} ${borderClass} transition-colors`}
+                            className={`p-0 ${bgClass} ${borderClass} transition-colors ${annotation && status !== 'occupied' ? 'cursor-pointer' : ''}`}
                             title={title}
                             style={{ width: CELL_WIDTH, minWidth: CELL_WIDTH, height: 28 }}
+                            onClick={annotation && status !== 'occupied' ? () => setDeleteConfirm(annotation) : undefined}
                           >
                             {cellText && (
                               <span
-                                className="text-white font-bold flex items-center h-full overflow-hidden whitespace-nowrap"
+                                className={`font-bold flex items-center h-full overflow-hidden whitespace-nowrap ${status === 'occupied' ? 'text-white' : 'text-gray-700'}`}
                                 style={{ fontSize: 8, paddingLeft: 1 }}
                               >
                                 {cellText}
@@ -407,17 +435,131 @@ export default function OperationsPage() {
             </div>
           </div>
 
-          {/* Summary */}
           <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-6 text-sm">
             <div className="text-gray-600">
-              出勤スタッフ:{' '}
-              <span className="font-bold text-gray-900">{staffRows.filter(r => r.shift).length}名</span>
+              出勤スタッフ: <span className="font-bold text-gray-900">{staffRows.filter(r => r.shift).length}名</span>
             </div>
             <div className="text-gray-600">
-              対応中:{' '}
-              <span className="font-bold text-red-600">
-                {reservations.filter(r => r.staff_id && r.course_duration).length}件
-              </span>
+              対応中: <span className="font-bold text-red-600">{reservations.filter(r => r.staff_id && r.course_duration).length}件</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* メモ追加モーダル */}
+      {annotationModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h2 className="text-lg font-bold text-gray-800 mb-4">メモ追加</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">スタッフ</label>
+                <select
+                  value={editAnnotation.staff_id ?? ''}
+                  onChange={e => setEditAnnotation(a => ({ ...a, staff_id: Number(e.target.value) }))}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {staffRows.map(({ staff }) => (
+                    <option key={staff.id} value={staff.id}>{staff.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">開始</label>
+                  <input
+                    type="time"
+                    value={editAnnotation.start_hhmm}
+                    onChange={e => setEditAnnotation(a => ({ ...a, start_hhmm: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <label className="flex items-center gap-1 mt-1 text-xs text-gray-500 cursor-pointer">
+                    <input type="checkbox" checked={editAnnotation.start_next} onChange={e => setEditAnnotation(a => ({ ...a, start_next: e.target.checked }))} />
+                    翌日
+                  </label>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">終了</label>
+                  <input
+                    type="time"
+                    value={editAnnotation.end_hhmm}
+                    onChange={e => setEditAnnotation(a => ({ ...a, end_hhmm: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <label className="flex items-center gap-1 mt-1 text-xs text-gray-500 cursor-pointer">
+                    <input type="checkbox" checked={editAnnotation.end_next} onChange={e => setEditAnnotation(a => ({ ...a, end_next: e.target.checked }))} />
+                    翌日
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">色</label>
+                <div className="flex gap-2 flex-wrap">
+                  {ANNOTATION_COLORS.map(c => (
+                    <button
+                      key={c.key}
+                      onClick={() => setEditAnnotation(a => ({ ...a, color: c.key }))}
+                      className={`px-2 py-1 rounded-lg text-xs border-2 transition-all ${c.bg} ${editAnnotation.color === c.key ? 'border-gray-700 scale-110 shadow' : c.border}`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">メモ</label>
+                <input
+                  type="text"
+                  value={editAnnotation.memo}
+                  onChange={e => setEditAnnotation(a => ({ ...a, memo: e.target.value }))}
+                  placeholder="例：休憩、80分まで対応可"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => setAnnotationModal(false)}
+                className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={saveAnnotation}
+                className="flex-1 py-2 bg-yellow-400 hover:bg-yellow-500 text-yellow-900 rounded-lg text-sm font-bold transition-colors"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 削除確認モーダル */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xs p-6">
+            <h2 className="text-base font-bold text-gray-800 mb-3">このメモを削除しますか？</h2>
+            <p className="text-sm text-gray-600">{staffList.find(s => s.id === deleteConfirm.staff_id)?.name}</p>
+            <p className="text-sm text-gray-600">{decimalToHHMM(deleteConfirm.start_time)} 〜 {decimalToHHMM(deleteConfirm.end_time)}</p>
+            {deleteConfirm.memo && <p className="text-sm font-medium text-gray-800 mt-1">「{deleteConfirm.memo}」</p>}
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={() => deleteAnnotation(deleteConfirm)}
+                className="flex-1 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-bold transition-colors"
+              >
+                削除
+              </button>
             </div>
           </div>
         </div>
