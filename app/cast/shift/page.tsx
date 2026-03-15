@@ -13,15 +13,16 @@ function getDaysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate()
 }
 
-const LINE_LINK_URL =
-  `https://access.line.me/oauth2/v2.1/authorize?` +
-  new URLSearchParams({
-    response_type: 'code',
-    client_id: '2009450638',
-    redirect_uri: 'https://kij-app.vercel.app/api/line/callback',
-    state: 'link',
-    scope: 'profile openid',
-  }).toString()
+function getLineLinkUrl(userId: string) {
+  return `https://access.line.me/oauth2/v2.1/authorize?` +
+    new URLSearchParams({
+      response_type: 'code',
+      client_id: '2009450638',
+      redirect_uri: 'https://kij-app.vercel.app/api/line/callback',
+      state: `link:${userId}`,
+      scope: 'profile openid',
+    }).toString()
+}
 
 function CastShiftPageInner() {
   const router = useRouter()
@@ -157,7 +158,7 @@ function CastShiftPageInner() {
               <div className="text-xs text-gray-500 mt-0.5">予約・シフト承認をLINEでお知らせします</div>
             </div>
             <a
-              href={LINE_LINK_URL}
+              href={user ? getLineLinkUrl(user.id) : '#'}
               className="flex items-center gap-1.5 bg-[#06C755] hover:bg-[#05b34c] text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap transition-colors"
             >
               LINE連携

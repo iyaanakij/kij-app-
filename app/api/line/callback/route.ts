@@ -71,19 +71,8 @@ export async function GET(req: NextRequest) {
   }
 
   // ── LINE連携（既存ログイン済みユーザーがLINEを紐付け）─────────
-  if (state === 'link') {
-    // cookieからSupabaseセッションを読んで現在のユーザーを特定
-    const cookieName = `sb-tiwxvbbevzsmaxbarpwc-auth-token`
-    const rawCookie = req.cookies.get(cookieName)?.value
-    let currentUserId: string | null = null
-    if (rawCookie) {
-      try {
-        const parsed = JSON.parse(rawCookie)
-        const token = Array.isArray(parsed) ? parsed[0] : parsed.access_token
-        const { data } = await adminSupabase.auth.getUser(token)
-        currentUserId = data.user?.id ?? null
-      } catch {}
-    }
+  if (state?.startsWith('link:')) {
+    const currentUserId = state.slice(5)
     if (!currentUserId) {
       return NextResponse.redirect(`${appUrl}/cast/login?error=not_logged_in`)
     }
