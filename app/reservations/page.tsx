@@ -63,8 +63,8 @@ const DISCOUNT_OPTIONS = [
 function calcTotal(form: Partial<Reservation>): number {
   let total = 0
   const duration = form.course_duration
-  const courseType = form.course_type
-  if (duration && courseType && COURSE_PRICES[duration]?.[courseType]) {
+  const courseType = form.course_type || 'ランジェリー'
+  if (duration && COURSE_PRICES[duration]?.[courseType]) {
     total += COURSE_PRICES[duration][courseType]
   }
   total += NOMINATION_OPTIONS.find(n => n.value === form.nomination_type)?.price ?? 0
