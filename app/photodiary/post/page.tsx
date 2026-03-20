@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { PhotoDiary, PhotoDiaryImage } from '@/lib/types'
+import { PhotoDiary, PhotoDiaryImage, isVideo } from '@/lib/types'
 import { getCurrentUser, UserInfo } from '@/lib/auth'
 
 function getImageUrl(path: string) {
@@ -85,11 +85,16 @@ export default function PhotoDiaryPostPage() {
               <div key={d.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="flex gap-3 p-4">
                   {d.thumbnail?.storage_path ? (
-                    <img
-                      src={getImageUrl(d.thumbnail.storage_path)}
-                      alt=""
-                      className="w-20 h-20 object-cover rounded-xl flex-shrink-0"
-                    />
+                    <div className="w-20 h-20 rounded-xl flex-shrink-0 overflow-hidden bg-black relative">
+                      {isVideo(d.thumbnail.storage_path) ? (
+                        <>
+                          <video src={getImageUrl(d.thumbnail.storage_path)} className="w-full h-full object-cover" muted playsInline />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/20"><span className="text-white text-lg drop-shadow">▶</span></div>
+                        </>
+                      ) : (
+                        <img src={getImageUrl(d.thumbnail.storage_path)} alt="" className="w-full h-full object-cover" />
+                      )}
+                    </div>
                   ) : (
                     <div className="w-20 h-20 bg-gray-100 rounded-xl flex-shrink-0 flex items-center justify-center">
                       <span className="text-gray-300 text-2xl">📷</span>

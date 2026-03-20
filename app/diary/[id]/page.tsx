@@ -63,11 +63,13 @@ export default async function DiaryDetailPage({ params }: { params: Promise<{ id
           {imgs.length > 0 && (
             <div className={`${imgs.length === 1 ? '' : 'grid grid-cols-2 gap-0.5'}`}>
               {imgs.map((img, i) => (
-                <div key={img.id} className={`bg-gray-100 ${imgs.length === 1 ? 'aspect-[4/3]' : 'aspect-square'}`}>
+                <div key={img.id} className="bg-black">
                   {isVideo(img.storage_path) ? (
-                    <video src={getImageUrl(img.storage_path)} className="w-full h-full object-cover" controls playsInline />
+                    <video src={getImageUrl(img.storage_path)} className="w-full max-h-[70vh]" controls playsInline />
                   ) : (
-                    <img src={getImageUrl(img.storage_path)} alt="" className="w-full h-full object-cover" />
+                    <div className={imgs.length === 1 ? 'aspect-[4/3]' : 'aspect-square'}>
+                      <img src={getImageUrl(img.storage_path)} alt="" className="w-full h-full object-cover" />
+                    </div>
                   )}
                 </div>
               ))}
