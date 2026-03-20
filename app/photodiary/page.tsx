@@ -26,9 +26,8 @@ export default async function PhotoDiaryPublicPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-2xl mx-auto px-4 py-4">
           <h1 className="text-xl font-bold text-pink-500">写メ日記</h1>
-          <Link href="/photodiary/login" className="text-xs text-gray-400 hover:text-pink-500 transition-colors">投稿する</Link>
         </div>
       </div>
 

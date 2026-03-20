@@ -10,6 +10,7 @@ const navItems = [
   { href: '/operations', label: '稼働ボード' },
   { href: '/shift', label: 'シフト管理' },
   { href: '/staff', label: 'スタッフ' },
+  { href: '/photodiary', label: '写メ日記' },
 ]
 
 export default function NavBar() {
