@@ -69,6 +69,15 @@ export default function NavBar() {
             <span className="w-1.5 h-1.5 rounded-full bg-pink-400 inline-block"></span>
             キャストページ
           </Link>
+          <Link
+            href="/photodiary/login"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-purple-600/20 text-purple-300 hover:bg-purple-600/40 hover:text-purple-100 border border-purple-600/30 transition-colors"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-400 inline-block"></span>
+            写メ日記投稿
+          </Link>
           {storeName && (
             <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1 rounded-full">
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>

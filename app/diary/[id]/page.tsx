@@ -14,11 +14,12 @@ function getImageUrl(path: string) {
 
 export const revalidate = 60
 
-export default async function DiaryDetailPage({ params }: { params: { id: string } }) {
+export default async function DiaryDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const { data: diary } = await supabase
     .from('photo_diaries')
     .select('*, staff(name)')
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('published', true)
     .single()
 
@@ -27,7 +28,7 @@ export default async function DiaryDetailPage({ params }: { params: { id: string
   const { data: images } = await supabase
     .from('photo_diary_images')
     .select('*')
-    .eq('diary_id', params.id)
+    .eq('diary_id', id)
     .order('sort_order')
 
   const castName = (diary.staff as { name: string } | null)?.name
