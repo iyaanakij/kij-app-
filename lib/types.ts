@@ -99,6 +99,7 @@ export interface PhotoDiary {
   thumbnail_image_id: number | null
   published: boolean
   published_at: string | null
+  scheduled_at: string | null
   created_at: string
   updated_at: string
   staff?: { name: string }

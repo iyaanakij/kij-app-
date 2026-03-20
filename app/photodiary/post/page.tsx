@@ -105,6 +105,10 @@ export default function PhotoDiaryPostPage() {
                     <div className="flex items-center gap-2 mb-1">
                       {d.published ? (
                         <span className="text-xs bg-green-100 text-green-700 font-bold px-2 py-0.5 rounded-full">公開中</span>
+                      ) : d.scheduled_at ? (
+                        <span className="text-xs bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">
+                          予約 {new Date(d.scheduled_at).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
                       ) : (
                         <span className="text-xs bg-gray-100 text-gray-500 font-bold px-2 py-0.5 rounded-full">下書き</span>
                       )}

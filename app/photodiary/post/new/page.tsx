@@ -6,6 +6,12 @@ import { supabase } from '@/lib/supabase'
 import { getCurrentUser, UserInfo } from '@/lib/auth'
 
 interface Preview { url: string; isVideo: boolean }
+type PostMode = 'now' | 'scheduled' | 'draft'
+
+function toLocalDatetimeValue(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
 
 export default function PhotoDiaryNewPage() {
   const router = useRouter()
@@ -15,6 +21,11 @@ export default function PhotoDiaryNewPage() {
   const [files, setFiles] = useState<File[]>([])
   const [previews, setPreviews] = useState<Preview[]>([])
   const [thumbnailIndex, setThumbnailIndex] = useState(0)
+  const [postMode, setPostMode] = useState<PostMode>('now')
+  const [scheduledAt, setScheduledAt] = useState(() => {
+    const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0)
+    return toLocalDatetimeValue(d)
+  })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -32,9 +43,10 @@ export default function PhotoDiaryNewPage() {
     if (!selected) return
     const arr = Array.from(selected)
     setFiles(prev => [...prev, ...arr])
-    const newPreviews = arr.map(f => ({ url: URL.createObjectURL(f), isVideo: f.type.startsWith('video/') }))
-    setPreviews(prev => [...prev, ...newPreviews])
+    setNewPreviews(arr.map(f => ({ url: URL.createObjectURL(f), isVideo: f.type.startsWith('video/') })))
   }
+
+  const setNewPreviews = (newItems: Preview[]) => setPreviews(prev => [...prev, ...newItems])
 
   const removeFile = (i: number) => {
     URL.revokeObjectURL(previews[i].url)
@@ -44,18 +56,23 @@ export default function PhotoDiaryNewPage() {
     else if (thumbnailIndex > i) setThumbnailIndex(t => t - 1)
   }
 
-  const handleSave = async (publish: boolean) => {
+  const handleSave = async () => {
     if (!user?.staff_id) return
     setSaving(true)
     try {
+      const isScheduled = postMode === 'scheduled' && scheduledAt
+      const publishNow = postMode === 'now'
+      const scheduledDate = isScheduled ? new Date(scheduledAt) : null
+
       const { data: diary, error } = await supabase
         .from('photo_diaries')
         .insert({
           staff_id: user.staff_id,
           title: title.trim() || null,
           body: body.trim() || null,
-          published: publish,
-          published_at: publish ? new Date().toISOString() : null,
+          published: publishNow,
+          published_at: publishNow ? new Date().toISOString() : null,
+          scheduled_at: scheduledDate?.toISOString() ?? null,
         })
         .select()
         .single()
@@ -90,6 +107,13 @@ export default function PhotoDiaryNewPage() {
     }
   }
 
+  const buttonLabel = () => {
+    if (saving) return '処理中...'
+    if (postMode === 'now') return '投稿する'
+    if (postMode === 'scheduled') return '予約する'
+    return '下書き保存'
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       <div className="bg-white shadow-sm border-b border-gray-100 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
@@ -118,7 +142,6 @@ export default function PhotoDiaryNewPage() {
             <div className="text-gray-300 text-xs mt-1">複数選択可能</div>
             <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={e => handleFileSelect(e.target.files)} />
           </label>
-
           {previews.length > 0 && (
             <>
               <div className="mt-3 grid grid-cols-3 gap-2">
@@ -142,14 +165,46 @@ export default function PhotoDiaryNewPage() {
           )}
         </div>
 
-        <div className="space-y-3 pt-2">
-          <button onClick={() => handleSave(true)} disabled={saving} className="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3.5 rounded-2xl transition-colors disabled:opacity-50 shadow-sm">
-            {saving ? '投稿中...' : '投稿する'}
-          </button>
-          <button onClick={() => handleSave(false)} disabled={saving} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3.5 rounded-2xl transition-colors disabled:opacity-50">
-            下書き保存
-          </button>
+        {/* 投稿設定 */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
+          <div className="text-xs font-semibold text-gray-500">投稿設定</div>
+          <div className="flex gap-2">
+            {(['now', 'scheduled', 'draft'] as PostMode[]).map(mode => {
+              const labels = { now: '今すぐ投稿', scheduled: '予約投稿', draft: '下書き保存' }
+              return (
+                <button
+                  key={mode}
+                  onClick={() => setPostMode(mode)}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold border-2 transition-all ${postMode === mode ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-gray-200 text-gray-500'}`}
+                >
+                  {labels[mode]}
+                </button>
+              )
+            })}
+          </div>
+
+          {postMode === 'scheduled' && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1.5">公開日時</label>
+              <input
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={e => setScheduledAt(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-gray-50"
+              />
+            </div>
+          )}
         </div>
+
+        <button
+          onClick={handleSave}
+          disabled={saving || (postMode === 'scheduled' && !scheduledAt)}
+          className={`w-full font-bold py-3.5 rounded-2xl transition-colors disabled:opacity-50 shadow-sm ${
+            postMode === 'draft' ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-pink-500 hover:bg-pink-600 text-white'
+          }`}
+        >
+          {buttonLabel()}
+        </button>
       </div>
     </div>
   )
