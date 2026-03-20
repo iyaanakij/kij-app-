@@ -11,7 +11,7 @@ function getImageUrl(path: string) {
   return supabase.storage.from('diary-images').getPublicUrl(path).data.publicUrl
 }
 
-export const revalidate = 60
+export const dynamic = 'force-dynamic'
 
 export default async function PhotoDiaryPublicPage() {
   const { data: diaries } = await supabase
