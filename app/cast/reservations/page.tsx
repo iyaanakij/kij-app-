@@ -91,6 +91,7 @@ export default function CastReservationsPage() {
       <div className="flex bg-white border-b border-gray-100">
         <button onClick={() => router.push('/cast/shift')} className="flex-1 py-3 text-center text-sm text-gray-400 hover:text-gray-600 transition-colors">シフト申請</button>
         <div className="flex-1 py-3 text-center text-sm font-bold text-pink-500 border-b-2 border-pink-500">予約・顧客</div>
+        <button onClick={() => router.push('/cast/diary')} className="flex-1 py-3 text-center text-sm text-gray-400 hover:text-gray-600 transition-colors">写メ日記</button>
       </div>
 
       <div className="p-4 max-w-lg mx-auto">

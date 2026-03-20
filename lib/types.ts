@@ -87,6 +87,28 @@ export interface ShiftRequest {
   store?: Store
 }
 
+export interface PhotoDiary {
+  id: number
+  staff_id: number
+  title: string | null
+  body: string | null
+  thumbnail_image_id: number | null
+  published: boolean
+  published_at: string | null
+  created_at: string
+  updated_at: string
+  staff?: { name: string }
+  thumbnail?: PhotoDiaryImage | null
+}
+
+export interface PhotoDiaryImage {
+  id: number
+  diary_id: number
+  storage_path: string
+  sort_order: number
+  created_at: string
+}
+
 export const STORES: Store[] = [
   { id: 1, name: '成田' },
   { id: 2, name: '千葉' },
