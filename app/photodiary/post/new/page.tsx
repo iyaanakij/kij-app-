@@ -5,13 +5,15 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { getCurrentUser, UserInfo } from '@/lib/auth'
 
+interface Preview { url: string; isVideo: boolean }
+
 export default function PhotoDiaryNewPage() {
   const router = useRouter()
   const [user, setUser] = useState<UserInfo | null>(null)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [files, setFiles] = useState<File[]>([])
-  const [previews, setPreviews] = useState<string[]>([])
+  const [previews, setPreviews] = useState<Preview[]>([])
   const [thumbnailIndex, setThumbnailIndex] = useState(0)
   const [saving, setSaving] = useState(false)
 
@@ -22,18 +24,20 @@ export default function PhotoDiaryNewPage() {
     })
   }, [router])
 
+  useEffect(() => {
+    return () => previews.forEach(p => URL.revokeObjectURL(p.url))
+  }, [])
+
   const handleFileSelect = (selected: FileList | null) => {
     if (!selected) return
     const arr = Array.from(selected)
     setFiles(prev => [...prev, ...arr])
-    arr.forEach(f => {
-      const reader = new FileReader()
-      reader.onload = e => setPreviews(prev => [...prev, e.target?.result as string])
-      reader.readAsDataURL(f)
-    })
+    const newPreviews = arr.map(f => ({ url: URL.createObjectURL(f), isVideo: f.type.startsWith('video/') }))
+    setPreviews(prev => [...prev, ...newPreviews])
   }
 
   const removeFile = (i: number) => {
+    URL.revokeObjectURL(previews[i].url)
     setFiles(prev => prev.filter((_, idx) => idx !== i))
     setPreviews(prev => prev.filter((_, idx) => idx !== i))
     if (thumbnailIndex === i) setThumbnailIndex(0)
@@ -97,40 +101,35 @@ export default function PhotoDiaryNewPage() {
       <div className="p-4 max-w-lg mx-auto space-y-4">
         <div>
           <label className="block text-xs font-semibold text-gray-500 mb-1.5">タイトル（任意）</label>
-          <input
-            type="text"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            placeholder="タイトルを入力"
-            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-gray-50"
-          />
+          <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="タイトルを入力"
+            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-gray-50" />
         </div>
 
         <div>
           <label className="block text-xs font-semibold text-gray-500 mb-1.5">本文</label>
-          <textarea
-            value={body}
-            onChange={e => setBody(e.target.value)}
-            placeholder="日記を書いてください..."
-            rows={8}
-            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-gray-50 resize-none"
-          />
+          <textarea value={body} onChange={e => setBody(e.target.value)} placeholder="日記を書いてください..." rows={8}
+            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-gray-50 resize-none" />
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 mb-1.5">写真</label>
+          <label className="block text-xs font-semibold text-gray-500 mb-1.5">写真・動画</label>
           <label className="block w-full border-2 border-dashed border-gray-200 rounded-xl py-6 text-center cursor-pointer hover:border-pink-300 transition-colors">
-            <div className="text-gray-400 text-sm">タップして写真を選択</div>
-            <div className="text-gray-300 text-xs mt-1">複数枚選択可能</div>
-            <input type="file" accept="image/*" multiple className="hidden" onChange={e => handleFileSelect(e.target.files)} />
+            <div className="text-gray-400 text-sm">タップして写真・動画を選択</div>
+            <div className="text-gray-300 text-xs mt-1">複数選択可能</div>
+            <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={e => handleFileSelect(e.target.files)} />
           </label>
 
           {previews.length > 0 && (
             <>
               <div className="mt-3 grid grid-cols-3 gap-2">
-                {previews.map((src, i) => (
+                {previews.map((p, i) => (
                   <div key={i} className="relative aspect-square">
-                    <img src={src} alt="" className={`w-full h-full object-cover rounded-xl border-2 transition-all ${thumbnailIndex === i ? 'border-pink-500' : 'border-transparent'}`} />
+                    {p.isVideo ? (
+                      <video src={p.url} className={`w-full h-full object-cover rounded-xl border-2 ${thumbnailIndex === i ? 'border-pink-500' : 'border-transparent'}`} muted playsInline />
+                    ) : (
+                      <img src={p.url} alt="" className={`w-full h-full object-cover rounded-xl border-2 ${thumbnailIndex === i ? 'border-pink-500' : 'border-transparent'}`} />
+                    )}
+                    {p.isVideo && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="text-white text-2xl drop-shadow">▶</span></div>}
                     <button onClick={() => setThumbnailIndex(i)} className={`absolute bottom-1 left-1 text-xs px-1.5 py-0.5 rounded-full font-bold ${thumbnailIndex === i ? 'bg-pink-500 text-white' : 'bg-black/40 text-white'}`}>
                       {thumbnailIndex === i ? 'TOP' : 'TOP?'}
                     </button>

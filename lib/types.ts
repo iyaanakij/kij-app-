@@ -87,6 +87,10 @@ export interface ShiftRequest {
   store?: Store
 }
 
+export function isVideo(path: string): boolean {
+  return /\.(mp4|mov|webm|avi|mkv|m4v|ogg)$/i.test(path)
+}
+
 export interface PhotoDiary {
   id: number
   staff_id: number

@@ -3,12 +3,14 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { PhotoDiary, PhotoDiaryImage } from '@/lib/types'
+import { PhotoDiary, PhotoDiaryImage, isVideo } from '@/lib/types'
 import { getCurrentUser, UserInfo } from '@/lib/auth'
 
-function getImageUrl(path: string) {
+function getMediaUrl(path: string) {
   return supabase.storage.from('diary-images').getPublicUrl(path).data.publicUrl
 }
+
+interface NewPreview { url: string; isVideo: boolean }
 
 export default function PhotoDiaryEditPage() {
   const router = useRouter()
@@ -21,7 +23,7 @@ export default function PhotoDiaryEditPage() {
   const [body, setBody] = useState('')
   const [thumbnailImageId, setThumbnailImageId] = useState<number | null>(null)
   const [newFiles, setNewFiles] = useState<File[]>([])
-  const [newPreviews, setNewPreviews] = useState<string[]>([])
+  const [newPreviews, setNewPreviews] = useState<NewPreview[]>([])
   const [newThumbnailIndex, setNewThumbnailIndex] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -35,38 +37,25 @@ export default function PhotoDiaryEditPage() {
 
   const fetchDiary = useCallback(async () => {
     if (!user?.staff_id) return
-    const { data } = await supabase
-      .from('photo_diaries')
-      .select('*')
-      .eq('id', id)
-      .eq('staff_id', user.staff_id)
-      .single()
+    const { data } = await supabase.from('photo_diaries').select('*').eq('id', id).eq('staff_id', user.staff_id).single()
     if (!data) { router.replace('/photodiary/post'); return }
     setDiary(data as PhotoDiary)
     setTitle(data.title ?? '')
     setBody(data.body ?? '')
     setThumbnailImageId(data.thumbnail_image_id)
-
-    const { data: images } = await supabase
-      .from('photo_diary_images')
-      .select('*')
-      .eq('diary_id', id)
-      .order('sort_order')
+    const { data: images } = await supabase.from('photo_diary_images').select('*').eq('diary_id', id).order('sort_order')
     if (images) setExistingImages(images as PhotoDiaryImage[])
     setLoading(false)
   }, [user, id, router])
 
   useEffect(() => { fetchDiary() }, [fetchDiary])
+  useEffect(() => { return () => newPreviews.forEach(p => URL.revokeObjectURL(p.url)) }, [])
 
   const handleFileSelect = (selected: FileList | null) => {
     if (!selected) return
     const arr = Array.from(selected)
     setNewFiles(prev => [...prev, ...arr])
-    arr.forEach(f => {
-      const reader = new FileReader()
-      reader.onload = e => setNewPreviews(prev => [...prev, e.target?.result as string])
-      reader.readAsDataURL(f)
-    })
+    setNewPreviews(prev => [...prev, ...arr.map(f => ({ url: URL.createObjectURL(f), isVideo: f.type.startsWith('video/') }))])
   }
 
   const removeExistingImage = (img: PhotoDiaryImage) => {
@@ -76,6 +65,7 @@ export default function PhotoDiaryEditPage() {
   }
 
   const removeNewFile = (i: number) => {
+    URL.revokeObjectURL(newPreviews[i].url)
     setNewFiles(prev => prev.filter((_, idx) => idx !== i))
     setNewPreviews(prev => prev.filter((_, idx) => idx !== i))
     if (newThumbnailIndex === i) setNewThumbnailIndex(null)
@@ -87,13 +77,8 @@ export default function PhotoDiaryEditPage() {
     setSaving(true)
     try {
       if (removedImageIds.length > 0) {
-        const { data: removedImgs } = await supabase
-          .from('photo_diary_images')
-          .select('storage_path')
-          .in('id', removedImageIds)
-        if (removedImgs) {
-          await supabase.storage.from('diary-images').remove(removedImgs.map(i => i.storage_path))
-        }
+        const { data: removedImgs } = await supabase.from('photo_diary_images').select('storage_path').in('id', removedImageIds)
+        if (removedImgs) await supabase.storage.from('diary-images').remove(removedImgs.map(i => i.storage_path))
         await supabase.from('photo_diary_images').delete().in('id', removedImageIds)
       }
 
@@ -111,23 +96,17 @@ export default function PhotoDiaryEditPage() {
       let finalThumbnailId = thumbnailImageId
       if (newImageRecords.length > 0) {
         const { data: newImgs } = await supabase.from('photo_diary_images').insert(newImageRecords).select()
-        if (newImgs && newThumbnailIndex !== null && newImgs[newThumbnailIndex]) {
-          finalThumbnailId = newImgs[newThumbnailIndex].id
-        } else if (newImgs && finalThumbnailId === null) {
-          finalThumbnailId = newImgs[0].id
-        }
+        if (newImgs && newThumbnailIndex !== null && newImgs[newThumbnailIndex]) finalThumbnailId = newImgs[newThumbnailIndex].id
+        else if (newImgs && finalThumbnailId === null) finalThumbnailId = newImgs[0].id
       }
 
-      await supabase
-        .from('photo_diaries')
-        .update({
-          title: title.trim() || null,
-          body: body.trim() || null,
-          thumbnail_image_id: finalThumbnailId,
-          published: publish,
-          published_at: publish && !diary.published_at ? new Date().toISOString() : diary.published_at,
-        })
-        .eq('id', diary.id)
+      await supabase.from('photo_diaries').update({
+        title: title.trim() || null,
+        body: body.trim() || null,
+        thumbnail_image_id: finalThumbnailId,
+        published: publish,
+        published_at: publish && !diary.published_at ? new Date().toISOString() : diary.published_at,
+      }).eq('id', diary.id)
 
       router.push('/photodiary/post')
     } catch (e) {
@@ -137,11 +116,7 @@ export default function PhotoDiaryEditPage() {
     }
   }
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-gray-400 animate-pulse">読み込み中...</div>
-    </div>
-  )
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-gray-400 animate-pulse">読み込み中...</div></div>
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
@@ -166,11 +141,16 @@ export default function PhotoDiaryEditPage() {
 
         {existingImages.length > 0 && (
           <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1.5">登録済みの写真</label>
+            <label className="block text-xs font-semibold text-gray-500 mb-1.5">登録済みの写真・動画</label>
             <div className="grid grid-cols-3 gap-2">
               {existingImages.map(img => (
                 <div key={img.id} className="relative aspect-square">
-                  <img src={getImageUrl(img.storage_path)} alt="" className={`w-full h-full object-cover rounded-xl border-2 transition-all ${thumbnailImageId === img.id ? 'border-pink-500' : 'border-transparent'}`} />
+                  {isVideo(img.storage_path) ? (
+                    <video src={getMediaUrl(img.storage_path)} className={`w-full h-full object-cover rounded-xl border-2 ${thumbnailImageId === img.id ? 'border-pink-500' : 'border-transparent'}`} muted playsInline />
+                  ) : (
+                    <img src={getMediaUrl(img.storage_path)} alt="" className={`w-full h-full object-cover rounded-xl border-2 ${thumbnailImageId === img.id ? 'border-pink-500' : 'border-transparent'}`} />
+                  )}
+                  {isVideo(img.storage_path) && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="text-white text-2xl drop-shadow">▶</span></div>}
                   <button onClick={() => setThumbnailImageId(img.id)} className={`absolute bottom-1 left-1 text-xs px-1.5 py-0.5 rounded-full font-bold ${thumbnailImageId === img.id ? 'bg-pink-500 text-white' : 'bg-black/40 text-white'}`}>
                     {thumbnailImageId === img.id ? 'TOP' : 'TOP?'}
                   </button>
@@ -182,16 +162,21 @@ export default function PhotoDiaryEditPage() {
         )}
 
         <div>
-          <label className="block text-xs font-semibold text-gray-500 mb-1.5">写真を追加</label>
+          <label className="block text-xs font-semibold text-gray-500 mb-1.5">写真・動画を追加</label>
           <label className="block w-full border-2 border-dashed border-gray-200 rounded-xl py-5 text-center cursor-pointer hover:border-pink-300 transition-colors">
-            <div className="text-gray-400 text-sm">タップして写真を選択</div>
-            <input type="file" accept="image/*" multiple className="hidden" onChange={e => handleFileSelect(e.target.files)} />
+            <div className="text-gray-400 text-sm">タップして写真・動画を選択</div>
+            <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={e => handleFileSelect(e.target.files)} />
           </label>
           {newPreviews.length > 0 && (
             <div className="mt-3 grid grid-cols-3 gap-2">
-              {newPreviews.map((src, i) => (
+              {newPreviews.map((p, i) => (
                 <div key={i} className="relative aspect-square">
-                  <img src={src} alt="" className={`w-full h-full object-cover rounded-xl border-2 transition-all ${newThumbnailIndex === i ? 'border-pink-500' : 'border-transparent'}`} />
+                  {p.isVideo ? (
+                    <video src={p.url} className={`w-full h-full object-cover rounded-xl border-2 ${newThumbnailIndex === i ? 'border-pink-500' : 'border-transparent'}`} muted playsInline />
+                  ) : (
+                    <img src={p.url} alt="" className={`w-full h-full object-cover rounded-xl border-2 ${newThumbnailIndex === i ? 'border-pink-500' : 'border-transparent'}`} />
+                  )}
+                  {p.isVideo && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="text-white text-2xl drop-shadow">▶</span></div>}
                   <button onClick={() => setNewThumbnailIndex(i)} className={`absolute bottom-1 left-1 text-xs px-1.5 py-0.5 rounded-full font-bold ${newThumbnailIndex === i ? 'bg-pink-500 text-white' : 'bg-black/40 text-white'}`}>
                     {newThumbnailIndex === i ? 'TOP' : 'TOP?'}
                   </button>

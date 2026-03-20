@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { PhotoDiaryImage } from '@/lib/types'
+import { PhotoDiaryImage, isVideo } from '@/lib/types'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -57,7 +57,11 @@ export default async function PhotoDiaryDetailPage({ params }: { params: Promise
             <div className={imgs.length === 1 ? '' : 'grid grid-cols-2 gap-0.5'}>
               {imgs.map(img => (
                 <div key={img.id} className={`bg-gray-100 ${imgs.length === 1 ? 'aspect-[4/3]' : 'aspect-square'}`}>
-                  <img src={getImageUrl(img.storage_path)} alt="" className="w-full h-full object-cover" />
+                  {isVideo(img.storage_path) ? (
+                    <video src={getImageUrl(img.storage_path)} className="w-full h-full object-cover" controls playsInline />
+                  ) : (
+                    <img src={getImageUrl(img.storage_path)} alt="" className="w-full h-full object-cover" />
+                  )}
                 </div>
               ))}
             </div>

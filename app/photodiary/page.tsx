@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
-import { PhotoDiary, PhotoDiaryImage } from '@/lib/types'
+import { PhotoDiary, PhotoDiaryImage, isVideo } from '@/lib/types'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,9 +42,16 @@ export default async function PhotoDiaryPublicPage() {
                 href={`/photodiary/${d.id}`}
                 className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow"
               >
-                <div className="aspect-square bg-gray-100">
+                <div className="aspect-square bg-gray-100 relative">
                   {d.thumbnail?.storage_path ? (
-                    <img src={getImageUrl(d.thumbnail.storage_path)} alt="" className="w-full h-full object-cover" />
+                    isVideo(d.thumbnail.storage_path) ? (
+                      <>
+                        <video src={getImageUrl(d.thumbnail.storage_path)} className="w-full h-full object-cover" muted playsInline />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/20"><span className="text-white text-3xl drop-shadow">▶</span></div>
+                      </>
+                    ) : (
+                      <img src={getImageUrl(d.thumbnail.storage_path)} alt="" className="w-full h-full object-cover" />
+                    )
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-gray-300 text-3xl">📷</div>
                   )}
