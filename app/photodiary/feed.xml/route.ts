@@ -11,11 +11,12 @@ export const revalidate = 300
 export async function GET() {
   const siteUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kij-app.vercel.app'
 
+  const now = new Date().toISOString()
   const { data: diaries } = await supabase
     .from('photo_diaries')
     .select('*, staff(name), thumbnail:photo_diary_images!thumbnail_image_id(id, storage_path)')
-    .eq('published', true)
-    .order('published_at', { ascending: false })
+    .or(`published.eq.true,and(scheduled_at.not.is.null,scheduled_at.lte.${now})`)
+    .order('created_at', { ascending: false })
     .limit(20)
 
   const items = (diaries ?? []).map(d => {
@@ -24,7 +25,7 @@ export async function GET() {
     const thumbnailUrl = thumbnailPath
       ? supabase.storage.from('diary-images').getPublicUrl(thumbnailPath).data.publicUrl
       : null
-    const pubDate = d.published_at ? new Date(d.published_at).toUTCString() : new Date(d.created_at).toUTCString()
+    const pubDate = new Date(d.published_at ?? d.scheduled_at ?? d.created_at).toUTCString()
     const title = d.title ?? `${castName}の写メ日記`
     const description = d.body ? d.body.slice(0, 200) : ''
 

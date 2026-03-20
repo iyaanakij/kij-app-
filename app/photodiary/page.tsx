@@ -15,11 +15,12 @@ function getImageUrl(path: string) {
 export const dynamic = 'force-dynamic'
 
 export default async function PhotoDiaryPublicPage() {
+  const now = new Date().toISOString()
   const { data: diaries } = await supabase
     .from('photo_diaries')
     .select('*, staff(name), thumbnail:photo_diary_images!thumbnail_image_id(id, storage_path)')
-    .eq('published', true)
-    .order('published_at', { ascending: false })
+    .or(`published.eq.true,and(scheduled_at.not.is.null,scheduled_at.lte.${now})`)
+    .order('created_at', { ascending: false })
     .limit(50)
 
   const items = (diaries ?? []) as (PhotoDiary & { staff: { name: string } | null; thumbnail: PhotoDiaryImage | null })[]
@@ -65,7 +66,7 @@ export default async function PhotoDiaryPublicPage() {
                     {d.title || '（タイトルなし）'}
                   </div>
                   <div className="text-xs text-gray-400 mt-1">
-                    {d.published_at ? new Date(d.published_at).toLocaleDateString('ja-JP') : ''}
+                    {new Date(d.published_at ?? d.scheduled_at ?? d.created_at).toLocaleDateString('ja-JP')}
                   </div>
                 </div>
               </Link>

@@ -16,11 +16,12 @@ export const dynamic = 'force-dynamic'
 
 export default async function PhotoDiaryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const now = new Date().toISOString()
   const { data: diary } = await supabase
     .from('photo_diaries')
     .select('*, staff(name)')
     .eq('id', id)
-    .eq('published', true)
+    .or(`published.eq.true,and(scheduled_at.not.is.null,scheduled_at.lte.${now})`)
     .single()
 
   if (!diary) notFound()
@@ -49,7 +50,7 @@ export default async function PhotoDiaryDetailPage({ params }: { params: Promise
             {castName && <div className="text-sm font-bold text-pink-500 mb-1">{castName}</div>}
             {diary.title && <h2 className="text-lg font-bold text-gray-800">{diary.title}</h2>}
             <div className="text-xs text-gray-400 mt-1">
-              {diary.published_at ? new Date(diary.published_at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}
+              {new Date(diary.published_at ?? diary.scheduled_at ?? diary.created_at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}
             </div>
           </div>
 
