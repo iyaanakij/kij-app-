@@ -88,7 +88,12 @@ export default function PhotoDiaryPostPage() {
                     <div className="w-20 h-20 rounded-xl flex-shrink-0 overflow-hidden bg-black relative">
                       {isVideo(d.thumbnail.storage_path) ? (
                         <>
-                          <video src={getImageUrl(d.thumbnail.storage_path)} className="w-full h-full object-cover" muted playsInline />
+                          <video
+                            src={getImageUrl(d.thumbnail.storage_path)}
+                            className="w-full h-full object-cover"
+                            muted playsInline preload="metadata"
+                            onLoadedMetadata={e => { (e.target as HTMLVideoElement).currentTime = 0.1 }}
+                          />
                           <div className="absolute inset-0 flex items-center justify-center bg-black/20"><span className="text-white text-lg drop-shadow">▶</span></div>
                         </>
                       ) : (
