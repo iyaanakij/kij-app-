@@ -15,7 +15,7 @@ const navItems = [
 
 export default function NavBar() {
   const pathname = usePathname()
-  if (pathname.startsWith('/cast') || pathname.startsWith('/photodiary')) return null
+  if (pathname.startsWith('/cast') || pathname.startsWith('/photodiary') || pathname.startsWith('/chat')) return null
   const [storeName, setStoreName] = useState<string>('')
 
   useEffect(() => {
