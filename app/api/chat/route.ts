@@ -154,11 +154,13 @@ export async function POST(req: NextRequest) {
       tools: [{ functionDeclarations: tools }],
     })
 
-    // メッセージ履歴をGemini形式に変換（最後のユーザーメッセージ以外）
-    const history = messages.slice(0, -1).map((m: { role: string; content: string }) => ({
+    // メッセージ履歴をGemini形式に変換（最後のユーザーメッセージ以外、かつ最初のuserから始まるように）
+    const allPrev = messages.slice(0, -1).map((m: { role: string; content: string }) => ({
       role: m.role === 'user' ? 'user' : 'model',
       parts: [{ text: m.content }],
     }))
+    const firstUserIdx = allPrev.findIndex((m: { role: string }) => m.role === 'user')
+    const history = firstUserIdx >= 0 ? allPrev.slice(firstUserIdx) : []
 
     const chat = model.startChat({ history })
     const lastMessage = messages[messages.length - 1].content
