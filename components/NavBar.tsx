@@ -78,6 +78,15 @@ export default function NavBar() {
             <span className="w-1.5 h-1.5 rounded-full bg-purple-400 inline-block"></span>
             写メ日記投稿
           </Link>
+          <Link
+            href="/chat"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-green-600/20 text-green-300 hover:bg-green-600/40 hover:text-green-100 border border-green-600/30 transition-colors"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>
+            チャット
+          </Link>
           {storeName && (
             <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1 rounded-full">
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
