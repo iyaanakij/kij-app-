@@ -90,9 +90,9 @@ async function getAvailableStaff(date?: string, time?: number, storeId?: number)
   return onShift
     .filter(s => !busyStaffIds.has(s.staff_id))
     .map(s => ({
-      name: (s.staff as { name: string; notes: string } | null)?.name,
-      notes: (s.staff as { name: string; notes: string } | null)?.notes,
-      store: (s.stores as { name: string } | null)?.name,
+      name: (s.staff as unknown as { name: string; notes: string } | null)?.name,
+      notes: (s.staff as unknown as { name: string; notes: string } | null)?.notes,
+      store: (s.stores as unknown as { name: string } | null)?.name,
       start_time: formatTime(s.start_time),
       end_time: formatTime(s.end_time),
     }))
@@ -120,7 +120,7 @@ async function getStaffSchedule(name: string, date?: string) {
   return {
     name: staff.name,
     shifts: (shifts ?? []).map(s => ({
-      store: (s.stores as { name: string } | null)?.name,
+      store: (s.stores as unknown as { name: string } | null)?.name,
       start_time: formatTime(s.start_time),
       end_time: formatTime(s.end_time),
     })),
