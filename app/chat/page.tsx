@@ -43,9 +43,10 @@ export default function ChatPage() {
         }),
       })
       const data = await res.json()
+      if (data.error) throw new Error(data.error)
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
-    } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: '申し訳ありません。エラーが発生しました。もう一度お試しください。' }])
+    } catch (e: unknown) {
+      setMessages(prev => [...prev, { role: 'assistant', content: `エラー: ${e instanceof Error ? e.message : String(e)}` }])
     } finally {
       setLoading(false)
     }

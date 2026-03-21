@@ -129,6 +129,9 @@ function formatTime(t: number) {
 
 export async function POST(req: NextRequest) {
   const { messages } = await req.json()
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json({ error: 'ANTHROPIC_API_KEY is not set' }, { status: 500 })
+  }
 
   const systemPrompt = `あなたはデリバリーヘルスのお客様対応アシスタントです。
 お客様の質問に対して、出勤状況やキャストのプロフィールを参照して丁寧にご案内します。
@@ -136,13 +139,20 @@ export async function POST(req: NextRequest) {
 敬語で親しみやすくお答えください。料金・コースの詳細は「お電話にてご確認ください」と案内してください。
 今日の日付: ${new Date().toISOString().slice(0, 10)}`
 
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    system: systemPrompt,
-    tools,
-    messages,
-  })
+  let response: Awaited<ReturnType<typeof anthropic.messages.create>>
+  try {
+    response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system: systemPrompt,
+      tools,
+      messages,
+    })
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error('Anthropic API error:', msg)
+    return NextResponse.json({ error: msg }, { status: 500 })
+  }
 
   // Tool Useが必要な場合
   if (response.stop_reason === 'tool_use') {
