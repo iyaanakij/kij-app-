@@ -2,6 +2,14 @@
 
 import { useState, useRef, useEffect } from 'react'
 
+function renderMarkdown(text: string) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^- (.+)$/gm, '• $1')
+    .replace(/\n/g, '<br />')
+}
+
 interface Message {
   role: 'user' | 'assistant'
   content: string
@@ -74,14 +82,16 @@ export default function ChatPage() {
                 <div className="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center text-pink-500 text-sm mr-2 flex-shrink-0 mt-1">💬</div>
               )}
               <div
-                className={`max-w-[78%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                className={`max-w-[78%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
                   m.role === 'user'
-                    ? 'bg-pink-500 text-white rounded-br-sm'
+                    ? 'bg-pink-500 text-white rounded-br-sm whitespace-pre-wrap'
                     : 'bg-white text-gray-800 shadow-sm border border-gray-100 rounded-bl-sm'
                 }`}
-              >
-                {m.content}
-              </div>
+                {...(m.role === 'assistant'
+                  ? { dangerouslySetInnerHTML: { __html: renderMarkdown(m.content) } }
+                  : { children: m.content }
+                )}
+              />
             </div>
           ))}
 
