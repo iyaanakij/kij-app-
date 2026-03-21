@@ -1,24 +1,24 @@
-import { GoogleGenerativeAI, FunctionDeclaration, SchemaType } from '@google/generative-ai'
+import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const tools: FunctionDeclaration[] = [
+const tools: Anthropic.Tool[] = [
   {
     name: 'get_available_staff',
     description: '指定した日付・時間に出勤していて空いているキャストの一覧を取得する',
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: 'object' as const,
       properties: {
-        date: { type: SchemaType.STRING, description: 'YYYY-MM-DD形式の日付。省略時は今日' },
-        time: { type: SchemaType.NUMBER, description: 'HHMM形式の時刻（例: 1800）。省略時は現在時刻' },
-        store_id: { type: SchemaType.NUMBER, description: 'エリアID（1:成田, 2:千葉, 3:西船橋, 4:錦糸町）' },
+        date: { type: 'string', description: 'YYYY-MM-DD形式の日付。省略時は今日' },
+        time: { type: 'number', description: 'HHMM形式の時刻（例: 1800）。省略時は現在時刻' },
+        store_id: { type: 'number', description: 'エリアID（1:成田, 2:千葉, 3:西船橋, 4:錦糸町）' },
       },
       required: [],
     },
@@ -26,10 +26,10 @@ const tools: FunctionDeclaration[] = [
   {
     name: 'search_staff',
     description: 'キャストのプロフィールをキーワードで検索する（体型・年齢・特徴など）',
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: 'object' as const,
       properties: {
-        query: { type: SchemaType.STRING, description: '検索キーワード（例: スレンダー、20代）' },
+        query: { type: 'string', description: '検索キーワード（例: スレンダー、20代）' },
       },
       required: ['query'],
     },
@@ -37,11 +37,11 @@ const tools: FunctionDeclaration[] = [
   {
     name: 'get_staff_schedule',
     description: '特定のキャストの出勤スケジュールを取得する',
-    parameters: {
-      type: SchemaType.OBJECT,
+    input_schema: {
+      type: 'object' as const,
       properties: {
-        name: { type: SchemaType.STRING, description: 'キャスト名' },
-        date: { type: SchemaType.STRING, description: 'YYYY-MM-DD形式の日付。省略時は今日' },
+        name: { type: 'string', description: 'キャスト名' },
+        date: { type: 'string', description: 'YYYY-MM-DD形式の日付。省略時は今日' },
       },
       required: ['name'],
     },
@@ -127,17 +127,6 @@ async function getStaffSchedule(name: string, date?: string) {
   }
 }
 
-async function callTool(name: string, args: Record<string, unknown>) {
-  if (name === 'get_available_staff') {
-    return await getAvailableStaff(args.date as string, args.time as number, args.store_id as number)
-  } else if (name === 'search_staff') {
-    return await searchStaff(args.query as string)
-  } else if (name === 'get_staff_schedule') {
-    return await getStaffSchedule(args.name as string, args.date as string)
-  }
-  return null
-}
-
 export async function POST(req: NextRequest) {
   const { messages } = await req.json()
 
@@ -148,46 +137,60 @@ export async function POST(req: NextRequest) {
 今日の日付: ${new Date().toISOString().slice(0, 10)}`
 
   try {
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash-lite',
-      systemInstruction: systemPrompt,
-      tools: [{ functionDeclarations: tools }],
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: systemPrompt,
+      tools,
+      messages,
     })
 
-    // メッセージ履歴をGemini形式に変換（最後のユーザーメッセージ以外、かつ最初のuserから始まるように）
-    const allPrev = messages.slice(0, -1).map((m: { role: string; content: string }) => ({
-      role: m.role === 'user' ? 'user' : 'model',
-      parts: [{ text: m.content }],
-    }))
-    const firstUserIdx = allPrev.findIndex((m: { role: string }) => m.role === 'user')
-    const history = firstUserIdx >= 0 ? allPrev.slice(firstUserIdx) : []
+    if (response.stop_reason === 'tool_use') {
+      const toolResults: Anthropic.MessageParam = {
+        role: 'user',
+        content: await Promise.all(
+          response.content
+            .filter(b => b.type === 'tool_use')
+            .map(async block => {
+              const b = block as Anthropic.ToolUseBlock
+              let result: unknown
 
-    const chat = model.startChat({ history })
-    const lastMessage = messages[messages.length - 1].content
+              if (b.name === 'get_available_staff') {
+                const input = b.input as { date?: string; time?: number; store_id?: number }
+                result = await getAvailableStaff(input.date, input.time, input.store_id)
+              } else if (b.name === 'search_staff') {
+                result = await searchStaff((b.input as { query: string }).query)
+              } else if (b.name === 'get_staff_schedule') {
+                const input = b.input as { name: string; date?: string }
+                result = await getStaffSchedule(input.name, input.date)
+              }
 
-    let result = await chat.sendMessage(lastMessage)
-    let response = result.response
+              return {
+                type: 'tool_result' as const,
+                tool_use_id: b.id,
+                content: JSON.stringify(result),
+              }
+            })
+        ),
+      }
 
-    // Function Callingのループ
-    while (response.functionCalls()?.length) {
-      const calls = response.functionCalls()!
-      const toolResults = await Promise.all(
-        calls.map(async call => ({
-          functionResponse: {
-            name: call.name,
-            response: { result: await callTool(call.name, call.args as Record<string, unknown>) },
-          },
-        }))
-      )
+      const finalResponse = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: systemPrompt,
+        tools,
+        messages: [...messages, { role: 'assistant', content: response.content }, toolResults],
+      })
 
-      result = await chat.sendMessage(toolResults)
-      response = result.response
+      const text = finalResponse.content.find(b => b.type === 'text')
+      return NextResponse.json({ reply: (text as Anthropic.TextBlock)?.text ?? '' })
     }
 
-    return NextResponse.json({ reply: response.text() })
+    const text = response.content.find(b => b.type === 'text')
+    return NextResponse.json({ reply: (text as Anthropic.TextBlock)?.text ?? '' })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
-    console.error('Gemini API error:', msg)
+    console.error('Anthropic API error:', msg)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
