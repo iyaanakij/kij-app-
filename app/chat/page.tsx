@@ -15,6 +15,9 @@ interface Message {
   content: string
 }
 
+const STORAGE_KEY = 'chat_history'
+const INITIAL_MESSAGE: Message = { role: 'assistant', content: 'こんにちは！ご質問はお気軽にどうぞ。出勤状況やキャストのご紹介など、何でもお聞きください😊' }
+
 const SUGGESTIONS = [
   '今日空いてる子を教えて',
   'スレンダーな子はいる？',
@@ -22,12 +25,21 @@ const SUGGESTIONS = [
 ]
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'こんにちは！ご質問はお気軽にどうぞ。出勤状況やキャストのご紹介など、何でもお聞きください😊' }
-  ])
+  const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // localStorageから履歴を復元
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as Message[]
+        if (parsed.length > 0) setMessages(parsed)
+      } catch {}
+    }
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -40,6 +52,7 @@ export default function ChatPage() {
 
     const newMessages: Message[] = [...messages, { role: 'user', content: userText }]
     setMessages(newMessages)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newMessages))
     setLoading(true)
 
     try {
@@ -52,7 +65,11 @@ export default function ChatPage() {
       })
       const data = await res.json()
       if (data.error) throw new Error(data.error)
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
+      setMessages(prev => {
+        const updated = [...prev, { role: 'assistant' as const, content: data.reply }]
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+        return updated
+      })
     } catch (e: unknown) {
       setMessages(prev => [...prev, { role: 'assistant', content: `エラー: ${e instanceof Error ? e.message : String(e)}` }])
     } finally {
@@ -64,12 +81,23 @@ export default function ChatPage() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <div className="bg-white border-b border-gray-100 shadow-sm px-4 py-4 sticky top-0 z-10">
-        <div className="max-w-lg mx-auto flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-pink-500 flex items-center justify-center text-white text-lg">💬</div>
-          <div>
-            <div className="font-bold text-gray-800 text-sm">お問い合わせ</div>
-            <div className="text-xs text-green-500 font-medium">● オンライン</div>
+        <div className="max-w-lg mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-pink-500 flex items-center justify-center text-white text-lg">💬</div>
+            <div>
+              <div className="font-bold text-gray-800 text-sm">お問い合わせ</div>
+              <div className="text-xs text-green-500 font-medium">● オンライン</div>
+            </div>
           </div>
+          <button
+            onClick={() => {
+              localStorage.removeItem(STORAGE_KEY)
+              setMessages([INITIAL_MESSAGE])
+            }}
+            className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            履歴を消す
+          </button>
         </div>
       </div>
 
