@@ -56,6 +56,24 @@ const tools: Anthropic.Tool[] = [
       required: ['name'],
     },
   },
+  {
+    name: 'get_system_info',
+    description: '料金システム・コース料金・オプション料金・予約方法などをHPから取得する。料金・値段・コースについて質問されたときに使用。',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'get_first_timer_info',
+    description: 'お店の説明・サービス内容・遊び方・無料プレイ一覧をHPから取得する。初めての方への案内や、どんなお店か・何ができるかを説明するときに使用。',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
 ]
 
 // HPのキャスト一覧を取得・パース
@@ -144,6 +162,39 @@ async function getCastProfile(gid: string) {
   }
 }
 
+// HPのテキストコンテンツを取得するヘルパー
+async function fetchPageText(url: string): Promise<string> {
+  const res = await fetch(url, { next: { revalidate: 3600 } })
+  const html = await res.text()
+  // script/styleを除去してテキスト抽出
+  const cleaned = html
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return cleaned
+}
+
+// 料金システムページを取得・整形
+async function getSystemInfo() {
+  const text = await fetchPageText(`${HP_BASE}/system/`)
+  // 「料金システム TOP >」以降〜フッター前を抽出
+  const start = text.indexOf('基本システム')
+  const end = text.indexOf('PAGE TOP')
+  if (start === -1) return text.slice(0, 3000)
+  return text.slice(start, end !== -1 ? end : start + 3000).trim()
+}
+
+// 初めてのお客様へページを取得・整形
+async function getFirstTimerInfo() {
+  const text = await fetchPageText(`${HP_BASE}/first/`)
+  const start = text.indexOf('前立腺を開発し')
+  const end = text.indexOf('PAGE TOP')
+  if (start === -1) return text.slice(0, 3000)
+  return text.slice(start, end !== -1 ? end : start + 3000).trim()
+}
+
 function formatTime(t: number) {
   const h = Math.floor(t)
   const m = Math.round((t - h) * 60)
@@ -214,14 +265,15 @@ async function getStaffSchedule(name: string, date?: string) {
 export async function POST(req: NextRequest) {
   const { messages } = await req.json()
 
-  const systemPrompt = `あなたは西船橋の風俗店「癒し」のお客様対応アシスタントです。
-お客様の好みやご要望に合わせて、最適なキャストをご紹介します。
+  const systemPrompt = `あなたは西船橋の風俗店「快楽M性感倶楽部」のお客様対応アシスタントです。
+お客様の好みやご要望に合わせて、最適なキャストをご紹介し、ご利用のご案内をします。
 - キャスト情報はget_cast_listツールでHPから取得してください
 - 好みを聞いてキャストを絞り込む際は、年齢・身長・スリーサイズ・カップなどで比較してください
 - 詳細が必要な場合はget_cast_profileで個別プロフィールを取得してください
 - 出勤状況はget_available_staffで確認できます
+- 料金・コース・オプション・予約方法についてはget_system_infoで取得してください
+- お店の説明・サービス内容・遊び方・初めての方へのご案内はget_first_timer_infoで取得してください
 - 敬語で親しみやすくお答えください
-- 料金・コース詳細は「お電話にてご確認ください」と案内してください
 - 不確かな情報は答えないでください
 今日の日付: ${new Date().toISOString().slice(0, 10)}`
 
@@ -261,6 +313,10 @@ export async function POST(req: NextRequest) {
             } else if (b.name === 'get_staff_schedule') {
               const input = b.input as { name: string; date?: string }
               result = await getStaffSchedule(input.name, input.date)
+            } else if (b.name === 'get_system_info') {
+              result = await getSystemInfo()
+            } else if (b.name === 'get_first_timer_info') {
+              result = await getFirstTimerInfo()
             }
 
             return {
