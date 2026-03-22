@@ -158,13 +158,14 @@ export default function ChatPage() {
       {/* Input */}
       <div className="bg-white border-t border-gray-100 px-4 py-3 sticky bottom-0">
         <div className="max-w-lg mx-auto flex gap-2">
-          <input
-            type="text"
+          <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-            placeholder="メッセージを入力..."
-            className="flex-1 border border-gray-200 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-gray-50"
+            onKeyDown={e => { if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); send() } }}
+            placeholder="メッセージを入力... (Shift+Enterで送信)"
+            rows={1}
+            className="flex-1 border border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-gray-50 resize-none"
+            style={{ maxHeight: '120px', overflowY: 'auto' }}
             disabled={loading}
           />
           <button
