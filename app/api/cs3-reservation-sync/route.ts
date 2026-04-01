@@ -21,7 +21,7 @@ const SHOP_TO_STORE: Record<string, number> = {
 }
 
 // node:https を使ってSet-Cookieを確実に取得（fetch + redirect:manualはVercelでheadersが空になる）
-function httpsPost(path: string, body: string): Promise<{ cookies: string[]; statusCode: number }> {
+function httpsPost(path: string, body: string): Promise<{ cookies: string[]; statusCode: number; location: string; allHeaders: Record<string, unknown> }> {
   return new Promise((resolve, reject) => {
     const req = httpsRequest({
       hostname: CS3_HOST,
@@ -33,10 +33,15 @@ function httpsPost(path: string, body: string): Promise<{ cookies: string[]; sta
         'User-Agent': USER_AGENT,
       },
     }, (res: IncomingMessage) => {
-      res.resume() // drain body
+      res.resume()
       const raw = res.headers['set-cookie'] ?? []
       const cookies = (Array.isArray(raw) ? raw : [raw]).map(c => c.split(';')[0].trim())
-      resolve({ cookies, statusCode: res.statusCode ?? 0 })
+      resolve({
+        cookies,
+        statusCode: res.statusCode ?? 0,
+        location: String(res.headers['location'] ?? ''),
+        allHeaders: res.headers as Record<string, unknown>,
+      })
     })
     req.on('error', reject)
     req.write(body)
@@ -52,9 +57,9 @@ async function getSessionCookie(): Promise<string> {
     password: process.env.CS3_PASSWORD ?? '',
   }).toString()
 
-  const { cookies, statusCode } = await httpsPost('/group/7175_iyashi/login.php', body)
+  const { cookies, statusCode, location, allHeaders } = await httpsPost('/group/7175_iyashi/login.php', body)
   if (statusCode !== 302 || cookies.length === 0) {
-    throw new Error(`CS3Aliceログイン失敗 (status: ${statusCode}, cookies: ${cookies.length}, sample: ${cookies[0] ?? 'none'})`)
+    throw new Error(`CS3Aliceログイン失敗 status=${statusCode} cookies=${cookies.length} location=${location} headers=${JSON.stringify(allHeaders)}`)
   }
   return cookies.join('; ')
 }
