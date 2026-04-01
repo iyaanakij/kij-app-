@@ -17,6 +17,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Test City Heaven access
+        run: |
+          echo "=== City Heaven 疎通確認 ==="
+          curl -s -o /dev/null -w "HTTP %{http_code}\n" \
+            -H "Cookie: nenrei=y" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" \
+            "https://www.cityheaven.net/chiba/A1202/A120201/iyashitakute/attend/" || true
+          echo "=== SYNC_SECRET 確認 ==="
+          if [ -z "${{ secrets.SYNC_SECRET }}" ]; then echo "SYNC_SECRET: 未設定"; else echo "SYNC_SECRET: 設定済み"; fi
       - name: Sync shifts from City Heaven
         env:
           SYNC_SECRET: ${{ secrets.SYNC_SECRET }}
