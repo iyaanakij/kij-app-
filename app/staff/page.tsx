@@ -34,7 +34,8 @@ export default function StaffPage() {
   const [accountLoading, setAccountLoading] = useState(false)
   const [registeredStaffIds, setRegisteredStaffIds] = useState<Set<number>>(new Set())
   const [syncing, setSyncing] = useState(false)
-  const [syncResult, setSyncResult] = useState<{ added: number; storeLinked: number; skipped: number; total: number } | null>(null)
+  const [syncResult, setSyncResult] = useState<Record<number, { added: number; linked: number; skipped: number; total: number }> | null>(null)
+  const [selectedStoreFilter, setSelectedStoreFilter] = useState<number | null>(null)
 
   const fetchStaff = useCallback(async () => {
     setLoading(true)
@@ -195,7 +196,7 @@ export default function StaffPage() {
       if (data.error) {
         alert('同期エラー: ' + data.error)
       } else {
-        setSyncResult({ added: data.added, storeLinked: data.storeLinked, skipped: data.skipped, total: data.total })
+        setSyncResult(data.perStore)
         fetchStaff()
       }
     } catch {
@@ -221,18 +222,33 @@ export default function StaffPage() {
     })
   }
 
+  const filteredStaff = selectedStoreFilter === null
+    ? staffList
+    : staffList.filter(s => s.storeIds.includes(selectedStoreFilter))
+
   return (
     <div className="p-3">
       <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4 mb-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-lg font-bold text-gray-800">スタッフ管理</h1>
-            <p className="text-xs text-gray-500 mt-0.5">登録スタッフ: {staffList.length}名</p>
-          {syncResult && (
-            <p className="text-xs text-green-600 mt-0.5">
-              同期完了: HP取得{syncResult.total}名 / 新規追加{syncResult.added}名 / 店舗紐付け{syncResult.storeLinked}名 / スキップ{syncResult.skipped}名
+            <p className="text-xs text-gray-500 mt-0.5">
+              全{staffList.length}名
+              {selectedStoreFilter !== null && ` / ${STORES.find(s => s.id === selectedStoreFilter)?.name} ${filteredStaff.length}名`}
             </p>
-          )}
+            {syncResult && (
+              <div className="text-xs text-green-600 mt-1 space-y-0.5">
+                {STORES.map(store => {
+                  const r = syncResult[store.id]
+                  if (!r) return null
+                  return (
+                    <p key={store.id}>
+                      {store.name}: 取得{r.total}名 / 新規{r.added}名 / 紐付け{r.linked}名 / スキップ{r.skipped}名
+                    </p>
+                  )
+                })}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -240,7 +256,7 @@ export default function StaffPage() {
               disabled={syncing}
               className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded-full font-medium text-sm transition-colors shadow-sm"
             >
-              {syncing ? '同期中...' : 'HP同期'}
+              {syncing ? '同期中...' : 'HP同期（全店舗）'}
             </button>
             <button
               onClick={openAdd}
@@ -249,6 +265,28 @@ export default function StaffPage() {
               + 新規追加
             </button>
           </div>
+        </div>
+        {/* 店舗フィルタータブ */}
+        <div className="flex gap-2 mt-3 flex-wrap">
+          <button
+            onClick={() => setSelectedStoreFilter(null)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreFilter === null ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+          >
+            全店舗
+          </button>
+          {STORES.map(store => {
+            const count = staffList.filter(s => s.storeIds.includes(store.id)).length
+            return (
+              <button
+                key={store.id}
+                onClick={() => setSelectedStoreFilter(store.id)}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 ${selectedStoreFilter === store.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                {store.name}
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${selectedStoreFilter === store.id ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}>{count}</span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -269,15 +307,14 @@ export default function StaffPage() {
               </tr>
             </thead>
             <tbody>
-              {staffList.length === 0 && (
+              {filteredStaff.length === 0 && (
                 <tr>
                   <td colSpan={5} className="text-center py-16 text-gray-400">
-                    <div className="text-3xl mb-2">👤</div>
                     スタッフが登録されていません
                   </td>
                 </tr>
               )}
-              {staffList.map((s, i) => (
+              {filteredStaff.map((s, i) => (
                 <tr
                   key={s.id}
                   className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'} hover:bg-blue-50 transition-colors`}
@@ -287,6 +324,9 @@ export default function StaffPage() {
                       {s.name}
                       {registeredStaffIds.has(s.id) && (
                         <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-medium">登録済</span>
+                      )}
+                      {s.storeIds.length > 1 && (
+                        <span className="bg-orange-100 text-orange-700 text-xs px-2 py-0.5 rounded-full font-medium">掛け持ち</span>
                       )}
                     </div>
                   </td>
@@ -338,9 +378,10 @@ export default function StaffPage() {
               ))}
             </tbody>
           </table>
-          {staffList.length > 0 && (
+          {filteredStaff.length > 0 && (
             <div className="px-4 py-3 bg-gray-50 border-t border-gray-200 text-sm text-gray-500">
-              合計: <span className="font-bold text-gray-800">{staffList.length}名</span>
+              表示: <span className="font-bold text-gray-800">{filteredStaff.length}名</span>
+              {selectedStoreFilter !== null && <span className="ml-2 text-gray-400">（全{staffList.length}名中）</span>}
             </div>
           )}
         </div>

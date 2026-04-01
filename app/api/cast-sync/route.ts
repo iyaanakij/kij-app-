@@ -6,11 +6,15 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const HP_CAST_URL = 'https://www.m-kairaku.com/cast/'
-const NISHIFUNABASHI_STORE_ID = 3
+const STORE_CAST_URLS: { storeId: number; url: string }[] = [
+  { storeId: 1, url: 'https://www.m-kairaku.com/narita/cast/' },
+  { storeId: 2, url: 'https://www.m-kairaku.com/chiba/cast/' },
+  { storeId: 3, url: 'https://www.m-kairaku.com/cast/' },
+  { storeId: 4, url: 'https://www.m-kairaku.com/kinshicho/cast/' },
+]
 
-async function fetchCastNames(): Promise<string[]> {
-  const res = await fetch(HP_CAST_URL, { cache: 'no-store' })
+async function fetchCastNames(url: string): Promise<string[]> {
+  const res = await fetch(url, { cache: 'no-store' })
   const html = await res.text()
 
   const names: string[] = []
@@ -29,56 +33,53 @@ async function fetchCastNames(): Promise<string[]> {
 
 export async function POST() {
   try {
-    const castNames = await fetchCastNames()
-    if (castNames.length === 0) {
-      return NextResponse.json({ error: 'HPからキャスト情報を取得できませんでした' }, { status: 500 })
-    }
+    // 全店舗からキャスト名を取得
+    const storeResults = await Promise.all(
+      STORE_CAST_URLS.map(async ({ storeId, url }) => {
+        const names = await fetchCastNames(url)
+        return { storeId, names }
+      })
+    )
 
-    const { data: existingStaff } = await supabase.from('staff').select('id, name')
-    const existingNames = new Map((existingStaff ?? []).map(s => [s.name, s.id]))
+    // 既存スタッフと既存の店舗紐付けを一括取得
+    const [{ data: existingStaff }, { data: existingStoreLinks }] = await Promise.all([
+      supabase.from('staff').select('id, name'),
+      supabase.from('staff_stores').select('staff_id, store_id'),
+    ])
 
-    const { data: existingStores } = await supabase
-      .from('staff_stores')
-      .select('staff_id')
-      .eq('store_id', NISHIFUNABASHI_STORE_ID)
-    const alreadyInStore = new Set((existingStores ?? []).map(s => s.staff_id))
+    const nameToId = new Map((existingStaff ?? []).map(s => [s.name, s.id]))
+    const linkedSet = new Set((existingStoreLinks ?? []).map(l => `${l.staff_id}_${l.store_id}`))
 
-    let added = 0
-    let storeLinked = 0
-    let skipped = 0
+    const perStore: Record<number, { added: number; linked: number; skipped: number; total: number }> = {}
 
-    for (const name of castNames) {
-      let staffId = existingNames.get(name)
+    for (const { storeId, names } of storeResults) {
+      let added = 0, linked = 0, skipped = 0
 
-      if (!staffId) {
-        // 新規スタッフ追加
-        const { data } = await supabase
-          .from('staff')
-          .insert({ name })
-          .select('id')
-          .single()
-        if (!data?.id) continue
-        staffId = data.id
-        added++
+      for (const name of names) {
+        let staffId = nameToId.get(name)
+
+        if (!staffId) {
+          const { data } = await supabase.from('staff').insert({ name }).select('id').single()
+          if (!data?.id) continue
+          staffId = data.id
+          nameToId.set(name, staffId)
+          added++
+        }
+
+        const key = `${staffId}_${storeId}`
+        if (!linkedSet.has(key)) {
+          await supabase.from('staff_stores').insert({ staff_id: staffId, store_id: storeId })
+          linkedSet.add(key)
+          linked++
+        } else {
+          skipped++
+        }
       }
 
-      if (!alreadyInStore.has(staffId)) {
-        // 西船橋に紐付け
-        await supabase.from('staff_stores').insert({ staff_id: staffId, store_id: NISHIFUNABASHI_STORE_ID })
-        storeLinked++
-      } else {
-        skipped++
-      }
+      perStore[storeId] = { added, linked, skipped, total: names.length }
     }
 
-    return NextResponse.json({
-      success: true,
-      total: castNames.length,
-      added,
-      storeLinked,
-      skipped,
-      names: castNames,
-    })
+    return NextResponse.json({ success: true, perStore })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     return NextResponse.json({ error: msg }, { status: 500 })
