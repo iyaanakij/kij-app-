@@ -41,10 +41,15 @@ async function upsertEntries(entries: CS3Entry[]) {
     if (!staffId) { skipped++; continue }
 
     const notesKey = `CS3:${entry.cs3Id}`
+    // nomination_typeの先頭がM/Ｍ（全角）ならM性感俱楽部、それ以外はE（癒したくて）
+    // CS3AliceのstoreIdはE店(5-8)固定なのでM判定時はE店ID-4でM店IDに変換
+    const isM = /^[MＭ]/.test(entry.nominationType ?? '')
+    const section: 'M' | 'E' = isM ? 'M' : 'E'
+    const storeId = isM ? entry.storeId - 4 : entry.storeId
     const payload = {
-      store_id: entry.storeId,
+      store_id: storeId,
       date: entry.date,
-      section: 'E' as const,
+      section,
       time: entry.time,
       checkout_time: entry.checkoutTime,
       customer_name: entry.customerName,
