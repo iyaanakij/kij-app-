@@ -638,10 +638,10 @@ export default function ReservationsPage() {
           </button>
         </div>
         <div className="overflow-x-auto border border-t-0 border-gray-200 rounded-b-lg">
-          <table className="w-full text-xs border-collapse min-w-[1400px]">
+          <table className="w-full text-xs border-collapse min-w-[900px]">
             <thead className="sticky top-0 z-10">
               <tr className="bg-gray-700 text-white">
-                {['CS','番号','時間','お客様名','確電','伝達','電話番号','エリア','ホテル','部屋','区分','女性','指名','種別','コース','OP1','OP2','OP3','OP4','OP5','OP6','入会金','交通費','延長','割引','金額','到着','退出','注釈','媒体','操作'].map(h => (
+                {['CS','番号','時間','お客様名','確電','伝達','電話番号','エリア','ホテル/部屋','区分','女性','指名','種別','コース','OP','加算','金額','到着','退出','媒体','操作'].map(h => (
                   <th key={h} className="px-1.5 py-1.5 border border-gray-600 whitespace-nowrap font-semibold">{h}</th>
                 ))}
               </tr>
@@ -649,13 +649,13 @@ export default function ReservationsPage() {
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={28} className={`text-center py-5 text-gray-400 ${bgRow}`}>予約なし</td>
+                  <td colSpan={21} className={`text-center py-5 text-gray-400 ${bgRow}`}>予約なし</td>
                 </tr>
               )}
               {rows.map((r) => {
                 const isOpen = inlineEditId === r.id
                 const d = inlineData
-                const COLS = 31
+                const COLS = 21
                 const fld = 'flex flex-col gap-0.5'
                 const lbl = 'text-xs font-semibold text-gray-500 uppercase tracking-wide'
                 const inp = 'border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white w-full'
@@ -678,32 +678,31 @@ export default function ReservationsPage() {
                   <td className="px-1 py-1 border border-gray-200 text-center" onClick={e => e.stopPropagation()}>
                     <button onClick={() => toggleField(r.id, 'communicated', r.communicated)} className={`w-6 h-5 rounded text-xs font-bold transition-colors ${r.communicated ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-400 hover:bg-gray-300'}`}>{r.communicated ? '○' : ''}</button>
                   </td>
-                  <td className="px-1 py-1 border border-gray-200 font-mono text-gray-700">{r.phone}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-gray-700">{r.area}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-gray-700">{r.hotel}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-center text-gray-700">{r.room_number}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-center font-semibold text-gray-700">{r.category}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-center text-purple-700 font-semibold">{(r.staff as Staff)?.name ?? ''}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-center text-gray-700">{r.nomination_type}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-center font-medium text-gray-700">{r.course_type}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-center font-medium text-gray-700">{r.course_duration ? `${r.course_duration}分` : ''}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option1}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option2}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option3}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option4}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option5}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.option6}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-right text-gray-700">{r.membership_fee > 0 ? r.membership_fee.toLocaleString() : ''}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-right text-gray-700">{r.transportation_fee > 0 ? r.transportation_fee.toLocaleString() : ''}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-right text-gray-700">{r.extension > 0 ? r.extension.toLocaleString() : ''}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-right text-red-600 font-medium">{r.discount > 0 ? `-${r.discount.toLocaleString()}` : ''}</td>
-                  <td className="px-1.5 py-1 border border-gray-200 text-right font-bold text-yellow-600">{r.total_amount > 0 ? `¥${r.total_amount.toLocaleString()}` : ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 font-mono text-gray-700 whitespace-nowrap">{r.phone}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-700 max-w-[90px] truncate whitespace-nowrap overflow-hidden" title={r.area ?? ''}>{r.area}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-700 whitespace-nowrap">{[r.hotel, r.room_number].filter(Boolean).join(' ')}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-semibold text-gray-700 whitespace-nowrap">{r.category}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center text-purple-700 font-semibold whitespace-nowrap">{(r.staff as Staff)?.name ?? ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center text-gray-700 whitespace-nowrap">{r.nomination_type}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-medium text-gray-700 whitespace-nowrap">{r.course_type}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-medium text-gray-700 whitespace-nowrap">{r.course_duration ? `${r.course_duration}分` : ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600 whitespace-nowrap">
+                    {[r.option1, r.option2, r.option3, r.option4, r.option5, r.option6].filter(Boolean).join(', ')}
+                  </td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600 text-right whitespace-nowrap">
+                    {[
+                      r.membership_fee > 0 ? `入${r.membership_fee.toLocaleString()}` : null,
+                      r.transportation_fee > 0 ? `交${r.transportation_fee.toLocaleString()}` : null,
+                      r.extension > 0 ? `延${r.extension.toLocaleString()}` : null,
+                      r.discount > 0 ? `-${r.discount.toLocaleString()}` : null,
+                    ].filter(Boolean).join(' ')}
+                  </td>
+                  <td className="px-1.5 py-1 border border-gray-200 text-right font-bold text-yellow-600 whitespace-nowrap">{r.total_amount > 0 ? `¥${r.total_amount.toLocaleString()}` : ''}</td>
                   <td className="px-1 py-1 border border-gray-200 text-center" onClick={e => e.stopPropagation()}>
                     <button onClick={() => toggleArrival(r)} className={`px-2 h-5 rounded-full text-xs font-bold transition-colors ${r.arrival_confirmed ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-400 hover:bg-gray-300'}`}>着</button>
                   </td>
-                  <td className="px-1 py-1 border border-gray-200 text-center font-mono font-bold text-emerald-600">{formatTime(r.checkout_time)}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.notes}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-gray-600">{r.media}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-mono font-bold text-emerald-600 whitespace-nowrap">{formatTime(r.checkout_time)}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600 whitespace-nowrap">{r.media}</td>
                   <td className="px-1 py-1 border border-gray-200 text-center" onClick={e => e.stopPropagation()}>
                     <div className="flex gap-1 justify-center">
                       <button onClick={() => { setTemplateText(generateTemplate(r)); setCopied(false) }} className="bg-green-500 hover:bg-green-600 text-white text-xs px-2 py-0.5 rounded">テンプレ</button>
