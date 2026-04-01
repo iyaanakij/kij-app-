@@ -59,7 +59,7 @@ async function fetchStoreSchedule(url: string): Promise<ShiftEntry[]> {
 
     // 日付ヘッダー: <th class="week">4/1(水)</th>
     const dates: string[] = []
-    const dateRe = /<th[^>]*class="week"[^>]*>(?:<[^>]+>)*(\d+)\/(\d+)\(/g
+    const dateRe = /<th[^>]*class="week"[^>]*>(?:\s*<[^>]+>)*\s*(\d+)\/(\d+)\(/g
     let dm
     while ((dm = dateRe.exec(block)) !== null) {
       dates.push(parseDisplayDate(dm[1], dm[2]))
