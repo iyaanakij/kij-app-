@@ -7,39 +7,52 @@ const supabase = createClient(
 )
 
 const STORE_CAST_URLS: { storeId: number; url: string }[] = [
-  // 快楽M性感倶楽部 (store_id 1-4)
-  { storeId: 1, url: 'https://www.m-kairaku.com/narita/cast/' },
-  { storeId: 2, url: 'https://www.m-kairaku.com/chiba/cast/' },
-  { storeId: 3, url: 'https://www.m-kairaku.com/cast/' },
-  { storeId: 4, url: 'https://www.m-kairaku.com/kinshicho/cast/' },
-  // 癒したくて (store_id 5-8)
-  { storeId: 5, url: 'https://www.iyashitakute.com/narita/cast/' },
-  { storeId: 6, url: 'https://www.iyashitakute.com/chiba/cast/' },
-  { storeId: 7, url: 'https://www.iyashitakute.com/funabashi/cast/' },
-  { storeId: 8, url: 'https://www.iyashitakute.com/kinshicho/cast/' },
+  { storeId: 1, url: 'https://www.cityheaven.net/chiba/A1204/A120401/narita-kairaku/girllist/' },
+  { storeId: 2, url: 'https://www.cityheaven.net/chiba/A1201/A120101/m-kairaku/girllist/' },
+  { storeId: 3, url: 'https://www.cityheaven.net/chiba/A1202/A120201/anappu_nishi/girllist/' },
+  { storeId: 4, url: 'https://www.cityheaven.net/tokyo/A1313/A131301/m-kairaku/girllist/' },
+  { storeId: 5, url: 'https://www.cityheaven.net/chiba/A1204/A120401/aromaseikan/girllist/' },
+  { storeId: 6, url: 'https://www.cityheaven.net/chiba/A1201/A120101/iyashitakutechiba/girllist/' },
+  { storeId: 7, url: 'https://www.cityheaven.net/chiba/A1202/A120201/iyashitakute/girllist/' },
+  { storeId: 8, url: 'https://www.cityheaven.net/tokyo/A1313/A131301/iyashitakute/girllist/' },
 ]
 
-async function fetchCastNames(url: string): Promise<string[]> {
-  const res = await fetch(url, { cache: 'no-store' })
-  const html = await res.text()
+const FETCH_OPTS: RequestInit = {
+  cache: 'no-store',
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (compatible)',
+    'Cookie': 'nenrei=y',
+  },
+}
 
+async function fetchCastNames(url: string): Promise<string[]> {
+  const res = await fetch(url, FETCH_OPTS)
+  const html = await res.text()
   const names: string[] = []
-  const liPattern = /<li[^>]*data-girlid="\d+"[^>]*>([\s\S]*?)<\/li>/g
-  let match
-  while ((match = liPattern.exec(html)) !== null) {
-    const block = match[1]
-    const nameMatch = block.match(/<div[^>]*class="cast_name"[^>]*>([\s\S]*?)<\/div>/)
-    if (!nameMatch) continue
-    const nameRaw = nameMatch[1].replace(/<[^>]+>/g, '').trim()
-    const nameOnly = nameRaw.match(/^(.+?)\(/)
-    if (nameOnly) names.push(nameOnly[1].trim())
+  const seen = new Set<string>()
+
+  // PCテーマ: <p class="girl_name"><a ...>名前</a>
+  const re1 = /<p[^>]*class="girl_name"[^>]*>[\s\S]*?<a[^>]*>([^<\n]+)<\/a>/g
+  let m
+  while ((m = re1.exec(html)) !== null) {
+    const name = m[1].trim()
+    if (name && !seen.has(name)) { names.push(name); seen.add(name) }
   }
+
+  // スマホテーマ: <div class="girllisttext">名前<br
+  if (names.length === 0) {
+    const re2 = /<div[^>]*class="girllisttext"[^>]*>\s*([\s\S]*?)\s*<br/g
+    while ((m = re2.exec(html)) !== null) {
+      const name = m[1].replace(/<[^>]+>/g, '').trim()
+      if (name && !seen.has(name)) { names.push(name); seen.add(name) }
+    }
+  }
+
   return names
 }
 
 export async function POST() {
   try {
-    // 癒したくて store_id 5-8 が存在しない場合は自動追加
     await supabase.from('stores').upsert([
       { id: 5, name: '成田（癒し）' },
       { id: 6, name: '千葉（癒し）' },
@@ -47,7 +60,6 @@ export async function POST() {
       { id: 8, name: '錦糸町（癒し）' },
     ], { onConflict: 'id', ignoreDuplicates: true })
 
-    // 全店舗からキャスト名を取得
     const storeResults = await Promise.all(
       STORE_CAST_URLS.map(async ({ storeId, url }) => {
         const names = await fetchCastNames(url)
@@ -55,7 +67,6 @@ export async function POST() {
       })
     )
 
-    // 既存スタッフと既存の店舗紐付けを一括取得
     const [{ data: existingStaff }, { data: existingStoreLinks }] = await Promise.all([
       supabase.from('staff').select('id, name'),
       supabase.from('staff_stores').select('staff_id, store_id'),
