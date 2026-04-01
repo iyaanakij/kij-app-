@@ -815,11 +815,11 @@ export default function ReservationsPage() {
           </div>
           <div className="ml-auto flex gap-3 text-sm font-medium">
             <span className="bg-pink-100 text-pink-800 px-3 py-1 rounded-full flex items-center gap-1.5">
-              E成約
+              癒したくて
               <span className="bg-pink-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">{eCount}</span>
             </span>
             <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full flex items-center gap-1.5">
-              M成約
+              快楽M性感
               <span className="bg-amber-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">{mCount}</span>
             </span>
           </div>
@@ -857,8 +857,8 @@ export default function ReservationsPage() {
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4">
-          {renderSection('E', 'E 予約')}
-          {renderSection('M', 'M 予約')}
+          {renderSection('E', 'エステ・癒したくて 予約')}
+          {renderSection('M', '快楽M性感俱楽部 予約')}
         </div>
       )}
 
@@ -925,7 +925,7 @@ export default function ReservationsPage() {
                 <SearchableSelect
                   value={editingReservation.section ?? 'E'}
                   onChange={v => updateForm({ section: v as 'E' | 'M' })}
-                  options={[{ label: 'E', value: 'E' }, { label: 'M', value: 'M' }]}
+                  options={[{ label: 'エステ・癒したくて', value: 'E' }, { label: '快楽M性感俱楽部', value: 'M' }]}
                   className={sel}
                 />
               </div>
