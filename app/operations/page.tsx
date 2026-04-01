@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Shift, Reservation, Staff, STORES, IYASHI_STORES, formatShiftTime, hhmmToDecimal, todayString } from '@/lib/types'
+import { Shift, Reservation, Staff, formatShiftTime, hhmmToDecimal, todayString } from '@/lib/types'
 
 const TIME_START = 10
 const TIME_END = 30
@@ -72,7 +72,6 @@ function slotToTimeLabel(slotDecimal: number): { hhmm: string; next: boolean } {
 
 export default function OperationsPage() {
   const [selectedDate, setSelectedDate] = useState(todayString())
-  const [selectedStoreId, setSelectedStoreId] = useState<number>(1)
   const [shifts, setShifts] = useState<Shift[]>([])
   const [reservations, setReservations] = useState<Reservation[]>([])
   const [staffList, setStaffList] = useState<Staff[]>([])
@@ -96,17 +95,7 @@ export default function OperationsPage() {
   }>({ staff_id: null, start_hhmm: '13:00', start_next: false, end_hhmm: '14:00', end_next: false, color: 'yellow', memo: '' })
   const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null)
 
-  useEffect(() => {
-    const saved = localStorage.getItem('kij_store')
-    if (saved && !isNaN(Number(saved))) setSelectedStoreId(Number(saved))
-  }, [])
-
-  const selectStore = (id: number) => {
-    setSelectedStoreId(id)
-    localStorage.setItem('kij_store', String(id))
-  }
-
-  const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null)
+const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null)
   const [currentTimeLabel, setCurrentTimeLabel] = useState<string>('')
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -128,16 +117,16 @@ export default function OperationsPage() {
     setLoading(true)
     const [staffRes, shiftsRes, reservationsRes, annotationsRes] = await Promise.all([
       supabase.from('staff').select('*').order('name'),
-      supabase.from('shifts').select('*').eq('date', selectedDate).eq('store_id', selectedStoreId).neq('status', 'x'),
-      supabase.from('reservations').select('*').eq('date', selectedDate).eq('store_id', selectedStoreId),
-      supabase.from('board_annotations').select('*').eq('date', selectedDate).eq('store_id', selectedStoreId),
+      supabase.from('shifts').select('*').eq('date', selectedDate).neq('status', 'x'),
+      supabase.from('reservations').select('*').eq('date', selectedDate),
+      supabase.from('board_annotations').select('*').eq('date', selectedDate),
     ])
     if (staffRes.data) setStaffList(staffRes.data)
     if (shiftsRes.data) setShifts(shiftsRes.data)
     if (reservationsRes.data) setReservations(reservationsRes.data)
     if (annotationsRes.data) setAnnotations(annotationsRes.data)
     setLoading(false)
-  }, [selectedDate, selectedStoreId])
+  }, [selectedDate])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -264,7 +253,7 @@ export default function OperationsPage() {
       end_time: endTime,
       color: editAnnotation.color,
       memo: editAnnotation.memo,
-      store_id: selectedStoreId,
+      store_id: shifts.find(s => s.staff_id === editAnnotation.staff_id)?.store_id ?? 1,
     }
     if (editingAnnotationId) {
       await supabase.from('board_annotations').update(payload).eq('id', editingAnnotationId)
@@ -294,15 +283,6 @@ export default function OperationsPage() {
             <button onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate()-1); setSelectedDate(d.toISOString().split('T')[0]) }} className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors">◀</button>
             <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" />
             <button onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate()+1); setSelectedDate(d.toISOString().split('T')[0]) }} className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors">▶</button>
-          </div>
-          <div className="flex gap-1.5 flex-wrap items-center">
-            {STORES.map(s => (
-              <button key={s.id} onClick={() => selectStore(s.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{s.name}M</button>
-            ))}
-            <span className="w-px h-4 bg-gray-200 mx-0.5" />
-            {IYASHI_STORES.map(s => (
-              <button key={s.id} onClick={() => selectStore(s.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-teal-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{s.name}E</button>
-            ))}
           </div>
           {drag ? (
             <div className="flex items-center gap-2">
