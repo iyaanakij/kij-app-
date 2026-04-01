@@ -43,7 +43,7 @@ function parseDisplayDate(month: string, day: string): string {
   return `${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
-async function fetchStoreSchedule(url: string): Promise<ShiftEntry[]> {
+async function fetchStoreSchedule(url: string, storeId: number): Promise<ShiftEntry[]> {
   const res = await fetch(url, FETCH_OPTS)
   const html = await res.text()
   const entries: ShiftEntry[] = []
@@ -78,7 +78,7 @@ async function fetchStoreSchedule(url: string): Promise<ShiftEntry[]> {
         const start = parseInt(timeMatch[1]) + parseInt(timeMatch[2]) / 60
         let end = parseInt(timeMatch[3]) + parseInt(timeMatch[4]) / 60
         if (end < start) end += 24 // 翌日終了
-        entries.push({ name, date: dates[idx], start, end })
+        entries.push({ name, storeId, date: dates[idx], start, end })
       }
       idx++
     }
@@ -148,7 +148,7 @@ export async function runShiftSync() {
   for (const { storeId, url } of STORE_ATTEND_URLS) {
     results[storeId] = { perDay: {} }
 
-    const entries = await fetchStoreSchedule(url)
+    const entries = await fetchStoreSchedule(url, storeId)
 
     // 日付ごとにグループ化
     const byDate = new Map<string, ShiftEntry[]>()
