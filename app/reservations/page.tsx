@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Reservation, Staff, STORES, formatTime, todayString } from '@/lib/types'
+import { Reservation, Staff, AREAS, formatTime, todayString } from '@/lib/types'
 
 // ── 料金マスタ ──────────────────────────────────────────
 const COURSE_PRICES: Record<number, Record<string, number>> = {
@@ -386,7 +386,7 @@ function ComboInput({
 
 export default function ReservationsPage() {
   const [selectedDate, setSelectedDate] = useState(todayString())
-  const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null)
+  const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null)
   const [reservations, setReservations] = useState<Reservation[]>([])
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [loading, setLoading] = useState(false)
@@ -394,15 +394,15 @@ export default function ReservationsPage() {
   const [editingReservation, setEditingReservation] = useState<Partial<Reservation>>(emptyReservation())
   const [isEditing, setIsEditing] = useState(false)
 
-  // マウント時にlocalStorageから店舗を復元
+  // マウント時にlocalStorageからエリアを復元
   useEffect(() => {
-    const saved = localStorage.getItem('kij_store')
-    if (saved && !isNaN(Number(saved))) setSelectedStoreId(Number(saved))
+    const saved = localStorage.getItem('kij_res_area')
+    if (saved && !isNaN(Number(saved))) setSelectedAreaId(Number(saved))
   }, [])
 
-  const selectStore = (id: number | null) => {
-    setSelectedStoreId(id)
-    if (id !== null) localStorage.setItem('kij_store', String(id))
+  const selectArea = (id: number | null) => {
+    setSelectedAreaId(id)
+    if (id !== null) localStorage.setItem('kij_res_area', String(id))
   }
   const [savingId, setSavingId] = useState<number | null>(null)
   const [templateText, setTemplateText] = useState<string | null>(null)
@@ -447,18 +447,20 @@ export default function ReservationsPage() {
   }, [])
 
   const fetchConfirmedShifts = useCallback(async () => {
-    if (!selectedDate || selectedStoreId === null) { setConfirmedStaffIds(new Set()); return }
+    const area = AREAS.find(a => a.id === selectedAreaId)
+    if (!selectedDate || !area) { setConfirmedStaffIds(new Set()); return }
     const { data } = await supabase
       .from('shifts')
       .select('staff_id')
       .eq('date', selectedDate)
-      .eq('store_id', selectedStoreId)
+      .in('store_id', area.storeIds)
       .eq('status', 'normal')
     setConfirmedStaffIds(new Set((data ?? []).map((s: { staff_id: number }) => s.staff_id)))
-  }, [selectedDate, selectedStoreId])
+  }, [selectedDate, selectedAreaId])
 
   const fetchReservations = useCallback(async () => {
     setLoading(true)
+    const area = AREAS.find(a => a.id === selectedAreaId)
     let query = supabase
       .from('reservations')
       .select('*, staff(id, name)')
@@ -466,11 +468,11 @@ export default function ReservationsPage() {
       .order('section')
       .order('row_number')
       .order('time')
-    if (selectedStoreId !== null) query = query.eq('store_id', selectedStoreId)
+    if (area) query = query.in('store_id', area.storeIds)
     const { data } = await query
     if (data) setReservations(data as Reservation[])
     setLoading(false)
-  }, [selectedDate, selectedStoreId])
+  }, [selectedDate, selectedAreaId])
 
   useEffect(() => { fetchStaff() }, [fetchStaff])
   useEffect(() => { fetchReservations() }, [fetchReservations])
@@ -504,7 +506,7 @@ export default function ReservationsPage() {
       ...emptyReservation(),
       section,
       row_number: maxRow + 1,
-      store_id: selectedStoreId ?? 1,
+      store_id: AREAS.find(a => a.id === selectedAreaId)?.storeIds[0] ?? 1,
       date: selectedDate,
     })
     setIsEditing(false)
@@ -796,18 +798,18 @@ export default function ReservationsPage() {
           </div>
           <div className="flex gap-1.5 flex-wrap">
             <button
-              onClick={() => selectStore(null)}
-              className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === null ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              onClick={() => selectArea(null)}
+              className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedAreaId === null ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
             >
               全店舗
             </button>
-            {STORES.map(s => (
+            {AREAS.map(a => (
               <button
-                key={s.id}
-                onClick={() => selectStore(s.id)}
-                className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                key={a.id}
+                onClick={() => selectArea(a.id)}
+                className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedAreaId === a.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
               >
-                {s.name}
+                {a.name}
               </button>
             ))}
           </div>
@@ -912,7 +914,7 @@ export default function ReservationsPage() {
                 <SearchableSelect
                   value={editingReservation.store_id ?? ''}
                   onChange={v => updateForm({ store_id: Number(v) })}
-                  options={STORES.map(s => ({ label: s.name, value: s.id }))}
+                  options={AREAS.flatMap(a => a.storeIds.map((id, i) => ({ label: `${a.name}${i === 0 ? 'M' : 'E'}`, value: id })))}
                   className={sel}
                 />
               </div>
