@@ -82,12 +82,11 @@ export default function ShiftPage() {
     const { data } = await supabase
       .from('shifts')
       .select('*')
-      .eq('store_id', selectedStoreId)
       .gte('date', startDate)
       .lte('date', endDate)
     if (data) setShifts(data)
     setLoading(false)
-  }, [year, month, selectedStoreId, daysInMonth])
+  }, [year, month, daysInMonth])
 
   const fetchRequests = useCallback(async () => {
     const { data } = await supabase
@@ -349,7 +348,7 @@ export default function ShiftPage() {
                   <tr key={r.id} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
                     <td className="px-4 py-3 font-semibold text-gray-800">{(r.staff as { name: string })?.name ?? '-'}</td>
                     <td className="px-4 py-3 text-gray-700 font-mono">{r.date.replace(/-/g, '/')}</td>
-                    <td className="px-4 py-3 text-gray-600">{STORES.find(s => s.id === r.store_id)?.name ?? '-'}</td>
+                    <td className="px-4 py-3 text-gray-600">{[...STORES, ...IYASHI_STORES].find(s => s.id === r.store_id)?.name ?? '-'}{r.store_id >= 5 ? 'E' : r.store_id ? 'M' : ''}</td>
                     <td className="px-4 py-3 text-gray-700">{formatShiftTime(r.start_time)} 〜 {formatShiftTime(r.end_time)}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs max-w-xs truncate">{r.notes ?? ''}</td>
                     <td className="px-4 py-3 text-center">
@@ -416,23 +415,24 @@ export default function ShiftPage() {
             <button onClick={nextMonth} className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-700 font-bold transition-colors">▶</button>
           </div>
           <div className="flex gap-1.5 flex-wrap items-center">
+            <span className="text-xs text-gray-400">入力先:</span>
             {STORES.map(s => (
               <button
                 key={s.id}
                 onClick={() => setSelectedStoreId(s.id)}
-                className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
               >
-                {s.name}
+                {s.name}M
               </button>
             ))}
-            <span className="w-px h-4 bg-gray-200 mx-0.5" />
+            <span className="w-px h-3 bg-gray-200 mx-0.5" />
             {IYASHI_STORES.map(s => (
               <button
                 key={s.id}
                 onClick={() => setSelectedStoreId(s.id)}
-                className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-teal-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${selectedStoreId === s.id ? 'bg-teal-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
               >
-                {s.name}
+                {s.name}E
               </button>
             ))}
           </div>

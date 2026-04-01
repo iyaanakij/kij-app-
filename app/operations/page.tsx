@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Shift, Reservation, Staff, STORES, formatShiftTime, hhmmToDecimal, todayString } from '@/lib/types'
+import { Shift, Reservation, Staff, STORES, IYASHI_STORES, formatShiftTime, hhmmToDecimal, todayString } from '@/lib/types'
 
 const TIME_START = 10
 const TIME_END = 30
@@ -295,9 +295,13 @@ export default function OperationsPage() {
             <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" />
             <button onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate()+1); setSelectedDate(d.toISOString().split('T')[0]) }} className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors">▶</button>
           </div>
-          <div className="flex gap-1.5 flex-wrap">
+          <div className="flex gap-1.5 flex-wrap items-center">
             {STORES.map(s => (
-              <button key={s.id} onClick={() => selectStore(s.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{s.name}</button>
+              <button key={s.id} onClick={() => selectStore(s.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{s.name}M</button>
+            ))}
+            <span className="w-px h-4 bg-gray-200 mx-0.5" />
+            {IYASHI_STORES.map(s => (
+              <button key={s.id} onClick={() => selectStore(s.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-teal-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{s.name}E</button>
             ))}
           </div>
           {drag ? (
