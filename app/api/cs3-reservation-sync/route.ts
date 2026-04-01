@@ -54,7 +54,7 @@ async function getSessionCookie(): Promise<string> {
 
   const { cookies, statusCode } = await httpsPost('/group/7175_iyashi/login.php', body)
   if (statusCode !== 302 || cookies.length === 0) {
-    throw new Error(`CS3Aliceログイン失敗 (status: ${statusCode})`)
+    throw new Error(`CS3Aliceログイン失敗 (status: ${statusCode}, cookies: ${cookies.length}, sample: ${cookies[0] ?? 'none'})`)
   }
   return cookies.join('; ')
 }
