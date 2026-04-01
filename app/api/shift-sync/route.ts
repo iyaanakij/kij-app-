@@ -27,6 +27,7 @@ const FETCH_OPTS: RequestInit = {
 
 interface ShiftEntry {
   name: string
+  storeId: number
   date: string
   start: number
   end: number
@@ -84,6 +85,51 @@ async function fetchStoreSchedule(url: string): Promise<ShiftEntry[]> {
   }
 
   return entries
+}
+
+// デーモンから受け取ったエントリをSupabaseに書き込む
+async function upsertShiftEntries(entries: ShiftEntry[]) {
+  const { data: allStaff } = await supabase.from('staff').select('id, name')
+  const nameToId = new Map((allStaff ?? []).map(s => [s.name, s.id]))
+
+  const byStoreDate = new Map<string, { storeId: number; date: string; staffIds: number[] }>()
+  let synced = 0, skipped = 0
+
+  for (const entry of entries) {
+    const staffId = nameToId.get(entry.name)
+    if (!staffId) { skipped++; continue }
+
+    const payload = {
+      staff_id: staffId, store_id: entry.storeId, date: entry.date,
+      start_time: entry.start, end_time: entry.end,
+      status: 'normal' as const, notes: 'HP同期',
+    }
+    const { data: existing } = await supabase.from('shifts').select('id')
+      .eq('staff_id', staffId).eq('store_id', entry.storeId).eq('date', entry.date).maybeSingle()
+    if (existing?.id) {
+      await supabase.from('shifts').update(payload).eq('id', existing.id)
+    } else {
+      await supabase.from('shifts').insert(payload)
+    }
+    synced++
+
+    const key = `${entry.storeId}:${entry.date}`
+    if (!byStoreDate.has(key)) byStoreDate.set(key, { storeId: entry.storeId, date: entry.date, staffIds: [] })
+    byStoreDate.get(key)!.staffIds.push(staffId)
+  }
+
+  // HP同期シフトのうち今回掲載されていないものを削除
+  let deleted = 0
+  for (const { storeId, date, staffIds } of byStoreDate.values()) {
+    const q = supabase.from('shifts').delete({ count: 'exact' })
+      .eq('store_id', storeId).eq('date', date).eq('notes', 'HP同期')
+    const { count } = staffIds.length > 0
+      ? await q.not('staff_id', 'in', `(${staffIds.join(',')})`)
+      : await q
+    deleted += count ?? 0
+  }
+
+  return { synced, skipped, deleted }
 }
 
 export async function runShiftSync() {
@@ -164,8 +210,21 @@ export async function runShiftSync() {
   return results
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const body = await request.json().catch(() => ({}))
+
+    // ローカルデーモンからエントリを受け取った場合はCity Heaven fetchをスキップ
+    if (body?.entries && Array.isArray(body.entries)) {
+      const auth = request.headers.get('authorization') ?? ''
+      if (auth !== `Bearer ${process.env.SYNC_SECRET}`) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const result = await upsertShiftEntries(body.entries as ShiftEntry[])
+      return NextResponse.json({ success: true, ...result })
+    }
+
+    // City Heavenから直接フェッチ（ローカル実行時のみ動作）
     const results = await runShiftSync()
     return NextResponse.json({ success: true, results })
   } catch (e) {

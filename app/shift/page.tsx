@@ -49,7 +49,8 @@ export default function ShiftPage() {
   const [rejectReason, setRejectReason] = useState('')
 
   const [syncing, setSyncing] = useState(false)
-  const [syncResult, setSyncResult] = useState<Record<number, { perDay: Record<string, { synced: number; skipped: number; noTime: number; deleted: number }> }> | null>(null)
+  const [syncResult, setSyncResult] = useState<{ synced: number; skipped: number; deleted: number } | null>(null)
+  const [syncError, setSyncError] = useState<string | null>(null)
 
   // Inline editing
   const [editingCell, setEditingCell] = useState<{ staffId: number; day: number } | null>(null)
@@ -107,6 +108,22 @@ export default function ShiftPage() {
   useEffect(() => { fetchStaff() }, [fetchStaff])
   useEffect(() => { fetchShifts() }, [fetchShifts])
   useEffect(() => { fetchRequests() }, [fetchRequests])
+
+  useEffect(() => {
+    const ch = supabase.channel('shift-sync')
+      .on('broadcast', { event: 'shift-sync-done' }, ({ payload }) => {
+        setSyncing(false)
+        setSyncError(null)
+        setSyncResult(payload as { synced: number; skipped: number; deleted: number })
+        fetchShifts()
+      })
+      .on('broadcast', { event: 'shift-sync-error' }, ({ payload }) => {
+        setSyncing(false)
+        setSyncError((payload as { error: string }).error ?? '同期エラー')
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [fetchShifts])
 
   const notifyLine = (staff_id: number, message: string) => {
     fetch('/api/line/notify', {
@@ -291,19 +308,12 @@ export default function ShiftPage() {
   async function syncShifts() {
     setSyncing(true)
     setSyncResult(null)
-    try {
-      const res = await fetch('/api/shift-sync', { method: 'POST' })
-      const data = await res.json()
-      if (data.error) {
-        alert('同期エラー: ' + data.error)
-      } else {
-        setSyncResult(data.results)
-        fetchShifts()
-      }
-    } catch {
-      alert('同期に失敗しました')
-    }
-    setSyncing(false)
+    setSyncError(null)
+    await supabase.channel('shift-sync').send({
+      type: 'broadcast',
+      event: 'shift-sync-request',
+      payload: {},
+    })
   }
 
   function prevMonth() {
@@ -461,28 +471,14 @@ export default function ShiftPage() {
 
       {syncResult && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-xs text-green-700">
-          {AREAS.map(area => {
-            const synced = area.storeIds.reduce((sum, sid) => {
-              const r = syncResult[sid]
-              return sum + (r ? Object.values(r.perDay).reduce((s, d) => s + d.synced, 0) : 0)
-            }, 0)
-            const deleted = area.storeIds.reduce((sum, sid) => {
-              const r = syncResult[sid]
-              return sum + (r ? Object.values(r.perDay).reduce((s, d) => s + (d.deleted ?? 0), 0) : 0)
-            }, 0)
-            if (!synced && !deleted) return null
-            const allDates = area.storeIds.flatMap(sid => {
-              const r = syncResult[sid]
-              return r ? Object.keys(r.perDay) : []
-            }).sort()
-            return (
-              <div key={area.id} className="mb-1">
-                <span className="font-bold">{area.name}</span>: {synced}件反映
-                {deleted > 0 && <span className="text-red-600 ml-1">/ {deleted}件削除</span>}
-                <span className="text-gray-400 ml-1">（{allDates[0]}〜{allDates[allDates.length - 1]}）</span>
-              </div>
-            )
-          })}
+          HP同期完了: {syncResult.synced}件反映
+          {syncResult.deleted > 0 && <span className="text-red-600 ml-1">/ {syncResult.deleted}件削除</span>}
+          {syncResult.skipped > 0 && <span className="text-gray-400 ml-1">（スキップ {syncResult.skipped}件）</span>}
+        </div>
+      )}
+      {syncError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-xs text-red-700">
+          同期エラー: {syncError}
         </div>
       )}
 

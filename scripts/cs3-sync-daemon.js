@@ -30,10 +30,12 @@ const CONFIG = {
   loginId:    process.env.CS3_LOGIN_ID    || 'kto',
   password:   process.env.CS3_PASSWORD    || '0519',
   apiUrl:     process.env.KIJ_API_URL     || 'https://kij-app.vercel.app/api/cs3-reservation-sync',
+  shiftApiUrl: (process.env.KIJ_API_URL || 'https://kij-app.vercel.app').replace('/api/cs3-reservation-sync','') + '/api/shift-sync',
   syncSecret: process.env.SYNC_SECRET     || 'ca4b78eb-ceee-4d8d-a626-de224da569af',
   supabaseUrl:    process.env.NEXT_PUBLIC_SUPABASE_URL    || 'https://tiwxvbbevzsmaxbarpwc.supabase.co',
   supabaseKey:    process.env.SUPABASE_SERVICE_ROLE_KEY,
-  autoIntervalMs: 3 * 60 * 1000, // 3分
+  cs3IntervalMs:   3 * 60 * 1000,  // 予約: 3分
+  shiftIntervalMs: 30 * 60 * 1000, // シフト: 30分
 }
 // ─────────────────────────
 
@@ -183,6 +185,130 @@ function parseReservations(html) {
   return entries
 }
 
+// ─── シフト同期（City Heaven） ──────────────────────────────────
+
+const STORE_ATTEND_URLS = [
+  { storeId: 1, url: 'https://www.cityheaven.net/chiba/A1204/A120401/narita-kairaku/attend/' },
+  { storeId: 2, url: 'https://www.cityheaven.net/chiba/A1201/A120101/m-kairaku/attend/' },
+  { storeId: 3, url: 'https://www.cityheaven.net/chiba/A1202/A120201/anappu_nishi/attend/' },
+  { storeId: 4, url: 'https://www.cityheaven.net/tokyo/A1313/A131301/m-kairaku/attend/' },
+  { storeId: 5, url: 'https://www.cityheaven.net/chiba/A1204/A120401/aromaseikan/attend/' },
+  { storeId: 6, url: 'https://www.cityheaven.net/chiba/A1201/A120101/iyashitakutechiba/attend/' },
+  { storeId: 7, url: 'https://www.cityheaven.net/chiba/A1202/A120201/iyashitakute/attend/' },
+  { storeId: 8, url: 'https://www.cityheaven.net/tokyo/A1313/A131301/iyashitakute/attend/' },
+]
+
+function httpsGetUrl(urlStr) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(urlStr)
+    const req = httpsReq({
+      hostname: u.hostname, path: u.pathname + u.search, method: 'GET',
+      headers: { Cookie: 'nenrei=y', 'User-Agent': USER_AGENT },
+    }, res => {
+      let data = ''
+      res.on('data', c => data += c)
+      res.on('end', () => resolve({ status: res.statusCode, body: data }))
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+function parseDisplayDate(month, day) {
+  const now = new Date()
+  const m = parseInt(month), d = parseInt(day)
+  let year = now.getFullYear()
+  if (m < now.getMonth() + 1) year++
+  return `${year}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+}
+
+async function fetchShiftStore(storeId, url) {
+  const { status, body: html } = await httpsGetUrl(url)
+  if (status !== 200) throw new Error(`City Heaven取得失敗 storeId=${storeId} (${status})`)
+  const entries = []
+  const blocks = html.split(/<div[^>]*id="shukkin_list"/)
+  blocks.shift()
+  for (const block of blocks) {
+    const nameMatch = block.match(/<th[^>]*class="topbox"[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/)
+    if (!nameMatch) continue
+    const name = nameMatch[1].trim()
+    const dates = []
+    const dateRe = /<th[^>]*class="week"[^>]*>(?:\s*<[^>]+>)*\s*(\d+)\/(\d+)\(/g
+    let dm
+    while ((dm = dateRe.exec(block)) !== null) dates.push(parseDisplayDate(dm[1], dm[2]))
+    if (dates.length === 0) continue
+    const timeRe = /<td[^>]+width=["']?110["']?[^>]*>([\s\S]*?)<\/td>/g
+    let tm, idx = 0
+    while ((tm = timeRe.exec(block)) !== null && idx < dates.length) {
+      const timeMatch = tm[1].match(/(\d{1,2}):(\d{2})[\s\S]*?(\d{1,2}):(\d{2})/)
+      if (timeMatch) {
+        const start = parseInt(timeMatch[1]) + parseInt(timeMatch[2]) / 60
+        let end = parseInt(timeMatch[3]) + parseInt(timeMatch[4]) / 60
+        if (end < start) end += 24
+        entries.push({ name, storeId, date: dates[idx], start, end })
+      }
+      idx++
+    }
+  }
+  return entries
+}
+
+function uploadShiftEntries(entries) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(CONFIG.shiftApiUrl)
+    const payload = Buffer.from(JSON.stringify({ entries }))
+    const req = httpsReq({
+      hostname: url.hostname, path: url.pathname, method: 'POST',
+      headers: {
+        'Content-Type': 'application/json', 'Content-Length': payload.length,
+        'Authorization': `Bearer ${CONFIG.syncSecret}`,
+      },
+    }, res => {
+      let data = ''
+      res.on('data', c => data += c)
+      res.on('end', () => {
+        try { resolve({ status: res.statusCode, body: JSON.parse(data) }) }
+        catch { resolve({ status: res.statusCode, body: data }) }
+      })
+    })
+    req.on('error', reject)
+    req.write(payload)
+    req.end()
+  })
+}
+
+let shiftSyncing = false
+
+async function runShiftSync(trigger = 'auto') {
+  if (shiftSyncing) return
+  shiftSyncing = true
+  console.log(`[${ts()}] 📅 シフト同期開始 (${trigger})`)
+  try {
+    const allEntries = []
+    for (const { storeId, url } of STORE_ATTEND_URLS) {
+      process.stdout.write(`  store${storeId} ... `)
+      const entries = await fetchShiftStore(storeId, url)
+      process.stdout.write(`${entries.length}件\n`)
+      allEntries.push(...entries)
+    }
+    const result = await uploadShiftEntries(allEntries)
+    if (result.status !== 200) throw new Error(`アップロード失敗 (${result.status})`)
+    const r = result.body
+    console.log(`[${ts()}] ✅ シフト完了 — 登録:${r.synced} スキップ:${r.skipped} 削除:${r.deleted}`)
+    await supabase.channel('shift-sync').send({
+      type: 'broadcast', event: 'shift-sync-done',
+      payload: { synced: r.synced, skipped: r.skipped, deleted: r.deleted },
+    })
+  } catch (err) {
+    console.error(`[${ts()}] ❌ シフトエラー:`, err.message)
+    await supabase.channel('shift-sync').send({
+      type: 'broadcast', event: 'shift-sync-error', payload: { error: err.message },
+    })
+  } finally {
+    shiftSyncing = false
+  }
+}
+
 // ─── 同期メイン処理 ────────────────────────────────────────────
 
 let syncing = false
@@ -239,25 +365,35 @@ function ts() {
 
 async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log(' CS3Alice 予約同期デーモン 起動')
-  console.log(` 自動同期間隔: ${CONFIG.autoIntervalMs / 60000}分`)
+  console.log(' KIJ 同期デーモン 起動')
+  console.log(` 予約: ${CONFIG.cs3IntervalMs / 60000}分ごと / シフト: ${CONFIG.shiftIntervalMs / 60000}分ごと`)
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
-  // Supabase Realtimeでボタントリガーを受信
+  // 予約同期トリガー
   supabase.channel('cs3-sync')
     .on('broadcast', { event: 'sync-request' }, () => {
-      console.log(`[${ts()}] 📲 ボタンからトリガー受信`)
+      console.log(`[${ts()}] 📲 予約取得ボタン受信`)
       runSync('manual')
     })
     .subscribe(status => {
       if (status === 'SUBSCRIBED') console.log(`[${ts()}] 🟢 Realtime接続完了`)
     })
 
-  // 起動時に即時同期
-  await runSync('startup')
+  // シフト同期トリガー
+  supabase.channel('shift-sync')
+    .on('broadcast', { event: 'shift-sync-request' }, () => {
+      console.log(`[${ts()}] 📲 HP同期ボタン受信`)
+      runShiftSync('manual')
+    })
+    .subscribe()
 
-  // 3分ごとに自動同期
-  setInterval(() => runSync('auto'), CONFIG.autoIntervalMs)
+  // 起動時に即時実行
+  await runSync('startup')
+  await runShiftSync('startup')
+
+  // 定期自動同期
+  setInterval(() => runSync('auto'), CONFIG.cs3IntervalMs)
+  setInterval(() => runShiftSync('auto'), CONFIG.shiftIntervalMs)
 }
 
 main().catch(err => {
