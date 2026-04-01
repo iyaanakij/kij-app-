@@ -39,6 +39,14 @@ async function fetchCastNames(url: string): Promise<string[]> {
 
 export async function POST() {
   try {
+    // 癒したくて store_id 5-8 が存在しない場合は自動追加
+    await supabase.from('stores').upsert([
+      { id: 5, name: '成田（癒し）' },
+      { id: 6, name: '千葉（癒し）' },
+      { id: 7, name: '西船橋（癒し）' },
+      { id: 8, name: '錦糸町（癒し）' },
+    ], { onConflict: 'id', ignoreDuplicates: true })
+
     // 全店舗からキャスト名を取得
     const storeResults = await Promise.all(
       STORE_CAST_URLS.map(async ({ storeId, url }) => {

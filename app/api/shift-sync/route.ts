@@ -7,10 +7,16 @@ const supabase = createClient(
 )
 
 const STORE_BASES: { storeId: number; base: string }[] = [
+  // 快楽M性感倶楽部
   { storeId: 1, base: 'https://www.m-kairaku.com/narita' },
   { storeId: 2, base: 'https://www.m-kairaku.com/chiba' },
   { storeId: 3, base: 'https://www.m-kairaku.com' },
   { storeId: 4, base: 'https://www.m-kairaku.com/kinshicho' },
+  // 癒したくて
+  { storeId: 5, base: 'https://www.iyashitakute.com/narita' },
+  { storeId: 6, base: 'https://www.iyashitakute.com/chiba' },
+  { storeId: 7, base: 'https://www.iyashitakute.com/funabashi' },
+  { storeId: 8, base: 'https://www.iyashitakute.com/kinshicho' },
 ]
 
 const DAYS_TO_SYNC = 7
@@ -103,6 +109,14 @@ async function fetchDaySchedule(base: string, dt: number): Promise<{ date: strin
 }
 
 export async function runShiftSync() {
+  // 癒したくて store_id 5-8 が存在しない場合は自動追加
+  await supabase.from('stores').upsert([
+    { id: 5, name: '成田（癒し）' },
+    { id: 6, name: '千葉（癒し）' },
+    { id: 7, name: '西船橋（癒し）' },
+    { id: 8, name: '錦糸町（癒し）' },
+  ], { onConflict: 'id', ignoreDuplicates: true })
+
   const days = getDayTimestamps(DAYS_TO_SYNC)
   const { data: allStaff } = await supabase.from('staff').select('id, name')
   const nameToId = new Map((allStaff ?? []).map(s => [s.name, s.id]))
