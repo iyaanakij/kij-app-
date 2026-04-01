@@ -416,7 +416,6 @@ export default function ShiftPage() {
             <button onClick={nextMonth} className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-700 font-bold transition-colors">▶</button>
           </div>
           <div className="flex gap-1.5 flex-wrap items-center">
-            <span className="text-xs text-gray-400 font-medium">M性感</span>
             {STORES.map(s => (
               <button
                 key={s.id}
@@ -426,7 +425,7 @@ export default function ShiftPage() {
                 {s.name}
               </button>
             ))}
-            <span className="text-xs text-gray-400 font-medium ml-2">癒し</span>
+            <span className="w-px h-4 bg-gray-200 mx-0.5" />
             {IYASHI_STORES.map(s => (
               <button
                 key={s.id}
@@ -437,7 +436,7 @@ export default function ShiftPage() {
               </button>
             ))}
           </div>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2">
             <button
               onClick={syncShifts}
               disabled={syncing}
@@ -445,8 +444,13 @@ export default function ShiftPage() {
             >
               {syncing ? '同期中...' : 'HP同期'}
             </button>
-            <div className="text-xs text-gray-400">
-              クリックで入力 / <kbd className="bg-gray-100 px-1 rounded">Enter</kbd><kbd className="bg-gray-100 px-1 rounded ml-1">Tab</kbd> で次へ / 矢印で移動 / <kbd className="bg-gray-100 px-1 rounded">Esc</kbd> でキャンセル
+            <div className="group relative">
+              <button className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 text-xs font-bold transition-colors">?</button>
+              <div className="absolute right-0 top-8 w-64 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 hidden group-hover:block z-10 shadow-lg leading-5">
+                クリックで入力<br/>
+                <kbd className="bg-white/20 px-1 rounded">Enter</kbd> / <kbd className="bg-white/20 px-1 rounded">Tab</kbd> で次へ<br/>
+                矢印で移動 / <kbd className="bg-white/20 px-1 rounded">Esc</kbd> でキャンセル
+              </div>
             </div>
           </div>
         </div>

@@ -35,7 +35,6 @@ export default function StaffPage() {
   const [registeredStaffIds, setRegisteredStaffIds] = useState<Set<number>>(new Set())
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<Record<number, { added: number; linked: number; skipped: number; total: number }> | null>(null)
-  const [deduping, setDeduping] = useState(false)
   const [selectedStoreFilter, setSelectedStoreFilter] = useState<number | null>(null)
   const [selectedBrandFilter, setSelectedBrandFilter] = useState<StaffBrand | null>(null)
 
@@ -197,32 +196,17 @@ export default function StaffPage() {
       const data = await res.json()
       if (data.error) {
         alert('同期エラー: ' + data.error)
-      } else {
-        setSyncResult(data.perStore)
-        fetchStaff()
+        setSyncing(false)
+        return
       }
+      setSyncResult(data.perStore)
+      // 同期後に自動で重複解消
+      await fetch('/api/staff-dedup', { method: 'POST' })
+      fetchStaff()
     } catch {
       alert('同期に失敗しました')
     }
     setSyncing(false)
-  }
-
-  async function deduplicateStaff() {
-    if (!confirm('同名スタッフの重複を解消します。よろしいですか？')) return
-    setDeduping(true)
-    try {
-      const res = await fetch('/api/staff-dedup', { method: 'POST' })
-      const data = await res.json()
-      if (data.error) {
-        alert('エラー: ' + data.error)
-      } else {
-        alert(`重複解消完了: ${data.total}件`)
-        fetchStaff()
-      }
-    } catch {
-      alert('重複解消に失敗しました')
-    }
-    setDeduping(false)
   }
 
   async function deleteStaff(id: number, name: string) {
@@ -283,28 +267,20 @@ export default function StaffPage() {
               disabled={syncing}
               className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded-full font-medium text-sm transition-colors shadow-sm"
             >
-              {syncing ? '同期中...' : 'HP同期（全店舗）'}
-            </button>
-            <button
-              onClick={deduplicateStaff}
-              disabled={deduping}
-              className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-4 py-2 rounded-full font-medium text-sm transition-colors shadow-sm"
-            >
-              {deduping ? '処理中...' : '重複解消'}
+              {syncing ? '同期中...' : 'HP同期'}
             </button>
             <button
               onClick={openAdd}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-medium text-sm transition-colors shadow-sm"
             >
-              + 新規追加
+              + 追加
             </button>
           </div>
         </div>
-        {/* ブランドフィルター */}
-        <div className="flex gap-2 mt-3 flex-wrap items-center">
-          <span className="text-xs text-gray-400 font-medium">ブランド:</span>
+        {/* フィルター（1行） */}
+        <div className="flex gap-1.5 mt-3 flex-wrap items-center">
           {([null, 'both', 'M', 'Y'] as (StaffBrand | null)[]).map(brand => {
-            const label = brand === null ? '全て' : brand === 'both' ? '共通在籍' : brand === 'M' ? 'M性感のみ' : '癒したくてのみ'
+            const label = brand === null ? '全て' : brand === 'both' ? '共通' : brand === 'M' ? 'M性感' : '癒し'
             const count = brand === null ? staffList.length : staffList.filter(s => getStaffBrand(s.storeIds) === brand).length
             const active = selectedBrandFilter === brand
             const colorClass = brand === 'both'
@@ -316,32 +292,28 @@ export default function StaffPage() {
               : (active ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')
             return (
               <button key={String(brand)} onClick={() => setSelectedBrandFilter(brand)}
-                className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 ${colorClass}`}>
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${colorClass}`}>
                 {label}
-                <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${active ? 'bg-white/30' : 'bg-white/60'}`}>{count}</span>
+                <span className={`px-1 rounded-full font-bold ${active ? 'bg-white/30' : 'bg-black/10'}`}>{count}</span>
               </button>
             )
           })}
-        </div>
-        {/* 地域フィルター */}
-        <div className="flex gap-2 mt-2 flex-wrap items-center">
-          <span className="text-xs text-gray-400 font-medium">地域:</span>
+          <span className="text-gray-200 mx-0.5">|</span>
           <button
             onClick={() => setSelectedStoreFilter(null)}
-            className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreFilter === null ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${selectedStoreFilter === null && selectedBrandFilter !== null ? '' : selectedStoreFilter === null ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
           >
             全地域
           </button>
           {STORES.map(store => {
-            // M性感・癒したくて両方の同地域をまとめてカウント
             const yId = store.id + 4
             const count = staffList.filter(s => s.storeIds.includes(store.id) || s.storeIds.includes(yId)).length
             const active = selectedStoreFilter === store.id
             return (
               <button key={store.id} onClick={() => setSelectedStoreFilter(active ? null : store.id)}
-                className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors flex items-center gap-1 ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                 {store.name}
-                <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${active ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}>{count}</span>
+                <span className={`px-1 rounded-full font-bold ${active ? 'bg-white/30' : 'bg-black/10'}`}>{count}</span>
               </button>
             )
           })}
@@ -361,7 +333,7 @@ export default function StaffPage() {
                 <th className="px-4 py-3 text-left font-semibold">入店日</th>
                 <th className="px-4 py-3 text-left font-semibold">所属店舗</th>
                 <th className="px-4 py-3 text-left font-semibold">メモ</th>
-                <th className="px-4 py-3 text-center font-semibold w-48">操作</th>
+                <th className="px-4 py-3 text-center font-semibold w-24">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -418,24 +390,27 @@ export default function StaffPage() {
                     {s.notes || <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-3 py-3 text-center">
-                    <div className="flex gap-1.5 justify-center items-center">
+                    <div className="flex gap-1 justify-center items-center">
                       <button
                         onClick={() => openEdit(s)}
-                        className="bg-amber-500 hover:bg-amber-600 text-white text-xs px-2.5 py-1.5 rounded-md transition-colors font-medium whitespace-nowrap"
+                        title="編集"
+                        className="w-7 h-7 flex items-center justify-center rounded-md bg-amber-100 hover:bg-amber-200 text-amber-700 transition-colors"
                       >
-                        編集
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
                       </button>
                       <button
                         onClick={() => openAccountModal(s)}
-                        className="bg-purple-500 hover:bg-purple-600 text-white text-xs px-2.5 py-1.5 rounded-md transition-colors font-medium whitespace-nowrap"
+                        title="アカウント"
+                        className="w-7 h-7 flex items-center justify-center rounded-md bg-purple-100 hover:bg-purple-200 text-purple-700 transition-colors"
                       >
-                        アカウント
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"/></svg>
                       </button>
                       <button
                         onClick={() => deleteStaff(s.id, s.name)}
-                        className="bg-red-500 hover:bg-red-600 text-white text-xs px-2.5 py-1.5 rounded-md transition-colors font-medium whitespace-nowrap"
+                        title="削除"
+                        className="w-7 h-7 flex items-center justify-center rounded-md bg-red-100 hover:bg-red-200 text-red-600 transition-colors"
                       >
-                        削除
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"/></svg>
                       </button>
                     </div>
                   </td>
