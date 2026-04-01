@@ -75,15 +75,15 @@ function httpsGet(hostname, path, cookieStr) {
 
 // ─── CS3Alice ログイン ────────────────────────────────────────────
 
-async function login() {
+async function loginForShop(shopCode) {
   const body = new URLSearchParams({
-    method: 'login', shop: '111701',
+    method: 'login', shop: shopCode,
     user: CONFIG.loginId, password: CONFIG.password,
   }).toString()
 
   const res = await httpsPost(CS3_HOST, '/group/7175_iyashi/login.php', body)
   if (res.status !== 302 || res.cookies.length === 0) {
-    throw new Error(`ログイン失敗 (status=${res.status}, cookies=${res.cookies.length}, location=${res.headers.location})`)
+    throw new Error(`ログイン失敗 shop=${shopCode} (status=${res.status}, location=${res.headers.location})`)
   }
   return res.cookies.join('; ')
 }
@@ -179,22 +179,42 @@ function uploadEntries(entries) {
   })
 }
 
+// 全店舗の名前マップ
+const SHOP_NAMES = {
+  '111701': '西船橋',
+  '111702': '成田',
+  '111703': '千葉',
+  '111704': '錦糸町',
+}
+
 // ─── メイン ────────────────────────────────────────────────────
 
 async function main() {
-  console.log('CS3Alice 予約同期を開始します...')
+  console.log('CS3Alice 予約同期を開始します（全4店舗）...')
 
-  console.log('  [1/3] CS3Alice にログイン中...')
-  const cookie = await login()
-  console.log('  ✓ ログイン成功')
+  const allEntries = []
+  const shops = Object.keys(SHOP_TO_STORE)
 
-  console.log('  [2/3] 予約一覧を取得中...')
-  const { status, body: html } = await httpsGet(CS3_HOST, '/group/7175_iyashi/schedule.reservation.php', cookie)
-  if (status !== 200) throw new Error(`予約ページ取得失敗 (status=${status})`)
-  const entries = parseReservations(html)
-  console.log(`  ✓ ${entries.length} 件の予約を取得 (スキップ含む)`)
+  for (const shopCode of shops) {
+    const shopName = SHOP_NAMES[shopCode]
+    process.stdout.write(`  ${shopName} ログイン中... `)
+    const cookie = await loginForShop(shopCode)
+    process.stdout.write('✓  取得中... ')
 
-  console.log('  [3/3] KIJ アプリに同期中...')
+    const { status, body: html } = await httpsGet(CS3_HOST, '/group/7175_iyashi/schedule.reservation.php', cookie)
+    if (status !== 200) throw new Error(`予約ページ取得失敗 shop=${shopCode} (status=${status})`)
+
+    const entries = parseReservations(html)
+    console.log(`✓ ${entries.length}件`)
+    allEntries.push(...entries)
+  }
+
+  // cs3Id の重複除去（複数ショップで同じ予約が見えた場合に備えて）
+  const seen = new Set()
+  const entries = allEntries.filter(e => { if (seen.has(e.cs3Id)) return false; seen.add(e.cs3Id); return true })
+  console.log(`  合計: ${entries.length} 件（重複除去後）`)
+
+  console.log('  KIJ アプリに同期中...')
   const result = await uploadEntries(entries)
   if (result.status !== 200) throw new Error(`アップロード失敗 (status=${result.status}): ${JSON.stringify(result.body)}`)
   const r = result.body
