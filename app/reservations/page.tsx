@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Reservation, Staff, AREAS, formatTime, todayString } from '@/lib/types'
+import { Reservation, Staff, AREAS, M_STORE_IDS, formatTime, todayString } from '@/lib/types'
 
 // ── 料金マスタ ──────────────────────────────────────────
 const COURSE_PRICES: Record<number, Record<string, number>> = {
@@ -501,12 +501,16 @@ export default function ReservationsPage() {
   }
 
   const openAddModal = (section: 'E' | 'M') => {
-    const maxRow = Math.max(0, ...reservations.filter(r => r.section === section).map(r => r.row_number ?? 0))
+    const area = AREAS.find(a => a.id === selectedAreaId)
+    const storeId = area ? (section === 'M' ? area.storeIds[0] : area.storeIds[1]) : (section === 'M' ? 1 : 5)
+    const maxRow = Math.max(0, ...reservations
+      .filter(r => section === 'M' ? M_STORE_IDS.includes(r.store_id) : !M_STORE_IDS.includes(r.store_id))
+      .map(r => r.row_number ?? 0))
     setEditingReservation({
       ...emptyReservation(),
       section,
       row_number: maxRow + 1,
-      store_id: AREAS.find(a => a.id === selectedAreaId)?.storeIds[0] ?? 1,
+      store_id: storeId,
       date: selectedDate,
     })
     setIsEditing(false)
@@ -617,11 +621,11 @@ export default function ReservationsPage() {
     setSavingId(null)
   }
 
-  const eCount = reservations.filter(r => r.section === 'E').length
-  const mCount = reservations.filter(r => r.section === 'M').length
+  const mCount = reservations.filter(r => M_STORE_IDS.includes(r.store_id)).length
+  const eCount = reservations.filter(r => !M_STORE_IDS.includes(r.store_id)).length
 
   const renderSection = (section: 'E' | 'M', label: string) => {
-    const rows = reservations.filter(r => r.section === section)
+    const rows = reservations.filter(r => section === 'M' ? M_STORE_IDS.includes(r.store_id) : !M_STORE_IDS.includes(r.store_id))
     const bgHeader = section === 'E' ? 'bg-pink-200 text-pink-900' : 'bg-amber-200 text-amber-900'
     const bgRow    = section === 'E' ? 'bg-pink-50'  : 'bg-orange-50'
 
@@ -815,11 +819,11 @@ export default function ReservationsPage() {
           </div>
           <div className="ml-auto flex gap-3 text-sm font-medium">
             <span className="bg-pink-100 text-pink-800 px-3 py-1 rounded-full flex items-center gap-1.5">
-              癒したくて
+              E
               <span className="bg-pink-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">{eCount}</span>
             </span>
             <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full flex items-center gap-1.5">
-              快楽M性感
+              M
               <span className="bg-amber-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">{mCount}</span>
             </span>
           </div>
@@ -913,7 +917,10 @@ export default function ReservationsPage() {
                 <label className="block text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wide">店舗</label>
                 <SearchableSelect
                   value={editingReservation.store_id ?? ''}
-                  onChange={v => updateForm({ store_id: Number(v) })}
+                  onChange={v => {
+                    const sid = Number(v)
+                    updateForm({ store_id: sid, section: M_STORE_IDS.includes(sid) ? 'M' : 'E' })
+                  }}
                   options={AREAS.flatMap(a => a.storeIds.map((id, i) => ({ label: `${a.name}${i === 0 ? 'M' : 'E'}`, value: id })))}
                   className={sel}
                 />
@@ -925,7 +932,7 @@ export default function ReservationsPage() {
                 <SearchableSelect
                   value={editingReservation.section ?? 'E'}
                   onChange={v => updateForm({ section: v as 'E' | 'M' })}
-                  options={[{ label: 'エステ・癒したくて', value: 'E' }, { label: '快楽M性感俱楽部', value: 'M' }]}
+                  options={[{ label: 'E', value: 'E' }, { label: 'M', value: 'M' }]}
                   className={sel}
                 />
               </div>
