@@ -1,0 +1,23 @@
+name: Shift Sync
+
+on:
+  schedule:
+    # 6時間ごと自動実行: 0:00 / 6:00 / 12:00 / 18:00 UTC (JST: 9:00 / 15:00 / 21:00 / 3:00)
+    - cron: '0 0,6,12,18 * * *'
+  repository_dispatch:
+    types: [shift-sync]  # HP同期ボタンから即時トリガー
+  workflow_dispatch:     # GitHub UIから手動実行も可
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Sync shifts from City Heaven
+        env:
+          SYNC_SECRET: ${{ secrets.SYNC_SECRET }}
+        run: node scripts/shift-sync-gh.js

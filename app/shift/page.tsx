@@ -49,8 +49,10 @@ export default function ShiftPage() {
   const [rejectReason, setRejectReason] = useState('')
 
   const [syncing, setSyncing] = useState(false)
+  const [syncCountdown, setSyncCountdown] = useState(0)
   const [syncResult, setSyncResult] = useState<{ synced: number; skipped: number; deleted: number } | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Inline editing
   const [editingCell, setEditingCell] = useState<{ staffId: number; day: number } | null>(null)
@@ -109,21 +111,31 @@ export default function ShiftPage() {
   useEffect(() => { fetchShifts() }, [fetchShifts])
   useEffect(() => { fetchRequests() }, [fetchRequests])
 
+  const clearCountdown = useCallback(() => {
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current)
+      countdownRef.current = null
+    }
+    setSyncCountdown(0)
+  }, [])
+
   useEffect(() => {
     const ch = supabase.channel('shift-sync')
       .on('broadcast', { event: 'shift-sync-done' }, ({ payload }) => {
+        clearCountdown()
         setSyncing(false)
         setSyncError(null)
         setSyncResult(payload as { synced: number; skipped: number; deleted: number })
         fetchShifts()
       })
       .on('broadcast', { event: 'shift-sync-error' }, ({ payload }) => {
+        clearCountdown()
         setSyncing(false)
         setSyncError((payload as { error: string }).error ?? '同期エラー')
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [fetchShifts])
+  }, [fetchShifts, clearCountdown])
 
   const notifyLine = (staff_id: number, message: string) => {
     fetch('/api/line/notify', {
@@ -309,11 +321,28 @@ export default function ShiftPage() {
     setSyncing(true)
     setSyncResult(null)
     setSyncError(null)
-    await supabase.channel('shift-sync').send({
-      type: 'broadcast',
-      event: 'shift-sync-request',
-      payload: {},
-    })
+
+    const res = await fetch('/api/trigger-shift-sync', { method: 'POST' })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setSyncError(data.error ?? 'トリガー失敗')
+      setSyncing(false)
+      return
+    }
+
+    // GitHub Actionsの完了まで約2分かかるためカウントダウン
+    // shift-sync-done が先に届いた場合は即時クリア
+    let n = 120
+    setSyncCountdown(n)
+    countdownRef.current = setInterval(() => {
+      n--
+      setSyncCountdown(n)
+      if (n <= 0) {
+        clearCountdown()
+        setSyncing(false)
+        fetchShifts()
+      }
+    }, 1000)
   }
 
   function prevMonth() {
@@ -455,7 +484,7 @@ export default function ShiftPage() {
               disabled={syncing}
               className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-1.5 rounded-full text-sm font-medium transition-colors shadow-sm"
             >
-              {syncing ? '同期中...' : 'HP同期'}
+              {syncing ? (syncCountdown > 0 ? `同期中... あと${syncCountdown}秒` : '同期中...') : 'HP同期'}
             </button>
             <div className="group relative">
               <button className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 text-xs font-bold transition-colors">?</button>
