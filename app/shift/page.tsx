@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Shift, Staff, ShiftRequest, STORES, formatShiftTime, todayString } from '@/lib/types'
 
@@ -48,7 +48,7 @@ export default function ShiftPage() {
   const [rejectReason, setRejectReason] = useState('')
 
   const [syncing, setSyncing] = useState(false)
-  const [syncResult, setSyncResult] = useState<Record<number, { date: string; synced: number; skipped: number; noTime: number }> | null>(null)
+  const [syncResult, setSyncResult] = useState<Record<number, { perDay: Record<string, { synced: number; skipped: number; noTime: number }> }> | null>(null)
 
   // Inline editing
   const [editingCell, setEditingCell] = useState<{ staffId: number; day: number } | null>(null)
@@ -59,6 +59,16 @@ export default function ShiftPage() {
 
   const daysInMonth = getDaysInMonth(year, month)
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+
+  // シフトあり日数が多い順にソート（同数は名前順）
+  const sortedStaffList = useMemo(() => {
+    return [...staffList].sort((a, b) => {
+      const aCount = shifts.filter(s => s.staff_id === a.id).length
+      const bCount = shifts.filter(s => s.staff_id === b.id).length
+      if (bCount !== aCount) return bCount - aCount
+      return a.name.localeCompare(b.name, 'ja')
+    })
+  }, [staffList, shifts])
 
   const fetchStaff = useCallback(async () => {
     const { data } = await supabase.from('staff').select('*').order('name')
@@ -432,14 +442,16 @@ export default function ShiftPage() {
       </div>
 
       {syncResult && (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-xs text-green-700 flex flex-wrap gap-4">
+        <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-xs text-green-700">
           {STORES.map(store => {
             const r = syncResult[store.id]
             if (!r) return null
+            const total = Object.values(r.perDay).reduce((s, d) => s + d.synced, 0)
+            const dates = Object.keys(r.perDay).sort()
             return (
-              <span key={store.id}>
-                <span className="font-bold">{store.name}</span>（{r.date}）: 反映{r.synced}名 / スキップ{r.skipped}名 / 時間未設定{r.noTime}名
-              </span>
+              <div key={store.id} className="mb-1">
+                <span className="font-bold">{store.name}</span>: 計{total}件反映（{dates[0]}〜{dates[dates.length - 1]}）
+              </div>
             )
           })}
         </div>
@@ -483,10 +495,10 @@ export default function ShiftPage() {
                 </tr>
               </thead>
               <tbody>
-                {staffList.length === 0 && (
+                {sortedStaffList.length === 0 && (
                   <tr><td colSpan={daysInMonth + 1} className="text-center py-10 text-gray-400">スタッフなし</td></tr>
                 )}
-                {staffList.map((staff, staffIdx) => (
+                {sortedStaffList.map((staff, staffIdx) => (
                   <tr key={staff.id} className={`border-b border-gray-100 ${staffIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
                     <td className="sticky left-0 z-10 bg-inherit border-r border-gray-200 px-3 py-1.5 font-semibold text-gray-800">{staff.name}</td>
                     {days.map((d, dayIdx) => {
