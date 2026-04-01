@@ -33,6 +33,8 @@ export default function StaffPage() {
   const [accountExists, setAccountExists] = useState(false)
   const [accountLoading, setAccountLoading] = useState(false)
   const [registeredStaffIds, setRegisteredStaffIds] = useState<Set<number>>(new Set())
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<{ added: number; storeLinked: number; skipped: number; total: number } | null>(null)
 
   const fetchStaff = useCallback(async () => {
     setLoading(true)
@@ -184,6 +186,24 @@ export default function StaffPage() {
     setAccountSaving(false)
   }
 
+  async function syncFromHP() {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const res = await fetch('/api/cast-sync', { method: 'POST' })
+      const data = await res.json()
+      if (data.error) {
+        alert('同期エラー: ' + data.error)
+      } else {
+        setSyncResult({ added: data.added, storeLinked: data.storeLinked, skipped: data.skipped, total: data.total })
+        fetchStaff()
+      }
+    } catch {
+      alert('同期に失敗しました')
+    }
+    setSyncing(false)
+  }
+
   async function deleteStaff(id: number, name: string) {
     if (!confirm(`${name} を削除しますか？\nこのスタッフのシフトと予約データも影響を受けます。`)) return
     await supabase.from('staff').delete().eq('id', id)
@@ -208,13 +228,27 @@ export default function StaffPage() {
           <div>
             <h1 className="text-lg font-bold text-gray-800">スタッフ管理</h1>
             <p className="text-xs text-gray-500 mt-0.5">登録スタッフ: {staffList.length}名</p>
+          {syncResult && (
+            <p className="text-xs text-green-600 mt-0.5">
+              同期完了: HP取得{syncResult.total}名 / 新規追加{syncResult.added}名 / 店舗紐付け{syncResult.storeLinked}名 / スキップ{syncResult.skipped}名
+            </p>
+          )}
           </div>
-          <button
-            onClick={openAdd}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-medium text-sm transition-colors shadow-sm"
-          >
-            + 新規追加
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={syncFromHP}
+              disabled={syncing}
+              className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded-full font-medium text-sm transition-colors shadow-sm"
+            >
+              {syncing ? '同期中...' : 'HP同期'}
+            </button>
+            <button
+              onClick={openAdd}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-medium text-sm transition-colors shadow-sm"
+            >
+              + 新規追加
+            </button>
+          </div>
         </div>
       </div>
 
