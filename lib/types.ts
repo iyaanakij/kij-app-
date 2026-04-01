@@ -121,6 +121,28 @@ export const STORES: Store[] = [
   { id: 4, name: '錦糸町' },
 ]
 
+// 癒したくて店舗（id 5-8、地域はSTORESと対応）
+export const IYASHI_STORES: Store[] = [
+  { id: 5, name: '成田' },
+  { id: 6, name: '千葉' },
+  { id: 7, name: '西船橋' },
+  { id: 8, name: '錦糸町' },
+]
+
+export const M_STORE_IDS = [1, 2, 3, 4]
+export const Y_STORE_IDS = [5, 6, 7, 8]
+
+export type StaffBrand = 'M' | 'Y' | 'both' | 'none'
+
+export function getStaffBrand(storeIds: number[]): StaffBrand {
+  const hasM = storeIds.some(id => M_STORE_IDS.includes(id))
+  const hasY = storeIds.some(id => Y_STORE_IDS.includes(id))
+  if (hasM && hasY) return 'both'
+  if (hasM) return 'M'
+  if (hasY) return 'Y'
+  return 'none'
+}
+
 export function formatTime(hhmm: number | null): string {
   if (hhmm === null || hhmm === undefined) return ''
   const h = Math.floor(hhmm / 100)

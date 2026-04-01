@@ -7,10 +7,16 @@ const supabase = createClient(
 )
 
 const STORE_CAST_URLS: { storeId: number; url: string }[] = [
+  // 快楽M性感倶楽部 (store_id 1-4)
   { storeId: 1, url: 'https://www.m-kairaku.com/narita/cast/' },
   { storeId: 2, url: 'https://www.m-kairaku.com/chiba/cast/' },
   { storeId: 3, url: 'https://www.m-kairaku.com/cast/' },
   { storeId: 4, url: 'https://www.m-kairaku.com/kinshicho/cast/' },
+  // 癒したくて (store_id 5-8)
+  { storeId: 5, url: 'https://www.iyashitakute.com/narita/cast/' },
+  { storeId: 6, url: 'https://www.iyashitakute.com/chiba/cast/' },
+  { storeId: 7, url: 'https://www.iyashitakute.com/funabashi/cast/' },
+  { storeId: 8, url: 'https://www.iyashitakute.com/kinshicho/cast/' },
 ]
 
 async function fetchCastNames(url: string): Promise<string[]> {

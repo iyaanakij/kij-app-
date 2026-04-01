@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import { Staff, STORES } from '@/lib/types'
+import { Staff, STORES, IYASHI_STORES, M_STORE_IDS, Y_STORE_IDS, getStaffBrand, StaffBrand } from '@/lib/types'
 
 interface StaffWithStores extends Staff {
   storeIds: number[]
@@ -36,6 +36,7 @@ export default function StaffPage() {
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<Record<number, { added: number; linked: number; skipped: number; total: number }> | null>(null)
   const [selectedStoreFilter, setSelectedStoreFilter] = useState<number | null>(null)
+  const [selectedBrandFilter, setSelectedBrandFilter] = useState<StaffBrand | null>(null)
 
   const fetchStaff = useCallback(async () => {
     setLoading(true)
@@ -222,9 +223,18 @@ export default function StaffPage() {
     })
   }
 
-  const filteredStaff = selectedStoreFilter === null
-    ? staffList
-    : staffList.filter(s => s.storeIds.includes(selectedStoreFilter))
+  const filteredStaff = staffList.filter(s => {
+    const brand = getStaffBrand(s.storeIds)
+    if (selectedBrandFilter && brand !== selectedBrandFilter) return false
+    if (selectedStoreFilter !== null) {
+      // 地域フィルター: M性感・癒したくて両方の同地域をまとめて表示
+      const mStore = STORES.find(st => st.id === selectedStoreFilter)
+      const yStore = IYASHI_STORES.find(st => st.id === selectedStoreFilter - 4)
+      const matchIds = [mStore?.id, yStore?.id].filter(Boolean) as number[]
+      if (!matchIds.some(id => s.storeIds.includes(id))) return false
+    }
+    return true
+  })
 
   return (
     <div className="p-3">
@@ -232,18 +242,16 @@ export default function StaffPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-lg font-bold text-gray-800">スタッフ管理</h1>
-            <p className="text-xs text-gray-500 mt-0.5">
-              全{staffList.length}名
-              {selectedStoreFilter !== null && ` / ${STORES.find(s => s.id === selectedStoreFilter)?.name} ${filteredStaff.length}名`}
-            </p>
+            <p className="text-xs text-gray-500 mt-0.5">全{staffList.length}名 / 表示{filteredStaff.length}名</p>
             {syncResult && (
               <div className="text-xs text-green-600 mt-1 space-y-0.5">
-                {STORES.map(store => {
+                {[...STORES, ...IYASHI_STORES].map(store => {
                   const r = syncResult[store.id]
                   if (!r) return null
+                  const brand = M_STORE_IDS.includes(store.id) ? 'M性感' : '癒したくて'
                   return (
                     <p key={store.id}>
-                      {store.name}: 取得{r.total}名 / 新規{r.added}名 / 紐付け{r.linked}名 / スキップ{r.skipped}名
+                      {brand}/{store.name}: 取得{r.total}名 / 新規{r.added}名 / 紐付け{r.linked}名
                     </p>
                   )
                 })}
@@ -266,24 +274,48 @@ export default function StaffPage() {
             </button>
           </div>
         </div>
-        {/* 店舗フィルタータブ */}
-        <div className="flex gap-2 mt-3 flex-wrap">
+        {/* ブランドフィルター */}
+        <div className="flex gap-2 mt-3 flex-wrap items-center">
+          <span className="text-xs text-gray-400 font-medium">ブランド:</span>
+          {([null, 'both', 'M', 'Y'] as (StaffBrand | null)[]).map(brand => {
+            const label = brand === null ? '全て' : brand === 'both' ? '共通在籍' : brand === 'M' ? 'M性感のみ' : '癒したくてのみ'
+            const count = brand === null ? staffList.length : staffList.filter(s => getStaffBrand(s.storeIds) === brand).length
+            const active = selectedBrandFilter === brand
+            const colorClass = brand === 'both'
+              ? (active ? 'bg-orange-500 text-white' : 'bg-orange-100 text-orange-700 hover:bg-orange-200')
+              : brand === 'M'
+              ? (active ? 'bg-red-600 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200')
+              : brand === 'Y'
+              ? (active ? 'bg-teal-600 text-white' : 'bg-teal-100 text-teal-700 hover:bg-teal-200')
+              : (active ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')
+            return (
+              <button key={String(brand)} onClick={() => setSelectedBrandFilter(brand)}
+                className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 ${colorClass}`}>
+                {label}
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${active ? 'bg-white/30' : 'bg-white/60'}`}>{count}</span>
+              </button>
+            )
+          })}
+        </div>
+        {/* 地域フィルター */}
+        <div className="flex gap-2 mt-2 flex-wrap items-center">
+          <span className="text-xs text-gray-400 font-medium">地域:</span>
           <button
             onClick={() => setSelectedStoreFilter(null)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreFilter === null ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreFilter === null ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
           >
-            全店舗
+            全地域
           </button>
           {STORES.map(store => {
-            const count = staffList.filter(s => s.storeIds.includes(store.id)).length
+            // M性感・癒したくて両方の同地域をまとめてカウント
+            const yId = store.id + 4
+            const count = staffList.filter(s => s.storeIds.includes(store.id) || s.storeIds.includes(yId)).length
+            const active = selectedStoreFilter === store.id
             return (
-              <button
-                key={store.id}
-                onClick={() => setSelectedStoreFilter(store.id)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 ${selectedStoreFilter === store.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-              >
+              <button key={store.id} onClick={() => setSelectedStoreFilter(active ? null : store.id)}
+                className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                 {store.name}
-                <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${selectedStoreFilter === store.id ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}>{count}</span>
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${active ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}>{count}</span>
               </button>
             )
           })}
@@ -325,9 +357,13 @@ export default function StaffPage() {
                       {registeredStaffIds.has(s.id) && (
                         <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-medium">登録済</span>
                       )}
-                      {s.storeIds.length > 1 && (
-                        <span className="bg-orange-100 text-orange-700 text-xs px-2 py-0.5 rounded-full font-medium">掛け持ち</span>
-                      )}
+                      {(() => {
+                        const brand = getStaffBrand(s.storeIds)
+                        if (brand === 'both') return <span className="bg-orange-100 text-orange-700 text-xs px-2 py-0.5 rounded-full font-medium">共通在籍</span>
+                        if (brand === 'M') return <span className="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-full font-medium">M性感</span>
+                        if (brand === 'Y') return <span className="bg-teal-100 text-teal-700 text-xs px-2 py-0.5 rounded-full font-medium">癒したくて</span>
+                        return null
+                      })()}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-600 font-mono text-sm">
