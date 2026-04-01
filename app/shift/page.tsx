@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Shift, Staff, ShiftRequest, STORES, IYASHI_STORES, formatShiftTime, todayString } from '@/lib/types'
+import { Shift, Staff, ShiftRequest, AREAS, formatShiftTime, todayString } from '@/lib/types'
 
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
@@ -38,8 +38,9 @@ export default function ShiftPage() {
   const [todayYear, todayMonth, todayDay2] = todayStr.split('-').map(Number)
   const [year, setYear] = useState(todayYear)
   const [month, setMonth] = useState(todayMonth)
-  const [selectedStoreId, setSelectedStoreId] = useState(1)
+  const [selectedAreaId, setSelectedAreaId] = useState(3) // デフォルト: 西船橋
   const [staffList, setStaffList] = useState<Staff[]>([])
+  const [staffStores, setStaffStores] = useState<{ staff_id: number; store_id: number }[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<'calendar' | 'requests'>('calendar')
@@ -71,22 +72,28 @@ export default function ShiftPage() {
   }, [staffList, shifts])
 
   const fetchStaff = useCallback(async () => {
-    const { data } = await supabase.from('staff').select('*').order('name')
-    if (data) setStaffList(data)
+    const [{ data: staffData }, { data: storeLinks }] = await Promise.all([
+      supabase.from('staff').select('*').order('name'),
+      supabase.from('staff_stores').select('staff_id, store_id'),
+    ])
+    if (staffData) setStaffList(staffData)
+    if (storeLinks) setStaffStores(storeLinks)
   }, [])
 
   const fetchShifts = useCallback(async () => {
     setLoading(true)
+    const area = AREAS.find(a => a.id === selectedAreaId)!
     const startDate = formatDateStr(year, month, 1)
     const endDate = formatDateStr(year, month, daysInMonth)
     const { data } = await supabase
       .from('shifts')
       .select('*')
+      .in('store_id', area.storeIds)
       .gte('date', startDate)
       .lte('date', endDate)
     if (data) setShifts(data)
     setLoading(false)
-  }, [year, month, daysInMonth])
+  }, [year, month, selectedAreaId, daysInMonth])
 
   const fetchRequests = useCallback(async () => {
     const { data } = await supabase
@@ -180,10 +187,16 @@ export default function ShiftPage() {
     }, 0)
   }
 
+  function resolveStoreId(staffId: number): number {
+    const area = AREAS.find(a => a.id === selectedAreaId)!
+    return staffStores.find(ss => ss.staff_id === staffId && area.storeIds.includes(ss.store_id))?.store_id ?? area.storeIds[0]
+  }
+
   async function commitEdit(staffId: number, day: number, value: string) {
     const dateStr = formatDateStr(year, month, day)
     const existingShift = getShift(staffId, day)
     const parsed = parseShiftValue(value)
+    const storeId = existingShift?.store_id ?? resolveStoreId(staffId)
 
     if (parsed.mode === 'delete') {
       if (existingShift?.id) {
@@ -192,7 +205,7 @@ export default function ShiftPage() {
     } else if (parsed.mode === 'x') {
       const payload = {
         staff_id: staffId,
-        store_id: selectedStoreId,
+        store_id: storeId,
         date: dateStr,
         start_time: existingShift?.start_time ?? 14,
         end_time: existingShift?.end_time ?? 22,
@@ -204,7 +217,7 @@ export default function ShiftPage() {
     } else if (parsed.mode === 'normal' && parsed.start !== undefined) {
       const payload = {
         staff_id: staffId,
-        store_id: selectedStoreId,
+        store_id: storeId,
         date: dateStr,
         start_time: parsed.start,
         end_time: parsed.end ?? existingShift?.end_time ?? 22,
@@ -415,24 +428,13 @@ export default function ShiftPage() {
             <button onClick={nextMonth} className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-700 font-bold transition-colors">▶</button>
           </div>
           <div className="flex gap-1.5 flex-wrap items-center">
-            <span className="text-xs text-gray-400">入力先:</span>
-            {STORES.map(s => (
+            {AREAS.map(a => (
               <button
-                key={s.id}
-                onClick={() => setSelectedStoreId(s.id)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                key={a.id}
+                onClick={() => setSelectedAreaId(a.id)}
+                className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedAreaId === a.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
               >
-                {s.name}M
-              </button>
-            ))}
-            <span className="w-px h-3 bg-gray-200 mx-0.5" />
-            {IYASHI_STORES.map(s => (
-              <button
-                key={s.id}
-                onClick={() => setSelectedStoreId(s.id)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${selectedStoreId === s.id ? 'bg-teal-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-              >
-                {s.name}E
+                {a.name}
               </button>
             ))}
           </div>

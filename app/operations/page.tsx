@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Shift, Reservation, Staff, formatShiftTime, hhmmToDecimal, todayString } from '@/lib/types'
+import { Shift, Reservation, Staff, AREAS, formatShiftTime, hhmmToDecimal, todayString } from '@/lib/types'
 
 const TIME_START = 10
 const TIME_END = 30
@@ -72,6 +72,7 @@ function slotToTimeLabel(slotDecimal: number): { hhmm: string; next: boolean } {
 
 export default function OperationsPage() {
   const [selectedDate, setSelectedDate] = useState(todayString())
+  const [selectedAreaId, setSelectedAreaId] = useState(3) // デフォルト: 西船橋
   const [shifts, setShifts] = useState<Shift[]>([])
   const [reservations, setReservations] = useState<Reservation[]>([])
   const [staffList, setStaffList] = useState<Staff[]>([])
@@ -115,18 +116,19 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    const area = AREAS.find(a => a.id === selectedAreaId)!
     const [staffRes, shiftsRes, reservationsRes, annotationsRes] = await Promise.all([
       supabase.from('staff').select('*').order('name'),
-      supabase.from('shifts').select('*').eq('date', selectedDate).neq('status', 'x'),
-      supabase.from('reservations').select('*').eq('date', selectedDate),
-      supabase.from('board_annotations').select('*').eq('date', selectedDate),
+      supabase.from('shifts').select('*').eq('date', selectedDate).in('store_id', area.storeIds).neq('status', 'x'),
+      supabase.from('reservations').select('*').eq('date', selectedDate).in('store_id', area.storeIds),
+      supabase.from('board_annotations').select('*').eq('date', selectedDate).in('store_id', area.storeIds),
     ])
     if (staffRes.data) setStaffList(staffRes.data)
     if (shiftsRes.data) setShifts(shiftsRes.data)
     if (reservationsRes.data) setReservations(reservationsRes.data)
     if (annotationsRes.data) setAnnotations(annotationsRes.data)
     setLoading(false)
-  }, [selectedDate])
+  }, [selectedDate, selectedAreaId])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -279,10 +281,14 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
       <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1">
-            <label className="text-sm font-semibold text-gray-600 mr-1">日付</label>
             <button onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate()-1); setSelectedDate(d.toISOString().split('T')[0]) }} className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors">◀</button>
             <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50" />
             <button onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate()+1); setSelectedDate(d.toISOString().split('T')[0]) }} className="px-2 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold transition-colors">▶</button>
+          </div>
+          <div className="flex gap-1.5">
+            {AREAS.map(a => (
+              <button key={a.id} onClick={() => setSelectedAreaId(a.id)} className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedAreaId === a.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{a.name}</button>
+            ))}
           </div>
           {drag ? (
             <div className="flex items-center gap-2">

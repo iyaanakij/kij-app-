@@ -132,6 +132,19 @@ export const IYASHI_STORES: Store[] = [
 export const M_STORE_IDS = [1, 2, 3, 4]
 export const Y_STORE_IDS = [5, 6, 7, 8]
 
+export interface Area {
+  id: number
+  name: string
+  storeIds: [number, number] // [M店, E店]
+}
+
+export const AREAS: Area[] = [
+  { id: 1, name: '成田',   storeIds: [1, 5] },
+  { id: 2, name: '千葉',   storeIds: [2, 6] },
+  { id: 3, name: '西船橋', storeIds: [3, 7] },
+  { id: 4, name: '錦糸町', storeIds: [4, 8] },
+]
+
 export type StaffBrand = 'M' | 'Y' | 'both' | 'none'
 
 export function getStaffBrand(storeIds: number[]): StaffBrand {
