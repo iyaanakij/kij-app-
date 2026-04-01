@@ -47,6 +47,9 @@ export default function ShiftPage() {
   const [rejectModalId, setRejectModalId] = useState<number | null>(null)
   const [rejectReason, setRejectReason] = useState('')
 
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<Record<number, { date: string; synced: number; skipped: number; noTime: number }> | null>(null)
+
   // Inline editing
   const [editingCell, setEditingCell] = useState<{ staffId: number; day: number } | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -262,6 +265,24 @@ export default function ShiftPage() {
     }
   }
 
+  async function syncShifts() {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const res = await fetch('/api/shift-sync', { method: 'POST' })
+      const data = await res.json()
+      if (data.error) {
+        alert('同期エラー: ' + data.error)
+      } else {
+        setSyncResult(data.results)
+        fetchShifts()
+      }
+    } catch {
+      alert('同期に失敗しました')
+    }
+    setSyncing(false)
+  }
+
   function prevMonth() {
     if (month === 1) { setYear(y => y - 1); setMonth(12) }
     else setMonth(m => m - 1)
@@ -395,11 +416,34 @@ export default function ShiftPage() {
               </button>
             ))}
           </div>
-          <div className="ml-auto text-xs text-gray-400">
-            クリックで入力 / <kbd className="bg-gray-100 px-1 rounded">Enter</kbd><kbd className="bg-gray-100 px-1 rounded ml-1">Tab</kbd> で次へ / 矢印で移動 / <kbd className="bg-gray-100 px-1 rounded">Esc</kbd> でキャンセル
+          <div className="ml-auto flex items-center gap-3">
+            <button
+              onClick={syncShifts}
+              disabled={syncing}
+              className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-1.5 rounded-full text-sm font-medium transition-colors shadow-sm"
+            >
+              {syncing ? '同期中...' : 'HP同期'}
+            </button>
+            <div className="text-xs text-gray-400">
+              クリックで入力 / <kbd className="bg-gray-100 px-1 rounded">Enter</kbd><kbd className="bg-gray-100 px-1 rounded ml-1">Tab</kbd> で次へ / 矢印で移動 / <kbd className="bg-gray-100 px-1 rounded">Esc</kbd> でキャンセル
+            </div>
           </div>
         </div>
       </div>
+
+      {syncResult && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-xs text-green-700 flex flex-wrap gap-4">
+          {STORES.map(store => {
+            const r = syncResult[store.id]
+            if (!r) return null
+            return (
+              <span key={store.id}>
+                <span className="font-bold">{store.name}</span>（{r.date}）: 反映{r.synced}名 / スキップ{r.skipped}名 / 時間未設定{r.noTime}名
+              </span>
+            )
+          })}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
