@@ -61,9 +61,10 @@ export default function ShiftPage() {
   const daysInMonth = getDaysInMonth(year, month)
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
 
-  // シフトあり日数が多い順にソート（同数は名前順）
+  // 当月エリアにシフトがあるスタッフのみ、件数多い順にソート
   const sortedStaffList = useMemo(() => {
-    return [...staffList].sort((a, b) => {
+    const staffWithShifts = staffList.filter(s => shifts.some(sh => sh.staff_id === s.id))
+    return staffWithShifts.sort((a, b) => {
       const aCount = shifts.filter(s => s.staff_id === a.id).length
       const bCount = shifts.filter(s => s.staff_id === b.id).length
       if (bCount !== aCount) return bCount - aCount
