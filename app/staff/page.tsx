@@ -35,6 +35,7 @@ export default function StaffPage() {
   const [registeredStaffIds, setRegisteredStaffIds] = useState<Set<number>>(new Set())
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<Record<number, { added: number; linked: number; skipped: number; total: number }> | null>(null)
+  const [deduping, setDeduping] = useState(false)
   const [selectedStoreFilter, setSelectedStoreFilter] = useState<number | null>(null)
   const [selectedBrandFilter, setSelectedBrandFilter] = useState<StaffBrand | null>(null)
 
@@ -206,6 +207,24 @@ export default function StaffPage() {
     setSyncing(false)
   }
 
+  async function deduplicateStaff() {
+    if (!confirm('同名スタッフの重複を解消します。よろしいですか？')) return
+    setDeduping(true)
+    try {
+      const res = await fetch('/api/staff-dedup', { method: 'POST' })
+      const data = await res.json()
+      if (data.error) {
+        alert('エラー: ' + data.error)
+      } else {
+        alert(`重複解消完了: ${data.total}件`)
+        fetchStaff()
+      }
+    } catch {
+      alert('重複解消に失敗しました')
+    }
+    setDeduping(false)
+  }
+
   async function deleteStaff(id: number, name: string) {
     if (!confirm(`${name} を削除しますか？\nこのスタッフのシフトと予約データも影響を受けます。`)) return
     await supabase.from('staff').delete().eq('id', id)
@@ -265,6 +284,13 @@ export default function StaffPage() {
               className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded-full font-medium text-sm transition-colors shadow-sm"
             >
               {syncing ? '同期中...' : 'HP同期（全店舗）'}
+            </button>
+            <button
+              onClick={deduplicateStaff}
+              disabled={deduping}
+              className="bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white px-4 py-2 rounded-full font-medium text-sm transition-colors shadow-sm"
+            >
+              {deduping ? '処理中...' : '重複解消'}
             </button>
             <button
               onClick={openAdd}
@@ -375,12 +401,15 @@ export default function StaffPage() {
                         <span className="text-gray-400 text-xs">未設定</span>
                       ) : (
                         s.storeIds.map(sid => {
-                          const store = STORES.find(st => st.id === sid)
-                          return store ? (
-                            <span key={sid} className="bg-blue-100 text-blue-800 text-xs px-2.5 py-0.5 rounded-full font-medium">
-                              {store.name}
-                            </span>
-                          ) : null
+                          const mStore = STORES.find(st => st.id === sid)
+                          const yStore = IYASHI_STORES.find(st => st.id === sid)
+                          if (mStore) return (
+                            <span key={sid} className="bg-blue-100 text-blue-800 text-xs px-2.5 py-0.5 rounded-full font-medium">{mStore.name}</span>
+                          )
+                          if (yStore) return (
+                            <span key={sid} className="bg-teal-100 text-teal-800 text-xs px-2.5 py-0.5 rounded-full font-medium">{yStore.name}（癒し）</span>
+                          )
+                          return null
                         })
                       )}
                     </div>

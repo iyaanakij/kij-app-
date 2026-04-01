@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Shift, Staff, ShiftRequest, STORES, formatShiftTime, todayString } from '@/lib/types'
+import { Shift, Staff, ShiftRequest, STORES, IYASHI_STORES, formatShiftTime, todayString } from '@/lib/types'
 
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
@@ -415,12 +415,23 @@ export default function ShiftPage() {
             <span className="font-bold text-lg text-gray-800 min-w-28 text-center">{year}年{String(month).padStart(2, '0')}月</span>
             <button onClick={nextMonth} className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-700 font-bold transition-colors">▶</button>
           </div>
-          <div className="flex gap-1.5 flex-wrap">
+          <div className="flex gap-1.5 flex-wrap items-center">
+            <span className="text-xs text-gray-400 font-medium">M性感</span>
             {STORES.map(s => (
               <button
                 key={s.id}
                 onClick={() => setSelectedStoreId(s.id)}
                 className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
+                {s.name}
+              </button>
+            ))}
+            <span className="text-xs text-gray-400 font-medium ml-2">癒し</span>
+            {IYASHI_STORES.map(s => (
+              <button
+                key={s.id}
+                onClick={() => setSelectedStoreId(s.id)}
+                className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${selectedStoreId === s.id ? 'bg-teal-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
               >
                 {s.name}
               </button>
@@ -443,14 +454,14 @@ export default function ShiftPage() {
 
       {syncResult && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-xs text-green-700">
-          {STORES.map(store => {
+          {[...STORES, ...IYASHI_STORES].map(store => {
             const r = syncResult[store.id]
             if (!r) return null
             const total = Object.values(r.perDay).reduce((s, d) => s + d.synced, 0)
             const dates = Object.keys(r.perDay).sort()
             return (
               <div key={store.id} className="mb-1">
-                <span className="font-bold">{store.name}</span>: 計{total}件反映（{dates[0]}〜{dates[dates.length - 1]}）
+                <span className="font-bold">{store.name}{store.id >= 5 ? '（癒し）' : ''}</span>: 計{total}件反映（{dates[0]}〜{dates[dates.length - 1]}）
               </div>
             )
           })}
