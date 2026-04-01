@@ -376,10 +376,10 @@ export default function StaffPage() {
                           const mStore = STORES.find(st => st.id === sid)
                           const yStore = IYASHI_STORES.find(st => st.id === sid)
                           if (mStore) return (
-                            <span key={sid} className="bg-blue-100 text-blue-800 text-xs px-2.5 py-0.5 rounded-full font-medium">{mStore.name}</span>
+                            <span key={sid} className="bg-blue-100 text-blue-800 text-xs px-2.5 py-0.5 rounded-full font-medium">{mStore.name}M</span>
                           )
                           if (yStore) return (
-                            <span key={sid} className="bg-teal-100 text-teal-800 text-xs px-2.5 py-0.5 rounded-full font-medium">{yStore.name}（癒し）</span>
+                            <span key={sid} className="bg-teal-100 text-teal-800 text-xs px-2.5 py-0.5 rounded-full font-medium">{yStore.name}E</span>
                           )
                           return null
                         })
@@ -563,7 +563,23 @@ export default function StaffPage() {
                             : 'bg-white border-gray-200 text-gray-600 hover:border-blue-400 hover:text-blue-600'
                         }`}
                       >
-                        {s.name}
+                        {s.name}M
+                      </button>
+                    )
+                  })}
+                  {IYASHI_STORES.map(s => {
+                    const selected = (editing.storeIds ?? []).includes(s.id)
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => toggleStore(s.id)}
+                        className={`px-4 py-1.5 rounded-full text-sm font-medium border-2 transition-all ${
+                          selected
+                            ? 'bg-teal-600 border-teal-600 text-white shadow-sm'
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-teal-400 hover:text-teal-600'
+                        }`}
+                      >
+                        {s.name}E
                       </button>
                     )
                   })}
