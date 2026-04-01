@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { request as httpsRequest } from 'node:https'
+import { IncomingMessage } from 'node:http'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -7,6 +9,7 @@ const supabase = createClient(
 )
 
 const CS3_BASE = 'https://2nd.cs3-alice7.com/group/7175_iyashi'
+const CS3_HOST = '2nd.cs3-alice7.com'
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
 // CS3Alice shopid → KIJ store_id (iyashi group)
@@ -17,33 +20,43 @@ const SHOP_TO_STORE: Record<string, number> = {
   '111704': 8,  // 錦糸町E
 }
 
-async function getSessionCookie(): Promise<string> {
-  const res = await fetch(`${CS3_BASE}/login.php`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': USER_AGENT,
-    },
-    body: new URLSearchParams({
-      method: 'login',
-      shop: '111701',
-      user: process.env.CS3_LOGIN_ID ?? '',
-      password: process.env.CS3_PASSWORD ?? '',
-    }).toString(),
-    redirect: 'manual',
+// node:https を使ってSet-Cookieを確実に取得（fetch + redirect:manualはVercelでheadersが空になる）
+function httpsPost(path: string, body: string): Promise<{ cookies: string[]; statusCode: number }> {
+  return new Promise((resolve, reject) => {
+    const req = httpsRequest({
+      hostname: CS3_HOST,
+      path,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body),
+        'User-Agent': USER_AGENT,
+      },
+    }, (res: IncomingMessage) => {
+      res.resume() // drain body
+      const raw = res.headers['set-cookie'] ?? []
+      const cookies = (Array.isArray(raw) ? raw : [raw]).map(c => c.split(';')[0].trim())
+      resolve({ cookies, statusCode: res.statusCode ?? 0 })
+    })
+    req.on('error', reject)
+    req.write(body)
+    req.end()
   })
+}
 
-  const cookiePairs: string[] = []
-  if (typeof (res.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie === 'function') {
-    for (const c of (res.headers as unknown as { getSetCookie: () => string[] }).getSetCookie()) {
-      cookiePairs.push(c.split(';')[0].trim())
-    }
-  } else {
-    const raw = res.headers.get('set-cookie') ?? ''
-    raw.split(/,(?=\s*\w+=)/).forEach(c => cookiePairs.push(c.split(';')[0].trim()))
+async function getSessionCookie(): Promise<string> {
+  const body = new URLSearchParams({
+    method: 'login',
+    shop: '111701',
+    user: process.env.CS3_LOGIN_ID ?? '',
+    password: process.env.CS3_PASSWORD ?? '',
+  }).toString()
+
+  const { cookies, statusCode } = await httpsPost('/group/7175_iyashi/login.php', body)
+  if (statusCode !== 302 || cookies.length === 0) {
+    throw new Error(`CS3Aliceログイン失敗 (status: ${statusCode})`)
   }
-
-  return cookiePairs.join('; ')
+  return cookies.join('; ')
 }
 
 function extractTdText(html: string, cls: string): string {
