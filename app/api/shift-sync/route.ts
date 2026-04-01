@@ -121,8 +121,8 @@ export async function runShiftSync() {
   const { data: allStaff } = await supabase.from('staff').select('id, name')
   const nameToId = new Map((allStaff ?? []).map(s => [s.name, s.id]))
 
-  // 結果: storeId -> date -> {synced, skipped, noTime}
-  const results: Record<number, { perDay: Record<string, { synced: number; skipped: number; noTime: number }> }> = {}
+  // 結果: storeId -> date -> {synced, skipped, noTime, deleted}
+  const results: Record<number, { perDay: Record<string, { synced: number; skipped: number; noTime: number; deleted: number }> }> = {}
 
   for (const { storeId, base } of STORE_BASES) {
     results[storeId] = { perDay: {} }
@@ -134,7 +134,10 @@ export async function runShiftSync() {
 
     for (const { date, casts } of daySchedules) {
       if (!date) continue
-      let synced = 0, skipped = 0, noTime = 0
+      let synced = 0, skipped = 0, noTime = 0, deleted = 0
+
+      // 今回HPに掲載されていた staff_id を収集（時刻あり）
+      const syncedStaffIds: number[] = []
 
       for (const cast of casts) {
         const staffId = nameToId.get(cast.name)
@@ -161,10 +164,24 @@ export async function runShiftSync() {
         } else {
           await supabase.from('shifts').insert(payload)
         }
+        syncedStaffIds.push(staffId)
         synced++
       }
 
-      results[storeId].perDay[date] = { synced, skipped, noTime }
+      // HP同期シフトのうち今回HPに掲載されていないものを削除（手動入力は notes が異なるので除外）
+      const deleteQuery = supabase
+        .from('shifts')
+        .delete({ count: 'exact' })
+        .eq('store_id', storeId)
+        .eq('date', date)
+        .eq('notes', 'HP同期')
+
+      const { count } = syncedStaffIds.length > 0
+        ? await deleteQuery.not('staff_id', 'in', `(${syncedStaffIds.join(',')})`)
+        : await deleteQuery
+      deleted = count ?? 0
+
+      results[storeId].perDay[date] = { synced, skipped, noTime, deleted }
     }
   }
 

@@ -49,7 +49,7 @@ export default function ShiftPage() {
   const [rejectReason, setRejectReason] = useState('')
 
   const [syncing, setSyncing] = useState(false)
-  const [syncResult, setSyncResult] = useState<Record<number, { perDay: Record<string, { synced: number; skipped: number; noTime: number }> }> | null>(null)
+  const [syncResult, setSyncResult] = useState<Record<number, { perDay: Record<string, { synced: number; skipped: number; noTime: number; deleted: number }> }> | null>(null)
 
   // Inline editing
   const [editingCell, setEditingCell] = useState<{ staffId: number; day: number } | null>(null)
@@ -461,20 +461,24 @@ export default function ShiftPage() {
       {syncResult && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-xs text-green-700">
           {AREAS.map(area => {
-            const totals = area.storeIds.map(sid => {
+            const synced = area.storeIds.reduce((sum, sid) => {
               const r = syncResult[sid]
-              if (!r) return 0
-              return Object.values(r.perDay).reduce((s, d) => s + d.synced, 0)
-            })
-            const total = totals.reduce((a, b) => a + b, 0)
-            if (!total) return null
+              return sum + (r ? Object.values(r.perDay).reduce((s, d) => s + d.synced, 0) : 0)
+            }, 0)
+            const deleted = area.storeIds.reduce((sum, sid) => {
+              const r = syncResult[sid]
+              return sum + (r ? Object.values(r.perDay).reduce((s, d) => s + (d.deleted ?? 0), 0) : 0)
+            }, 0)
+            if (!synced && !deleted) return null
             const allDates = area.storeIds.flatMap(sid => {
               const r = syncResult[sid]
               return r ? Object.keys(r.perDay) : []
             }).sort()
             return (
               <div key={area.id} className="mb-1">
-                <span className="font-bold">{area.name}</span>: 計{total}件反映（{allDates[0]}〜{allDates[allDates.length - 1]}）
+                <span className="font-bold">{area.name}</span>: {synced}件反映
+                {deleted > 0 && <span className="text-red-600 ml-1">/ {deleted}件削除</span>}
+                <span className="text-gray-400 ml-1">（{allDates[0]}〜{allDates[allDates.length - 1]}）</span>
               </div>
             )
           })}
