@@ -361,7 +361,7 @@ export default function ShiftPage() {
                   <tr key={r.id} className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
                     <td className="px-4 py-3 font-semibold text-gray-800">{(r.staff as { name: string })?.name ?? '-'}</td>
                     <td className="px-4 py-3 text-gray-700 font-mono">{r.date.replace(/-/g, '/')}</td>
-                    <td className="px-4 py-3 text-gray-600">{[...STORES, ...IYASHI_STORES].find(s => s.id === r.store_id)?.name ?? '-'}{r.store_id >= 5 ? 'E' : r.store_id ? 'M' : ''}</td>
+                    <td className="px-4 py-3 text-gray-600">{AREAS.find(a => a.storeIds.includes(r.store_id))?.name ?? '-'}{r.store_id >= 5 ? 'E' : r.store_id ? 'M' : ''}</td>
                     <td className="px-4 py-3 text-gray-700">{formatShiftTime(r.start_time)} 〜 {formatShiftTime(r.end_time)}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs max-w-xs truncate">{r.notes ?? ''}</td>
                     <td className="px-4 py-3 text-center">
@@ -460,14 +460,21 @@ export default function ShiftPage() {
 
       {syncResult && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-xs text-green-700">
-          {[...STORES, ...IYASHI_STORES].map(store => {
-            const r = syncResult[store.id]
-            if (!r) return null
-            const total = Object.values(r.perDay).reduce((s, d) => s + d.synced, 0)
-            const dates = Object.keys(r.perDay).sort()
+          {AREAS.map(area => {
+            const totals = area.storeIds.map(sid => {
+              const r = syncResult[sid]
+              if (!r) return 0
+              return Object.values(r.perDay).reduce((s, d) => s + d.synced, 0)
+            })
+            const total = totals.reduce((a, b) => a + b, 0)
+            if (!total) return null
+            const allDates = area.storeIds.flatMap(sid => {
+              const r = syncResult[sid]
+              return r ? Object.keys(r.perDay) : []
+            }).sort()
             return (
-              <div key={store.id} className="mb-1">
-                <span className="font-bold">{store.name}{store.id >= 5 ? '（癒し）' : ''}</span>: 計{total}件反映（{dates[0]}〜{dates[dates.length - 1]}）
+              <div key={area.id} className="mb-1">
+                <span className="font-bold">{area.name}</span>: 計{total}件反映（{allDates[0]}〜{allDates[allDates.length - 1]}）
               </div>
             )
           })}
