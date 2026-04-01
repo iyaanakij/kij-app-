@@ -391,6 +391,8 @@ export default function ReservationsPage() {
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [loading, setLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'waiting' | 'done' | 'error'>('idle')
+  const [syncMsg, setSyncMsg] = useState('')
   const [editingReservation, setEditingReservation] = useState<Partial<Reservation>>(emptyReservation())
   const [isEditing, setIsEditing] = useState(false)
 
@@ -490,6 +492,23 @@ export default function ReservationsPage() {
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [fetchReservations])
+
+  // デーモンからの同期完了通知を受信
+  useEffect(() => {
+    const ch = supabase.channel('cs3-sync')
+      .on('broadcast', { event: 'sync-done' }, ({ payload }) => {
+        setSyncStatus('done')
+        setSyncMsg(`完了 登録:${payload.synced} 削除:${payload.deleted}`)
+        setTimeout(() => setSyncStatus('idle'), 4000)
+      })
+      .on('broadcast', { event: 'sync-error' }, ({ payload }) => {
+        setSyncStatus('error')
+        setSyncMsg(`エラー: ${payload.error}`)
+        setTimeout(() => setSyncStatus('idle'), 5000)
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [])
 
   // フォーム更新 + 合計自動計算
   const updateForm = (patch: Partial<Reservation>) => {
@@ -817,7 +836,27 @@ export default function ReservationsPage() {
               </button>
             ))}
           </div>
-          <div className="ml-auto flex gap-3 text-sm font-medium">
+          <div className="ml-auto flex gap-3 text-sm font-medium items-center">
+            {/* 予約取得ボタン */}
+            <button
+              onClick={async () => {
+                setSyncStatus('waiting')
+                setSyncMsg('')
+                await supabase.channel('cs3-sync').send({ type: 'broadcast', event: 'sync-request', payload: {} })
+              }}
+              disabled={syncStatus === 'waiting'}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                syncStatus === 'waiting' ? 'bg-blue-200 text-blue-500 cursor-wait' :
+                syncStatus === 'done'    ? 'bg-green-100 text-green-700' :
+                syncStatus === 'error'   ? 'bg-red-100 text-red-700' :
+                'bg-blue-600 text-white hover:bg-blue-700'
+              }`}
+            >
+              {syncStatus === 'waiting' ? '同期中...' :
+               syncStatus === 'done'    ? `✓ ${syncMsg}` :
+               syncStatus === 'error'   ? `✗ ${syncMsg}` :
+               '↻ 予約取得'}
+            </button>
             <span className="bg-pink-100 text-pink-800 px-3 py-1 rounded-full flex items-center gap-1.5">
               E
               <span className="bg-pink-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">{eCount}</span>
