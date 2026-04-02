@@ -242,8 +242,9 @@ async function fetchShiftStore(storeId, url) {
     while ((tm = timeRe.exec(block)) !== null && idx < dates.length) {
       const timeMatch = tm[1].match(/(\d{1,2}):(\d{2})[\s\S]*?(\d{1,2}):(\d{2})/)
       if (timeMatch) {
-        const start = parseInt(timeMatch[1]) + parseInt(timeMatch[2]) / 60
-        let end = parseInt(timeMatch[3]) + parseInt(timeMatch[4]) / 60
+        const round30 = t => Math.round(t * 2) / 2
+        const start = round30(parseInt(timeMatch[1]) + parseInt(timeMatch[2]) / 60)
+        let end = round30(parseInt(timeMatch[3]) + parseInt(timeMatch[4]) / 60)
         if (end < start) end += 24
         entries.push({ name, storeId, date: dates[idx], start, end })
       }
