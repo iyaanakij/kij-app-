@@ -321,18 +321,15 @@ export default function ShiftPage() {
     setSyncing(true)
     setSyncResult(null)
     setSyncError(null)
-
-    const res = await fetch('/api/trigger-shift-sync', { method: 'POST' })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      setSyncError(data.error ?? 'トリガー失敗')
-      setSyncing(false)
-      return
-    }
-
-    // GitHub Actionsの完了まで約2分かかるためカウントダウン
-    // shift-sync-done が先に届いた場合は即時クリア
-    let n = 120
+    // デーモンに shift-sync-request をブロードキャスト
+    // デーモンが起動していない場合は shift-sync-done が届かないためタイムアウト
+    await supabase.channel('shift-sync').send({
+      type: 'broadcast',
+      event: 'shift-sync-request',
+      payload: {},
+    })
+    // 60秒以内に shift-sync-done が届かなければタイムアウト
+    let n = 60
     setSyncCountdown(n)
     countdownRef.current = setInterval(() => {
       n--
@@ -340,7 +337,7 @@ export default function ShiftPage() {
       if (n <= 0) {
         clearCountdown()
         setSyncing(false)
-        fetchShifts()
+        setSyncError('デーモンが起動していません。node scripts/cs3-sync-daemon.js を実行してください。')
       }
     }, 1000)
   }
