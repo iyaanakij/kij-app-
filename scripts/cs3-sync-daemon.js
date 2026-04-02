@@ -280,6 +280,54 @@ function uploadShiftEntries(entries) {
 
 let shiftSyncing = false
 
+// Supabaseに直接書き込む（Vercel経由を廃止してタイムアウト問題を解消）
+async function upsertShiftsToSupabase(allEntries) {
+  const { data: allStaff } = await supabase.from('staff').select('id, name')
+  const nameToId = new Map((allStaff ?? []).map(s => [s.name, s.id]))
+
+  const payloads = []
+  let skipped = 0
+  for (const e of allEntries) {
+    const staffId = nameToId.get(e.name)
+    if (!staffId) { skipped++; continue }
+    payloads.push({
+      staff_id: staffId, store_id: e.storeId, date: e.date,
+      start_time: e.start, end_time: e.end, status: 'normal', notes: 'HP同期',
+    })
+  }
+
+  if (payloads.length === 0) return { synced: 0, skipped, deleted: 0 }
+
+  // store_id ごとに対象日付をまとめて既存HP同期を削除→一括INSERT
+  const datesByStore = new Map()
+  for (const p of payloads) {
+    if (!datesByStore.has(p.store_id)) datesByStore.set(p.store_id, new Set())
+    datesByStore.get(p.store_id).add(p.date)
+  }
+
+  // 既存件数カウント（削除数算出用）
+  let existingTotal = 0
+  await Promise.all([...datesByStore.entries()].map(async ([storeId, dates]) => {
+    const { count } = await supabase.from('shifts')
+      .select('id', { count: 'exact', head: true })
+      .eq('store_id', storeId).in('date', [...dates]).eq('notes', 'HP同期')
+    existingTotal += count ?? 0
+  }))
+
+  // 既存HP同期を削除（並列）
+  await Promise.all([...datesByStore.entries()].map(([storeId, dates]) =>
+    supabase.from('shifts').delete()
+      .eq('store_id', storeId).in('date', [...dates]).eq('notes', 'HP同期')
+  ))
+
+  // 一括INSERT
+  const { error } = await supabase.from('shifts').insert(payloads)
+  if (error) throw new Error(`DB insert失敗: ${error.message}`)
+
+  const deleted = Math.max(0, existingTotal - payloads.length)
+  return { synced: payloads.length, skipped, deleted }
+}
+
 async function runShiftSync(trigger = 'auto') {
   if (shiftSyncing) return
   shiftSyncing = true
@@ -292,9 +340,7 @@ async function runShiftSync(trigger = 'auto') {
       process.stdout.write(`${entries.length}件\n`)
       allEntries.push(...entries)
     }
-    const result = await uploadShiftEntries(allEntries)
-    if (result.status !== 200) throw new Error(`アップロード失敗 (${result.status})`)
-    const r = result.body
+    const r = await upsertShiftsToSupabase(allEntries)
     console.log(`[${ts()}] ✅ シフト完了 — 登録:${r.synced} スキップ:${r.skipped} 削除:${r.deleted}`)
     await supabase.channel('shift-sync').send({
       type: 'broadcast', event: 'shift-sync-done',
