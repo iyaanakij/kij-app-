@@ -52,6 +52,8 @@ const supabase = createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey)
 
 // ─── HTTP ヘルパー（cs3-sync.jsと同じ） ─────────────────────────
 
+const CS3_TIMEOUT_MS = 20000
+
 function httpsPost(hostname, path, body, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const buf = Buffer.from(body)
@@ -71,6 +73,7 @@ function httpsPost(hostname, path, body, extraHeaders = {}) {
         resolve({ status: res.statusCode, cookies, body: data, headers: res.headers })
       })
     })
+    req.setTimeout(CS3_TIMEOUT_MS, () => req.destroy(new Error(`CS3 POST タイムアウト: ${path}`)))
     req.on('error', reject)
     req.write(buf)
     req.end()
@@ -87,6 +90,7 @@ function httpsGet(hostname, path, cookieStr) {
       res.on('data', chunk => data += chunk)
       res.on('end', () => resolve({ status: res.statusCode, body: data }))
     })
+    req.setTimeout(CS3_TIMEOUT_MS, () => req.destroy(new Error(`CS3 GET タイムアウト: ${path}`)))
     req.on('error', reject)
     req.end()
   })
