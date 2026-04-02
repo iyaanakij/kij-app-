@@ -185,26 +185,35 @@ function parseReservations(html) {
   return entries
 }
 
-// ─── シフト同期（City Heaven） ──────────────────────────────────
+// ─── シフト同期（公式HP） ──────────────────────────────────────
 
-const STORE_ATTEND_URLS = [
-  { storeId: 1, url: 'https://www.cityheaven.net/chiba/A1204/A120401/narita-kairaku/attend/' },
-  { storeId: 2, url: 'https://www.cityheaven.net/chiba/A1201/A120101/m-kairaku/attend/' },
-  { storeId: 3, url: 'https://www.cityheaven.net/chiba/A1202/A120201/anappu_nishi/attend/' },
-  { storeId: 4, url: 'https://www.cityheaven.net/tokyo/A1313/A131301/m-kairaku/attend/' },
-  { storeId: 5, url: 'https://www.cityheaven.net/chiba/A1204/A120401/aromaseikan/attend/' },
-  { storeId: 6, url: 'https://www.cityheaven.net/chiba/A1201/A120101/iyashitakutechiba/attend/' },
-  { storeId: 7, url: 'https://www.cityheaven.net/chiba/A1202/A120201/iyashitakute/attend/' },
-  { storeId: 8, url: 'https://www.cityheaven.net/tokyo/A1313/A131301/iyashitakute/attend/' },
+const STORE_SCHEDULE_URLS = [
+  { storeId: 1, url: 'https://www.m-kairaku.com/narita/schedule/' },
+  { storeId: 2, url: 'https://www.m-kairaku.com/chiba/schedule/' },
+  { storeId: 3, url: 'https://www.m-kairaku.com/schedule/' },
+  { storeId: 4, url: 'https://www.m-kairaku.com/kinshicho/schedule/' },
+  { storeId: 5, url: 'https://www.iyashitakute.com/narita/schedule/' },
+  { storeId: 6, url: 'https://www.iyashitakute.com/chiba/schedule/' },
+  { storeId: 7, url: 'https://www.iyashitakute.com/funabashi/schedule/' },
+  { storeId: 8, url: 'https://www.iyashitakute.com/kinshicho/schedule/' },
 ]
 
-function httpsGetUrl(urlStr) {
+function httpsGetUrl(urlStr, redirectCount = 0) {
   return new Promise((resolve, reject) => {
+    if (redirectCount > 5) return reject(new Error('リダイレクト過多'))
     const u = new URL(urlStr)
     const req = httpsReq({
       hostname: u.hostname, path: u.pathname + u.search, method: 'GET',
       headers: { Cookie: 'nenrei=y', 'User-Agent': USER_AGENT },
     }, res => {
+      if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
+        res.resume()
+        const next = res.headers.location.startsWith('http')
+          ? res.headers.location
+          : new URL(res.headers.location, urlStr).href
+        resolve(httpsGetUrl(next, redirectCount + 1))
+        return
+      }
       let data = ''
       res.on('data', c => data += c)
       res.on('end', () => resolve({ status: res.statusCode, body: data }))
@@ -222,35 +231,52 @@ function parseDisplayDate(month, day) {
   return `${year}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`
 }
 
-async function fetchShiftStore(storeId, url) {
-  const { status, body: html } = await httpsGetUrl(url)
-  if (status !== 200) throw new Error(`City Heaven取得失敗 storeId=${storeId} (${status})`)
+async function fetchShiftStore(storeId, baseUrl) {
+  // 公式HP /schedule/ ページからキャスト×日付×時間を取得
+  const { status, body: html } = await httpsGetUrl(baseUrl)
+  if (status !== 200) throw new Error(`HP取得失敗 storeId=${storeId} (${status})`)
+
+  // 7日分の dt= タイムスタンプと日付テキストを抽出
+  const calRe = /<li[^>]*>\s*<a[^>]*[?&]dt=(\d+)[^>]*>(\d+)\/(\d+)\(/g
+  const dateDts = []
+  let cm
+  while ((cm = calRe.exec(html)) !== null) {
+    dateDts.push({ dt: cm[1], month: cm[2], day: cm[3] })
+  }
+  if (dateDts.length === 0) throw new Error(`カレンダー取得失敗 storeId=${storeId}`)
+
+  const round30 = t => Math.round(t * 2) / 2
   const entries = []
-  const blocks = html.split(/<div[^>]*id="shukkin_list"/)
-  blocks.shift()
-  for (const block of blocks) {
-    const nameMatch = block.match(/<th[^>]*class="topbox"[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/)
-    if (!nameMatch) continue
-    const name = nameMatch[1].trim()
-    const dates = []
-    const dateRe = /<th[^>]*class="week"[^>]*>(?:\s*<[^>]+>)*\s*(\d+)\/(\d+)\(/g
-    let dm
-    while ((dm = dateRe.exec(block)) !== null) dates.push(parseDisplayDate(dm[1], dm[2]))
-    if (dates.length === 0) continue
-    const timeRe = /<td[^>]+width=["']?110["']?[^>]*>([\s\S]*?)<\/td>/g
-    let tm, idx = 0
-    while ((tm = timeRe.exec(block)) !== null && idx < dates.length) {
-      const timeMatch = tm[1].match(/(\d{1,2}):(\d{2})[\s\S]*?(\d{1,2}):(\d{2})/)
-      if (timeMatch) {
-        const round30 = t => Math.round(t * 2) / 2
-        const start = round30(parseInt(timeMatch[1]) + parseInt(timeMatch[2]) / 60)
-        let end = round30(parseInt(timeMatch[3]) + parseInt(timeMatch[4]) / 60)
-        if (end < start) end += 24
-        entries.push({ name, storeId, date: dates[idx], start, end })
-      }
-      idx++
+
+  for (const { dt, month, day } of dateDts) {
+    const dateStr = parseDisplayDate(month, day)
+    const { status: s, body: dayHtml } = await httpsGetUrl(`${baseUrl}?page=1&dt=${dt}`)
+    if (s !== 200) continue
+
+    // cast_name ブロックで分割してキャストごとに処理
+    const castBlocks = dayHtml.split(/<div[^>]*class="cast_name"/)
+    castBlocks.shift()
+
+    for (const block of castBlocks) {
+      // 名前: div開始タグの直後（>NAME<!--...）
+      const nameMatch = block.match(/^>([^<]+)/)
+      if (!nameMatch) continue
+      const name = nameMatch[1].trim()
+      if (!name) continue
+
+      // 時間: cast_time内の <p>HH:MM～(翌 )?HH:MM</p>
+      const timeMatch = block.match(/<div[^>]*class="cast_time"[\s\S]*?<p>\s*(\d{1,2}):(\d{2})～(翌\s*)?(\d{1,2}):(\d{2})\s*<\/p>/)
+      if (!timeMatch) continue
+
+      const start = round30(parseInt(timeMatch[1]) + parseInt(timeMatch[2]) / 60)
+      let end = round30(parseInt(timeMatch[4]) + parseInt(timeMatch[5]) / 60)
+      if (timeMatch[3]) end += 24  // 翌〇時
+      else if (end < start) end += 24  // 念のため
+
+      entries.push({ name, storeId, date: dateStr, start, end })
     }
   }
+
   return entries
 }
 
@@ -340,7 +366,7 @@ async function runShiftSync(trigger = 'auto') {
   console.log(`[${ts()}] 📅 シフト同期開始 (${trigger})`)
   try {
     const allEntries = []
-    for (const { storeId, url } of STORE_ATTEND_URLS) {
+    for (const { storeId, url } of STORE_SCHEDULE_URLS) {
       process.stdout.write(`  store${storeId} ... `)
       const entries = await fetchShiftStore(storeId, url)
       process.stdout.write(`${entries.length}件\n`)
