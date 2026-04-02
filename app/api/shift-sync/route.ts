@@ -87,49 +87,65 @@ async function fetchStoreSchedule(url: string, storeId: number): Promise<ShiftEn
   return entries
 }
 
-// デーモンから受け取ったエントリをSupabaseに書き込む
+// デーモンから受け取ったエントリをSupabaseに書き込む（一括処理版）
 async function upsertShiftEntries(entries: ShiftEntry[]) {
   const { data: allStaff } = await supabase.from('staff').select('id, name')
   const nameToId = new Map((allStaff ?? []).map(s => [s.name, s.id]))
 
-  const byStoreDate = new Map<string, { storeId: number; date: string; staffIds: number[] }>()
-  let synced = 0, skipped = 0
+  type Payload = {
+    staff_id: number; store_id: number; date: string;
+    start_time: number; end_time: number; status: 'normal'; notes: string
+  }
+  const payloads: Payload[] = []
+  let skipped = 0
 
   for (const entry of entries) {
     const staffId = nameToId.get(entry.name)
     if (!staffId) { skipped++; continue }
-
-    const payload = {
+    payloads.push({
       staff_id: staffId, store_id: entry.storeId, date: entry.date,
       start_time: entry.start, end_time: entry.end,
-      status: 'normal' as const, notes: 'HP同期',
-    }
-    const { data: existing } = await supabase.from('shifts').select('id')
-      .eq('staff_id', staffId).eq('store_id', entry.storeId).eq('date', entry.date).maybeSingle()
-    if (existing?.id) {
-      await supabase.from('shifts').update(payload).eq('id', existing.id)
-    } else {
-      await supabase.from('shifts').insert(payload)
-    }
-    synced++
-
-    const key = `${entry.storeId}:${entry.date}`
-    if (!byStoreDate.has(key)) byStoreDate.set(key, { storeId: entry.storeId, date: entry.date, staffIds: [] })
-    byStoreDate.get(key)!.staffIds.push(staffId)
+      status: 'normal', notes: 'HP同期',
+    })
   }
 
-  // HP同期シフトのうち今回掲載されていないものを削除
-  let deleted = 0
-  for (const { storeId, date, staffIds } of byStoreDate.values()) {
-    const q = supabase.from('shifts').delete({ count: 'exact' })
-      .eq('store_id', storeId).eq('date', date).eq('notes', 'HP同期')
-    const { count } = staffIds.length > 0
-      ? await q.not('staff_id', 'in', `(${staffIds.join(',')})`)
-      : await q
-    deleted += count ?? 0
+  if (payloads.length === 0) return { synced: 0, skipped, deleted: 0 }
+
+  // store_id ごとに対象日付をまとめる
+  const datesByStore = new Map<number, Set<string>>()
+  for (const p of payloads) {
+    if (!datesByStore.has(p.store_id)) datesByStore.set(p.store_id, new Set())
+    datesByStore.get(p.store_id)!.add(p.date)
   }
 
-  return { synced, skipped, deleted }
+  // 既存HP同期シフトを一括カウント（削除数算出用）→ 一括削除 → 一括INSERT
+  // 622クエリ → ~17クエリ（並列）に削減
+  const [existingCounts] = await Promise.all([
+    Promise.all(
+      [...datesByStore.entries()].map(async ([storeId, dates]) => {
+        const { count } = await supabase.from('shifts')
+          .select('id', { count: 'exact', head: true })
+          .eq('store_id', storeId).in('date', [...dates]).eq('notes', 'HP同期')
+        return count ?? 0
+      })
+    ),
+  ])
+  const existingTotal = existingCounts.reduce((a, b) => a + b, 0)
+  const deleted = Math.max(0, existingTotal - payloads.length)
+
+  // 対象日付の既存HP同期シフトを一括削除（並列）
+  await Promise.all(
+    [...datesByStore.entries()].map(([storeId, dates]) =>
+      supabase.from('shifts').delete()
+        .eq('store_id', storeId).in('date', [...dates]).eq('notes', 'HP同期')
+    )
+  )
+
+  // 全件一括INSERT
+  const { error } = await supabase.from('shifts').insert(payloads)
+  if (error) throw new Error(error.message)
+
+  return { synced: payloads.length, skipped, deleted }
 }
 
 export async function runShiftSync() {

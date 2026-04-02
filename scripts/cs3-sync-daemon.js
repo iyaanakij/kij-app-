@@ -271,6 +271,7 @@ function uploadShiftEntries(entries) {
         catch { resolve({ status: res.statusCode, body: data }) }
       })
     })
+    req.setTimeout(30000, () => { req.destroy(new Error('uploadShiftEntries タイムアウト（30秒）')) })
     req.on('error', reject)
     req.write(payload)
     req.end()
