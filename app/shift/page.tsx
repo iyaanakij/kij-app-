@@ -14,8 +14,11 @@ function formatDateStr(year: number, month: number, day: number): string {
 
 function displayShiftTime(shift: Shift): string {
   const fmt = (t: number) => {
-    if (t >= 24) return `翌${t % 1 === 0 ? Math.floor(t - 24) : t - 24}`
-    return t % 1 === 0 ? String(Math.floor(t)) : String(t)
+    const base = t >= 24 ? t - 24 : t
+    const h = Math.floor(base)
+    const m = Math.round((base % 1) * 60)
+    const timeStr = m === 0 ? String(h) : `${h}:${String(m).padStart(2, '0')}`
+    return t >= 24 ? `翌${timeStr}` : timeStr
   }
   return `${fmt(shift.start_time)}-${fmt(shift.end_time)}`
 }
