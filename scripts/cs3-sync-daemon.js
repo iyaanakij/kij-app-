@@ -96,29 +96,66 @@ function httpsGet(hostname, path, cookieStr) {
   })
 }
 
-function uploadEntries(entries) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(CONFIG.apiUrl)
-    const payload = Buffer.from(JSON.stringify({ entries }))
-    const req = httpsReq({
-      hostname: url.hostname, path: url.pathname, method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': payload.length,
-        'Authorization': `Bearer ${CONFIG.syncSecret}`,
-      },
-    }, res => {
-      let data = ''
-      res.on('data', chunk => data += chunk)
-      res.on('end', () => {
-        try { resolve({ status: res.statusCode, body: JSON.parse(data) }) }
-        catch { resolve({ status: res.statusCode, body: data }) }
-      })
-    })
-    req.on('error', reject)
-    req.write(payload)
-    req.end()
-  })
+// Vercel経由を廃止し、Supabaseに直接書き込む（Vercel 10秒タイムアウト回避）
+async function upsertReservationsToSupabase(entries) {
+  const { data: allStaff } = await supabase.from('staff').select('id, name')
+  const nameToId = new Map((allStaff ?? []).map(s => [s.name, s.id]))
+
+  // 既存CS3予約を一括取得（今日以降）
+  const today = new Date().toISOString().split('T')[0]
+  const { data: existingRows } = await supabase
+    .from('reservations').select('id, notes')
+    .like('notes', 'CS3:%').gte('date', today)
+  const existingMap = new Map((existingRows ?? []).map(r => [r.notes, r.id]))
+
+  const toInsert = [], toUpdate = []
+  let skipped = 0
+  const syncedKeys = []
+
+  for (const entry of entries) {
+    const staffId = nameToId.get(entry.castName) ?? null
+    if (!staffId) { skipped++; continue }
+
+    const isM = /^[MＭ]/.test(entry.nominationType ?? '')
+    const notesKey = `CS3:${entry.cs3Id}`
+    syncedKeys.push(notesKey)
+
+    const payload = {
+      store_id: isM ? entry.storeId - 4 : entry.storeId,
+      date: entry.date, section: isM ? 'M' : 'E',
+      time: entry.time, checkout_time: entry.checkoutTime,
+      customer_name: entry.customerName, phone: entry.phone,
+      area: entry.area, hotel: entry.hotel, room_number: entry.roomNumber,
+      staff_id: staffId, nomination_type: entry.nominationType,
+      course_duration: entry.courseDuration, media: entry.media,
+      total_amount: entry.totalAmount,
+      confirmed: true, communicated: false, nude: false,
+      arrival_confirmed: false, checked: false, notes: notesKey,
+    }
+
+    const existingId = existingMap.get(notesKey)
+    if (existingId) toUpdate.push({ id: existingId, payload })
+    else toInsert.push(payload)
+  }
+
+  // 並列 update + 一括 insert
+  await Promise.all([
+    ...toUpdate.map(({ id, payload }) =>
+      supabase.from('reservations').update(payload).eq('id', id)
+    ),
+    toInsert.length > 0
+      ? supabase.from('reservations').insert(toInsert)
+      : Promise.resolve(),
+  ])
+
+  // CS3Aliceから消えたレコードを削除
+  const toDelete = (existingRows ?? [])
+    .filter(r => !syncedKeys.includes(r.notes ?? '')).map(r => r.id)
+  if (toDelete.length > 0) {
+    await supabase.from('reservations').delete().in('id', toDelete)
+  }
+
+  return { synced: toUpdate.length + toInsert.length, skipped, deleted: toDelete.length }
 }
 
 async function loginForShop(shopCode) {
@@ -396,6 +433,8 @@ async function runShiftSync(trigger = 'auto') {
 
 let syncing = false
 
+const SYNC_TIMEOUT_MS = 90000
+
 async function runSync(trigger = 'auto') {
   if (syncing) {
     console.log(`[${ts()}] ⚠ 同期中のためスキップ`)
@@ -404,40 +443,47 @@ async function runSync(trigger = 'auto') {
   syncing = true
   console.log(`[${ts()}] 🔄 同期開始 (${trigger})`)
 
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('同期タイムアウト（90秒）')), SYNC_TIMEOUT_MS)
+  )
+
   try {
-    const allEntries = []
-    for (const shopCode of Object.keys(SHOP_TO_STORE)) {
-      process.stdout.write(`  ${SHOP_NAMES[shopCode]} ... `)
-      const cookie = await loginForShop(shopCode)
-      const { status, body: html } = await httpsGet(CS3_HOST, '/group/7175_iyashi/schedule.reservation.php', cookie)
-      if (status !== 200) throw new Error(`取得失敗 shop=${shopCode} (${status})`)
-      const entries = parseReservations(html)
-      process.stdout.write(`${entries.length}件\n`)
-      allEntries.push(...entries)
-    }
-
-    const seen = new Set()
-    const entries = allEntries.filter(e => { if (seen.has(e.cs3Id)) return false; seen.add(e.cs3Id); return true })
-
-    const result = await uploadEntries(entries)
-    if (result.status !== 200) throw new Error(`アップロード失敗 (${result.status})`)
-    const r = result.body
-    console.log(`[${ts()}] ✅ 完了 — 登録:${r.synced} スキップ:${r.skipped} 削除:${r.deleted}`)
-
-    // 完了をSupabaseにブロードキャスト（UIに結果を返す）
-    await supabase.channel('cs3-sync').send({
-      type: 'broadcast', event: 'sync-done',
-      payload: { synced: r.synced, skipped: r.skipped, deleted: r.deleted, at: new Date().toISOString() },
-    })
+    await Promise.race([syncWork(), timeout])
   } catch (err) {
     console.error(`[${ts()}] ❌ エラー:`, err.message)
-    await supabase.channel('cs3-sync').send({
+    // syncing を先に解除してから非同期ブロードキャスト（send()がハングしても影響しない）
+    syncing = false
+    supabase.channel('cs3-sync').send({
       type: 'broadcast', event: 'sync-error',
       payload: { error: err.message },
-    })
-  } finally {
-    syncing = false
+    }).catch(() => {})
+    return
   }
+  syncing = false
+}
+
+async function syncWork() {
+  const allEntries = []
+  for (const shopCode of Object.keys(SHOP_TO_STORE)) {
+    process.stdout.write(`  ${SHOP_NAMES[shopCode]} ... `)
+    const cookie = await loginForShop(shopCode)
+    const { status, body: html } = await httpsGet(CS3_HOST, '/group/7175_iyashi/schedule.reservation.php', cookie)
+    if (status !== 200) throw new Error(`取得失敗 shop=${shopCode} (${status})`)
+    const entries = parseReservations(html)
+    process.stdout.write(`${entries.length}件\n`)
+    allEntries.push(...entries)
+  }
+
+  const seen = new Set()
+  const entries = allEntries.filter(e => { if (seen.has(e.cs3Id)) return false; seen.add(e.cs3Id); return true })
+
+  const r = await upsertReservationsToSupabase(entries)
+  console.log(`[${ts()}] ✅ 完了 — 登録:${r.synced} スキップ:${r.skipped} 削除:${r.deleted}`)
+
+  await supabase.channel('cs3-sync').send({
+    type: 'broadcast', event: 'sync-done',
+    payload: { synced: r.synced, skipped: r.skipped, deleted: r.deleted, at: new Date().toISOString() },
+  }).catch(() => {})
 }
 
 function ts() {
