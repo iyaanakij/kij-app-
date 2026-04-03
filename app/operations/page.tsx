@@ -153,17 +153,19 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
   }, [])
 
   const staffRows = useMemo((): StaffRow[] => {
-    const shiftStaffIds = new Set(shifts.map(s => s.staff_id))
+    const seen = new Set<number>()
     const rows: StaffRow[] = []
+    // シフトがある人を追加（同一スタッフが複数店舗に掲載されている場合は最初の1件のみ）
     shifts.forEach(shift => {
+      if (seen.has(shift.staff_id)) return
       const staff = staffList.find(s => s.id === shift.staff_id)
-      if (staff) rows.push({ staff, shift })
+      if (staff) { rows.push({ staff, shift }); seen.add(shift.staff_id) }
     })
+    // シフトなし・予約だけある人を追加
     reservations.forEach(r => {
-      if (r.staff_id && !shiftStaffIds.has(r.staff_id)) {
-        const staff = staffList.find(s => s.id === r.staff_id)
-        if (staff && !rows.find(row => row.staff.id === r.staff_id)) rows.push({ staff, shift: null })
-      }
+      if (!r.staff_id || seen.has(r.staff_id)) return
+      const staff = staffList.find(s => s.id === r.staff_id)
+      if (staff) { rows.push({ staff, shift: null }); seen.add(r.staff_id) }
     })
     rows.sort((a, b) => (a.shift?.start_time ?? 99) - (b.shift?.start_time ?? 99))
     return rows

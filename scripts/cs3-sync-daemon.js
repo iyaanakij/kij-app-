@@ -388,17 +388,17 @@ async function upsertShiftsToSupabase(allEntries) {
       .eq('store_id', storeId).in('date', [...dates]).eq('notes', 'HP同期')
   ))
 
-  // (staff_id, date) 単位で重複排除（同一スタッフが複数店舗に登録されている場合）
+  // (staff_id, store_id, date) 単位で重複排除（DB制約に合わせる）
   const deduped = new Map()
-  for (const p of payloads) deduped.set(`${p.staff_id}:${p.date}`, p)
+  for (const p of payloads) deduped.set(`${p.staff_id}:${p.store_id}:${p.date}`, p)
   const uniquePayloads = [...deduped.values()]
 
   // 一括INSERT
   const { error } = await supabase.from('shifts').insert(uniquePayloads)
   if (error) throw new Error(`DB insert失敗: ${error.message}`)
 
-  const deleted = Math.max(0, existingTotal - payloads.length)
-  return { synced: payloads.length, skipped, deleted }
+  const deleted = Math.max(0, existingTotal - uniquePayloads.length)
+  return { synced: uniquePayloads.length, skipped, deleted }
 }
 
 async function runShiftSync(trigger = 'auto') {
