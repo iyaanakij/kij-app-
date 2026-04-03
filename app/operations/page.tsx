@@ -78,6 +78,9 @@ export default function OperationsPage() {
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [annotations, setAnnotations] = useState<BoardAnnotation[]>([])
   const [loading, setLoading] = useState(false)
+  const [hiddenStaffIds, setHiddenStaffIds] = useState<Set<number>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('ops-hidden-staff') ?? '[]')) } catch { return new Set() }
+  })
 
   // drag state
   const [drag, setDrag] = useState<{ staffId: number; startSlot: number; endSlot: number } | null>(null)
@@ -170,6 +173,18 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
     rows.sort((a, b) => (a.shift?.start_time ?? 99) - (b.shift?.start_time ?? 99))
     return rows
   }, [shifts, reservations, staffList])
+
+  const toggleHidden = (staffId: number) => {
+    setHiddenStaffIds(prev => {
+      const next = new Set(prev)
+      next.has(staffId) ? next.delete(staffId) : next.add(staffId)
+      localStorage.setItem('ops-hidden-staff', JSON.stringify([...next]))
+      return next
+    })
+  }
+  const showAll = () => { setHiddenStaffIds(new Set()); localStorage.removeItem('ops-hidden-staff') }
+  const visibleRows = staffRows.filter(r => !hiddenStaffIds.has(r.staff.id))
+  const hiddenCount = staffRows.filter(r => hiddenStaffIds.has(r.staff.id)).length
 
   function getCellStatus(staffId: number, slotIdx: number): { status: CellStatus; reservation?: Reservation } {
     const slotTime = TIME_START + slotIdx * (SLOT_MINUTES / 60)
@@ -304,7 +319,12 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
           ) : (
             <button onClick={openAnnotationModal} className="px-3 py-1.5 rounded-lg bg-yellow-400 hover:bg-yellow-500 text-yellow-900 text-sm font-medium transition-colors">＋ メモ追加</button>
           )}
-          <div className="ml-auto flex gap-4 text-xs flex-wrap">
+          {hiddenCount > 0 && (
+            <button onClick={showAll} className="ml-auto px-3 py-1.5 rounded-full text-xs font-medium bg-gray-200 hover:bg-gray-300 text-gray-700 transition-colors">
+              {hiddenCount}名を非表示中 — 全表示
+            </button>
+          )}
+          <div className={`${hiddenCount > 0 ? '' : 'ml-auto'} flex gap-4 text-xs flex-wrap`}>
             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-blue-200 border border-blue-300 inline-block"></span><span className="text-gray-600">空き</span></span>
             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-red-400 border border-red-500 inline-block"></span><span className="text-gray-600">対応中</span></span>
             <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-yellow-200 border border-yellow-300 inline-block"></span><span className="text-gray-600">メモ</span></span>
@@ -351,13 +371,21 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                   </tr>
                 </thead>
                 <tbody>
-                  {staffRows.length === 0 && (
-                    <tr><td colSpan={TOTAL_SLOTS+1} className="text-center py-10 text-gray-400">シフトデータなし</td></tr>
+                  {visibleRows.length === 0 && (
+                    <tr><td colSpan={TOTAL_SLOTS+1} className="text-center py-10 text-gray-400">{staffRows.length > 0 ? '全員非表示中' : 'シフトデータなし'}</td></tr>
                   )}
-                  {staffRows.map(({ staff, shift }) => (
+                  {visibleRows.map(({ staff, shift }) => (
                     <tr key={staff.id} className="border-b border-gray-100">
                       <td className="sticky left-0 z-10 bg-white border-r border-gray-200 py-1.5" style={{ width: STAFF_COL_WIDTH, minWidth: STAFF_COL_WIDTH, paddingLeft:8, paddingRight:8 }}>
-                        <div className="font-semibold text-gray-800 truncate" style={{ maxWidth: STAFF_COL_WIDTH-16 }}>{staff.name}</div>
+                        <div className="flex items-center justify-between gap-1">
+                          <div className="font-semibold text-gray-800 truncate" style={{ maxWidth: STAFF_COL_WIDTH-32 }}>{staff.name}</div>
+                          <button
+                            onClick={e => { e.stopPropagation(); toggleHidden(staff.id) }}
+                            className="flex-shrink-0 text-gray-300 hover:text-gray-600 transition-colors"
+                            title="非表示"
+                            style={{ fontSize: 12, lineHeight: 1 }}
+                          >✕</button>
+                        </div>
                         {shift
                           ? <div className="text-gray-500" style={{ fontSize:10 }}>{formatShiftTime(shift.start_time)} 〜 {formatShiftTime(shift.end_time)}</div>
                           : <div className="text-gray-400" style={{ fontSize:10 }}>シフトなし</div>
@@ -443,7 +471,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
           </div>
 
           <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-6 text-sm">
-            <div className="text-gray-600">出勤スタッフ: <span className="font-bold text-gray-900">{staffRows.filter(r => r.shift).length}名</span></div>
+            <div className="text-gray-600">出勤スタッフ: <span className="font-bold text-gray-900">{visibleRows.filter(r => r.shift).length}名</span>{hiddenCount > 0 && <span className="text-gray-400 text-xs ml-1">（{hiddenCount}名非表示）</span>}</div>
             <div className="text-gray-600">対応中: <span className="font-bold text-red-600">{reservations.filter(r => r.staff_id && r.course_duration).length}件</span></div>
           </div>
         </div>
