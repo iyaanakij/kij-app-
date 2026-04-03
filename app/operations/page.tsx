@@ -78,9 +78,11 @@ export default function OperationsPage() {
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [annotations, setAnnotations] = useState<BoardAnnotation[]>([])
   const [loading, setLoading] = useState(false)
-  const [hiddenStaffIds, setHiddenStaffIds] = useState<Set<number>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('ops-hidden-staff') ?? '[]')) } catch { return new Set() }
-  })
+  const [hiddenStaffIds, setHiddenStaffIds] = useState<Set<number>>(new Set())
+  const hiddenKey = `ops-hidden-staff-${selectedAreaId}`
+  useEffect(() => {
+    try { setHiddenStaffIds(new Set(JSON.parse(localStorage.getItem(hiddenKey) ?? '[]'))) } catch { setHiddenStaffIds(new Set()) }
+  }, [hiddenKey])
 
   // drag state
   const [drag, setDrag] = useState<{ staffId: number; startSlot: number; endSlot: number } | null>(null)
@@ -178,11 +180,11 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
     setHiddenStaffIds(prev => {
       const next = new Set(prev)
       next.has(staffId) ? next.delete(staffId) : next.add(staffId)
-      localStorage.setItem('ops-hidden-staff', JSON.stringify([...next]))
+      localStorage.setItem(hiddenKey, JSON.stringify([...next]))
       return next
     })
   }
-  const showAll = () => { setHiddenStaffIds(new Set()); localStorage.removeItem('ops-hidden-staff') }
+  const showAll = () => { setHiddenStaffIds(new Set()); localStorage.removeItem(hiddenKey) }
   const visibleRows = staffRows.filter(r => !hiddenStaffIds.has(r.staff.id))
   const hiddenCount = staffRows.filter(r => hiddenStaffIds.has(r.staff.id)).length
 
