@@ -35,7 +35,7 @@ export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult
   })
 
   // 画像を添付ファイルとしてfetch
-  const attachments: nodemailer.Attachment[] = []
+  const attachments: { filename: string; content: Buffer; contentType: string }[] = []
   for (const url of opts.imageUrls ?? []) {
     try {
       const res = await fetch(url)
