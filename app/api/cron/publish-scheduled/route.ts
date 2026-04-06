@@ -39,13 +39,23 @@ export async function GET(req: NextRequest) {
   if (publishedItems.length > 0) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kij-app.vercel.app'
     await Promise.allSettled(
-      publishedItems.map(item =>
-        fetch(`${baseUrl}/api/photodiary/deliver`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ diary_id: item.id }),
-        }).catch(err => console.error(`配信エラー diary_id=${item.id}:`, err))
-      )
+      publishedItems.map(async item => {
+        try {
+          const res = await fetch(`${baseUrl}/api/photodiary/deliver`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ diary_id: item.id }),
+          })
+          const body = await res.json()
+          if (!res.ok) {
+            console.error(`[cron] 配信APIエラー diary_id=${item.id}:`, body)
+          } else {
+            console.log(`[cron] 配信結果 diary_id=${item.id}:`, body)
+          }
+        } catch (err) {
+          console.error(`[cron] 配信fetch失敗 diary_id=${item.id}:`, err)
+        }
+      })
     )
   }
 

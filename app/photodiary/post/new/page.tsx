@@ -99,14 +99,24 @@ export default function PhotoDiaryNewPage() {
         await supabase.from('photo_diaries').update({ thumbnail_image_id: thumbnailImageId }).eq('id', diary.id)
       }
 
-      // 即時投稿の場合のみ配信（keepalive でページ遷移後もリクエスト継続）
+      // 即時投稿の場合のみ配信
       if (publishNow) {
-        await fetch('/api/photodiary/deliver', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ diary_id: diary.id }),
-          keepalive: true,
-        }).catch(err => console.error('配信エラー:', err))
+        try {
+          const deliverRes = await fetch('/api/photodiary/deliver', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ diary_id: diary.id }),
+            keepalive: true,
+          })
+          const deliverBody = await deliverRes.json()
+          if (!deliverRes.ok) {
+            console.error('[deliver] 配信APIエラー:', deliverBody)
+          } else {
+            console.log('[deliver] 配信結果:', deliverBody)
+          }
+        } catch (err) {
+          console.error('[deliver] fetch失敗:', err)
+        }
       }
 
       router.push('/photodiary/post')

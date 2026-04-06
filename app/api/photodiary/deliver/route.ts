@@ -7,10 +7,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// 画像URLを取得（storage_path → public URL）
 function getImageUrl(path: string): string {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  return `${supabaseUrl}/storage/v1/object/public/diary-images/${path}`
+  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/diary-images/${path}`
 }
 
 export async function POST(request: Request) {
@@ -22,41 +20,44 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'diary_id が必要です' }, { status: 400 })
     }
 
+    console.log(`[deliver] diary_id=${diary_id} 開始`)
+
     // 日記情報を取得
     const { data: diary, error: diaryError } = await supabase
       .from('photo_diaries')
-      .select(`
-        id, staff_id, title, body, published_at,
-        photo_diary_images(storage_path, sort_order)
-      `)
+      .select(`id, staff_id, title, body, published_at, photo_diary_images(storage_path, sort_order)`)
       .eq('id', diary_id)
       .eq('published', true)
       .single()
 
     if (diaryError || !diary) {
+      console.error(`[deliver] diary取得失敗 diary_id=${diary_id}:`, diaryError?.message)
       return NextResponse.json({ error: '日記が見つからないか未公開です' }, { status: 404 })
     }
 
     // スタッフ名を取得
-    const { data: staff } = await supabase
-      .from('staff')
-      .select('name')
-      .eq('id', diary.staff_id)
-      .single()
+    const { data: staff } = await supabase.from('staff').select('name').eq('id', diary.staff_id).single()
 
     // 有効な転送先を取得
-    const { data: targets } = await supabase
+    const { data: targets, error: targetsError } = await supabase
       .from('staff_diary_delivery_targets')
       .select('*')
       .eq('staff_id', diary.staff_id)
       .eq('enabled', true)
       .eq('delivery_type', 'email')
 
+    if (targetsError) {
+      console.error(`[deliver] targets取得失敗:`, targetsError.message)
+      return NextResponse.json({ error: targetsError.message }, { status: 500 })
+    }
+
+    console.log(`[deliver] staff_id=${diary.staff_id} 有効転送先=${targets?.length ?? 0}件`)
+
     if (!targets || targets.length === 0) {
       return NextResponse.json({ sent: 0, skipped: 'no targets' })
     }
 
-    // 既送信チェック（同一diary_idで sent のログがあれば重複送信しない）
+    // 既送信チェック
     const { data: existingLogs } = await supabase
       .from('diary_delivery_logs')
       .select('target_id')
@@ -67,20 +68,17 @@ export async function POST(request: Request) {
     const pendingTargets = targets.filter(t => !alreadySentTargetIds.has(t.id))
 
     if (pendingTargets.length === 0) {
+      console.log(`[deliver] diary_id=${diary_id} 全ターゲット送信済み`)
       return NextResponse.json({ sent: 0, skipped: 'already sent' })
     }
 
-    // 画像URLリストを作成（sort_order順）
+    // メール本文作成
     const sortedImages = (diary.photo_diary_images ?? [])
       .sort((a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order)
       .map((img: { storage_path: string }) => getImageUrl(img.storage_path))
 
     const staffName = staff?.name ?? 'キャスト'
-    const subject = diary.title
-      ? `【${staffName}】${diary.title}`
-      : `【${staffName}】写メ日記`
-
-    // テキスト本文
+    const subject = diary.title ? `【${staffName}】${diary.title}` : `【${staffName}】写メ日記`
     const textBody = [
       diary.body ?? '',
       '',
@@ -88,62 +86,49 @@ export async function POST(request: Request) {
       ...sortedImages,
     ].join('\n').trim()
 
+    console.log(`[deliver] from=${process.env.RESEND_FROM_EMAIL} subject="${subject}"`)
+
     const resend = new Resend(process.env.RESEND_API_KEY!)
 
-    // 送信処理
-    const results = await Promise.allSettled(
-      pendingTargets.map(async target => {
-        try {
-          const { data: sendData, error: sendError } = await resend.emails.send({
-            from: process.env.RESEND_FROM_EMAIL!,
-            to: target.destination,
-            subject,
-            text: textBody,
-          })
+    // 送信処理（target単位で結果を追跡）
+    const targetResults: { target_id: string; media_name: string; status: string; resend_id?: string; error?: string }[] = []
 
-          if (sendError) {
-            console.error(`Resend error [${target.media_name}]:`, sendError)
-            await supabase.from('diary_delivery_logs').insert({
-              diary_id,
-              target_id: target.id,
-              status: 'failed',
-              error_message: sendError.message,
-            })
-            return { target_id: target.id, media_name: target.media_name, status: 'failed', error: sendError.message }
-          }
-
-          console.log(`送信成功 [${target.media_name}] id=${sendData?.id}`)
-          await supabase.from('diary_delivery_logs').insert({
-            diary_id,
-            target_id: target.id,
-            status: 'sent',
-          })
-
-          return { target_id: target.id, media_name: target.media_name, status: 'sent' }
-        } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : String(err)
-          console.error(`送信例外 [${target.media_name}]:`, errorMessage)
-
-          await supabase.from('diary_delivery_logs').insert({
-            diary_id,
-            target_id: target.id,
-            status: 'failed',
-            error_message: errorMessage,
-          })
-
-          return { target_id: target.id, media_name: target.media_name, status: 'failed', error: errorMessage }
-        }
+    for (const target of pendingTargets) {
+      const { data: sendData, error: sendError } = await resend.emails.send({
+        from: process.env.RESEND_FROM_EMAIL!,
+        to: target.destination,
+        subject,
+        text: textBody,
       })
-    )
 
-    const sent = results.filter(r => r.status === 'fulfilled' && (r.value as { status: string }).status === 'sent').length
-    const failed = results.length - sent
+      if (sendError) {
+        console.error(`[deliver] 送信失敗 [${target.media_name}] to=${target.destination}:`, sendError.message)
+        await supabase.from('diary_delivery_logs').insert({
+          diary_id,
+          target_id: target.id,
+          status: 'failed',
+          error_message: sendError.message,
+        })
+        targetResults.push({ target_id: target.id, media_name: target.media_name, status: 'failed', error: sendError.message })
+      } else {
+        console.log(`[deliver] 送信成功 [${target.media_name}] to=${target.destination} resend_id=${sendData?.id}`)
+        await supabase.from('diary_delivery_logs').insert({
+          diary_id,
+          target_id: target.id,
+          status: 'sent',
+        })
+        targetResults.push({ target_id: target.id, media_name: target.media_name, status: 'sent', resend_id: sendData?.id })
+      }
+    }
 
-    console.log(`写メ日記配信 diary_id=${diary_id}: ${sent}件送信, ${failed}件失敗`)
+    const sent = targetResults.filter(r => r.status === 'sent').length
+    const failed = targetResults.filter(r => r.status === 'failed').length
+    console.log(`[deliver] diary_id=${diary_id} 完了: ${sent}件送信, ${failed}件失敗`)
 
-    return NextResponse.json({ sent, failed, total: pendingTargets.length })
+    return NextResponse.json({ sent, failed, total: pendingTargets.length, results: targetResults })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
+    console.error(`[deliver] 予期せぬエラー:`, msg)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
