@@ -53,6 +53,25 @@ export default function PhotoDiaryPostPage() {
     fetchDiaries()
   }
 
+  const resendDiary = async (id: number) => {
+    if (!confirm('この日記を転送先に再送信しますか？')) return
+    try {
+      const res = await fetch('/api/photodiary/deliver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ diary_id: id, force: true }),
+      })
+      const body = await res.json()
+      if (!res.ok) {
+        alert(`再送失敗: ${body.error ?? '不明なエラー'}`)
+      } else {
+        alert(`再送完了: ${body.sent}件送信, ${body.failed}件失敗`)
+      }
+    } catch (err) {
+      alert(`再送エラー: ${err}`)
+    }
+  }
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="text-gray-400 animate-pulse">読み込み中...</div>
@@ -129,6 +148,17 @@ export default function PhotoDiaryPostPage() {
                   >
                     編集
                   </button>
+                  {d.published && (
+                    <>
+                      <div className="w-px bg-gray-100" />
+                      <button
+                        onClick={() => resendDiary(d.id)}
+                        className="flex-1 py-2.5 text-center text-sm text-blue-400 font-medium hover:bg-blue-50 transition-colors"
+                      >
+                        再送
+                      </button>
+                    </>
+                  )}
                   <div className="w-px bg-gray-100" />
                   <button
                     onClick={() => deleteDiary(d.id)}
