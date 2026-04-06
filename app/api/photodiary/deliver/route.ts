@@ -22,10 +22,10 @@ export async function POST(request: Request) {
 
     console.log(`[deliver] diary_id=${diary_id} 開始`)
 
-    // 日記情報を取得（デバッグ: publishedフィルターなし）
+    // 日記情報を取得（画像は別クエリ）
     const { data: diary, error: diaryError } = await supabase
       .from('photo_diaries')
-      .select(`id, staff_id, title, body, published, published_at, photo_diary_images(storage_path, sort_order)`)
+      .select('id, staff_id, title, body, published, published_at')
       .eq('id', diary_id)
       .single()
 
@@ -40,6 +40,13 @@ export async function POST(request: Request) {
       console.error(`[deliver] diary_id=${diary_id} は未公開 (published=${diary.published})`)
       return NextResponse.json({ error: '未公開の日記です', published: diary.published }, { status: 404 })
     }
+
+    // 画像を別クエリで取得
+    const { data: images } = await supabase
+      .from('photo_diary_images')
+      .select('storage_path, sort_order')
+      .eq('diary_id', diary_id)
+      .order('sort_order')
 
     // スタッフ名を取得
     const { data: staff } = await supabase.from('staff').select('name').eq('id', diary.staff_id).single()
@@ -79,9 +86,7 @@ export async function POST(request: Request) {
     }
 
     // メール本文作成
-    const sortedImages = (diary.photo_diary_images ?? [])
-      .sort((a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order)
-      .map((img: { storage_path: string }) => getImageUrl(img.storage_path))
+    const sortedImages = (images ?? []).map(img => getImageUrl(img.storage_path))
 
     const staffName = staff?.name ?? 'キャスト'
     const subject = diary.title ? `【${staffName}】${diary.title}` : `【${staffName}】写メ日記`
