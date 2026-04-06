@@ -22,17 +22,23 @@ export async function POST(request: Request) {
 
     console.log(`[deliver] diary_id=${diary_id} 開始`)
 
-    // 日記情報を取得
+    // 日記情報を取得（デバッグ: publishedフィルターなし）
     const { data: diary, error: diaryError } = await supabase
       .from('photo_diaries')
-      .select(`id, staff_id, title, body, published_at, photo_diary_images(storage_path, sort_order)`)
+      .select(`id, staff_id, title, body, published, published_at, photo_diary_images(storage_path, sort_order)`)
       .eq('id', diary_id)
-      .eq('published', true)
       .single()
+
+    console.log(`[deliver] diary取得結果: published=${diary?.published} error=${diaryError?.message ?? 'none'}`)
 
     if (diaryError || !diary) {
       console.error(`[deliver] diary取得失敗 diary_id=${diary_id}:`, diaryError?.message)
-      return NextResponse.json({ error: '日記が見つからないか未公開です' }, { status: 404 })
+      return NextResponse.json({ error: `日記が見つかりません: ${diaryError?.message}` }, { status: 404 })
+    }
+
+    if (!diary.published) {
+      console.error(`[deliver] diary_id=${diary_id} は未公開 (published=${diary.published})`)
+      return NextResponse.json({ error: '未公開の日記です', published: diary.published }, { status: 404 })
     }
 
     // スタッフ名を取得
