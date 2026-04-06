@@ -100,7 +100,7 @@ export default function StaffPage() {
     setDeliverySaving(true)
     const { data } = await supabase
       .from('staff_diary_delivery_targets')
-      .insert({ staff_id: staffId, media_name: newTargetMediaName.trim(), destination: newTargetDestination.trim() })
+      .insert({ staff_id: staffId, media_name: newTargetMediaName.trim(), destination: newTargetDestination.trim(), delivery_type: 'email', enabled: true })
       .select()
       .single()
     if (data) setDeliveryTargets(prev => [...prev, data])
