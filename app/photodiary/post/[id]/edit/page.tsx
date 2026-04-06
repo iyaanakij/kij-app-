@@ -122,6 +122,7 @@ export default function PhotoDiaryEditPage() {
       const publishNow = postMode === 'now'
       const scheduledDate = isScheduled ? new Date(scheduledAt) : null
 
+      const wasPublished = diary.published
       await supabase.from('photo_diaries').update({
         title: title.trim() || null,
         body: body.trim() || null,
@@ -130,6 +131,16 @@ export default function PhotoDiaryEditPage() {
         published_at: publishNow ? (diary.published_at ?? new Date().toISOString()) : null,
         scheduled_at: scheduledDate?.toISOString() ?? null,
       }).eq('id', diary.id)
+
+      // 未公開→即時公開への変更時のみ配信
+      if (publishNow && !wasPublished) {
+        await fetch('/api/photodiary/deliver', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ diary_id: diary.id }),
+          keepalive: true,
+        }).catch(err => console.error('配信エラー:', err))
+      }
 
       router.push('/photodiary/post')
     } catch (e) {

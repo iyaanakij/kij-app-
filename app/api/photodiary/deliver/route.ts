@@ -94,13 +94,25 @@ export async function POST(request: Request) {
     const results = await Promise.allSettled(
       pendingTargets.map(async target => {
         try {
-          await resend.emails.send({
+          const { data: sendData, error: sendError } = await resend.emails.send({
             from: process.env.RESEND_FROM_EMAIL!,
             to: target.destination,
             subject,
             text: textBody,
           })
 
+          if (sendError) {
+            console.error(`Resend error [${target.media_name}]:`, sendError)
+            await supabase.from('diary_delivery_logs').insert({
+              diary_id,
+              target_id: target.id,
+              status: 'failed',
+              error_message: sendError.message,
+            })
+            return { target_id: target.id, media_name: target.media_name, status: 'failed', error: sendError.message }
+          }
+
+          console.log(`送信成功 [${target.media_name}] id=${sendData?.id}`)
           await supabase.from('diary_delivery_logs').insert({
             diary_id,
             target_id: target.id,
@@ -110,6 +122,7 @@ export async function POST(request: Request) {
           return { target_id: target.id, media_name: target.media_name, status: 'sent' }
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : String(err)
+          console.error(`送信例外 [${target.media_name}]:`, errorMessage)
 
           await supabase.from('diary_delivery_logs').insert({
             diary_id,
