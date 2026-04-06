@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -99,36 +99,43 @@ export async function POST(request: Request) {
 
     console.log(`[deliver] from=${process.env.RESEND_FROM_EMAIL} subject="${subject}"`)
 
-    const resend = new Resend(process.env.RESEND_API_KEY!)
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.GMAIL_USER!,
+        pass: process.env.GMAIL_APP_PASSWORD!,
+      },
+    })
 
     // 送信処理（target単位で結果を追跡）
-    const targetResults: { target_id: string; media_name: string; status: string; resend_id?: string; error?: string }[] = []
+    const targetResults: { target_id: string; media_name: string; status: string; error?: string }[] = []
 
     for (const target of pendingTargets) {
-      const { data: sendData, error: sendError } = await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL!,
-        to: target.destination,
-        subject,
-        text: textBody,
-      })
-
-      if (sendError) {
-        console.error(`[deliver] 送信失敗 [${target.media_name}] to=${target.destination}:`, sendError.message)
-        await supabase.from('diary_delivery_logs').insert({
-          diary_id,
-          target_id: target.id,
-          status: 'failed',
-          error_message: sendError.message,
+      try {
+        await transporter.sendMail({
+          from: `写メ日記 <${process.env.GMAIL_USER}>`,
+          to: target.destination,
+          subject,
+          text: textBody,
         })
-        targetResults.push({ target_id: target.id, media_name: target.media_name, status: 'failed', error: sendError.message })
-      } else {
-        console.log(`[deliver] 送信成功 [${target.media_name}] to=${target.destination} resend_id=${sendData?.id}`)
+
+        console.log(`[deliver] 送信成功 [${target.media_name}] to=${target.destination}`)
         await supabase.from('diary_delivery_logs').insert({
           diary_id,
           target_id: target.id,
           status: 'sent',
         })
-        targetResults.push({ target_id: target.id, media_name: target.media_name, status: 'sent', resend_id: sendData?.id })
+        targetResults.push({ target_id: target.id, media_name: target.media_name, status: 'sent' })
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        console.error(`[deliver] 送信失敗 [${target.media_name}] to=${target.destination}:`, errorMessage)
+        await supabase.from('diary_delivery_logs').insert({
+          diary_id,
+          target_id: target.id,
+          status: 'failed',
+          error_message: errorMessage,
+        })
+        targetResults.push({ target_id: target.id, media_name: target.media_name, status: 'failed', error: errorMessage })
       }
     }
 
