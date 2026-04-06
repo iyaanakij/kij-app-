@@ -92,12 +92,6 @@ export async function POST(request: Request) {
     const sortedImages = (images ?? []).map(img => getImageUrl(img.storage_path))
     const staffName = staff?.name ?? 'キャスト'
     const subject = diary.title ? `【${staffName}】${diary.title}` : `【${staffName}】写メ日記`
-    const textBody = [
-      diary.body ?? '',
-      '',
-      sortedImages.length > 0 ? '【画像URL】' : '',
-      ...sortedImages,
-    ].join('\n').trim()
 
     const fromEmail = process.env.MAIL_FROM ?? process.env.GMAIL_USER
     console.log(`[deliver] from=${fromEmail} subject="${subject}"`)
@@ -109,7 +103,8 @@ export async function POST(request: Request) {
       const result = await sendEmail({
         to: target.destination,
         subject,
-        text: textBody,
+        text: diary.body ?? '',
+        imageUrls: sortedImages,
       })
 
       console.log(
