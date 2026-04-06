@@ -115,7 +115,8 @@ export default function StaffPage() {
   }
 
   async function deleteDeliveryTarget(id: string) {
-    await supabase.from('staff_diary_delivery_targets').delete().eq('id', id)
+    const { error } = await supabase.from('staff_diary_delivery_targets').delete().eq('id', id)
+    if (error) { alert(`削除失敗: ${error.message}`); return }
     setDeliveryTargets(prev => prev.filter(t => t.id !== id))
   }
 
