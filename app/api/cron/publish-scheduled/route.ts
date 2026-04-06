@@ -32,6 +32,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  console.log(`予約投稿: ${data?.length ?? 0}件公開`)
-  return NextResponse.json({ published: data?.length ?? 0, items: data })
+  const publishedItems = data ?? []
+  console.log(`予約投稿: ${publishedItems.length}件公開`)
+
+  // 公開された日記を配信
+  if (publishedItems.length > 0) {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://kij-app.vercel.app'
+    await Promise.allSettled(
+      publishedItems.map(item =>
+        fetch(`${baseUrl}/api/photodiary/deliver`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ diary_id: item.id }),
+        }).catch(err => console.error(`配信エラー diary_id=${item.id}:`, err))
+      )
+    )
+  }
+
+  return NextResponse.json({ published: publishedItems.length, items: data })
 }

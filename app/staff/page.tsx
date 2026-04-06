@@ -9,6 +9,15 @@ interface StaffWithStores extends Staff {
   storeIds: number[]
 }
 
+interface DeliveryTarget {
+  id: string
+  staff_id: number
+  media_name: string
+  delivery_type: string
+  destination: string
+  enabled: boolean
+}
+
 const emptyStaff = (): Partial<StaffWithStores> => ({
   name: '',
   join_date: '',
@@ -37,6 +46,10 @@ export default function StaffPage() {
   const [syncResult, setSyncResult] = useState<Record<number, { added: number; linked: number; skipped: number; total: number }> | null>(null)
   const [selectedStoreFilter, setSelectedStoreFilter] = useState<number | null>(null)
   const [selectedBrandFilter, setSelectedBrandFilter] = useState<StaffBrand | null>(null)
+  const [deliveryTargets, setDeliveryTargets] = useState<DeliveryTarget[]>([])
+  const [newTargetMediaName, setNewTargetMediaName] = useState('')
+  const [newTargetDestination, setNewTargetDestination] = useState('')
+  const [deliverySaving, setDeliverySaving] = useState(false)
 
   const fetchStaff = useCallback(async () => {
     setLoading(true)
@@ -62,13 +75,48 @@ export default function StaffPage() {
   function openAdd() {
     setEditing(emptyStaff())
     setIsEdit(false)
+    setDeliveryTargets([])
+    setNewTargetMediaName('')
+    setNewTargetDestination('')
     setModalOpen(true)
   }
 
-  function openEdit(s: StaffWithStores) {
+  async function openEdit(s: StaffWithStores) {
     setEditing({ ...s })
     setIsEdit(true)
+    setNewTargetMediaName('')
+    setNewTargetDestination('')
+    const { data } = await supabase
+      .from('staff_diary_delivery_targets')
+      .select('*')
+      .eq('staff_id', s.id)
+      .order('created_at')
+    setDeliveryTargets(data ?? [])
     setModalOpen(true)
+  }
+
+  async function addDeliveryTarget(staffId: number) {
+    if (!newTargetMediaName.trim() || !newTargetDestination.trim()) return
+    setDeliverySaving(true)
+    const { data } = await supabase
+      .from('staff_diary_delivery_targets')
+      .insert({ staff_id: staffId, media_name: newTargetMediaName.trim(), destination: newTargetDestination.trim() })
+      .select()
+      .single()
+    if (data) setDeliveryTargets(prev => [...prev, data])
+    setNewTargetMediaName('')
+    setNewTargetDestination('')
+    setDeliverySaving(false)
+  }
+
+  async function toggleDeliveryTarget(target: DeliveryTarget) {
+    await supabase.from('staff_diary_delivery_targets').update({ enabled: !target.enabled }).eq('id', target.id)
+    setDeliveryTargets(prev => prev.map(t => t.id === target.id ? { ...t, enabled: !t.enabled } : t))
+  }
+
+  async function deleteDeliveryTarget(id: string) {
+    await supabase.from('staff_diary_delivery_targets').delete().eq('id', id)
+    setDeliveryTargets(prev => prev.filter(t => t.id !== id))
   }
 
   async function saveStaff() {
@@ -595,6 +643,49 @@ export default function StaffPage() {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
                 />
               </div>
+
+              {isEdit && editing.id && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">📧 写メ日記転送先</label>
+                  <div className="space-y-2">
+                    {deliveryTargets.map(t => (
+                      <div key={t.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs">
+                        <button
+                          onClick={() => toggleDeliveryTarget(t)}
+                          className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 ${t.enabled ? 'bg-blue-500' : 'bg-gray-300'}`}
+                          title={t.enabled ? 'ON' : 'OFF'}
+                        />
+                        <span className="font-medium text-gray-700 w-20 flex-shrink-0">{t.media_name}</span>
+                        <span className="text-gray-500 truncate flex-1">{t.destination}</span>
+                        <button onClick={() => deleteDeliveryTarget(t.id)} className="text-red-400 hover:text-red-600 flex-shrink-0">✕</button>
+                      </div>
+                    ))}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newTargetMediaName}
+                        onChange={e => setNewTargetMediaName(e.target.value)}
+                        placeholder="媒体名"
+                        className="w-24 border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input
+                        type="email"
+                        value={newTargetDestination}
+                        onChange={e => setNewTargetDestination(e.target.value)}
+                        placeholder="メールアドレス"
+                        className="flex-1 border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        onClick={() => editing.id && addDeliveryTarget(editing.id)}
+                        disabled={deliverySaving || !newTargetMediaName.trim() || !newTargetDestination.trim()}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium disabled:opacity-40 transition-colors"
+                      >
+                        追加
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="px-5 py-4 bg-gray-50 rounded-b-xl flex gap-2 justify-end border-t border-gray-200">
               <button

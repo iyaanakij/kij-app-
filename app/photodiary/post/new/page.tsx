@@ -99,6 +99,15 @@ export default function PhotoDiaryNewPage() {
         await supabase.from('photo_diaries').update({ thumbnail_image_id: thumbnailImageId }).eq('id', diary.id)
       }
 
+      // 即時投稿の場合のみ配信
+      if (publishNow) {
+        fetch('/api/photodiary/deliver', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ diary_id: diary.id }),
+        }).catch(err => console.error('配信エラー:', err))
+      }
+
       router.push('/photodiary/post')
     } catch (e) {
       console.error(e)
