@@ -48,9 +48,6 @@ export async function POST(request: Request) {
       .eq('diary_id', diary_id)
       .order('sort_order')
 
-    // スタッフ名を取得
-    const { data: staff } = await supabase.from('staff').select('name').eq('id', diary.staff_id).single()
-
     // 有効な転送先を取得
     const { data: targets, error: targetsError } = await supabase
       .from('staff_diary_delivery_targets')
@@ -90,8 +87,7 @@ export async function POST(request: Request) {
 
     // メール本文作成
     const sortedImages = (images ?? []).map(img => getImageUrl(img.storage_path))
-    const staffName = staff?.name ?? 'キャスト'
-    const subject = diary.title ? `【${staffName}】${diary.title}` : `【${staffName}】写メ日記`
+    const subject = diary.title ? diary.title : '写メ日記'
 
     const fromEmail = process.env.MAIL_FROM ?? process.env.GMAIL_USER
     console.log(`[deliver] from=${fromEmail} subject="${subject}"`)
