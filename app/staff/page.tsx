@@ -570,13 +570,13 @@ export default function StaffPage() {
 
       {/* Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
-            <div className="bg-gray-900 text-white px-5 py-4 rounded-t-xl flex items-center justify-between">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
+            <div className="bg-gray-900 text-white px-5 py-4 rounded-t-xl flex items-center justify-between flex-shrink-0">
               <h2 className="font-bold text-base">{isEdit ? 'スタッフ編集' : '新規スタッフ追加'}</h2>
               <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-white text-xl leading-none transition-colors">✕</button>
             </div>
-            <div className="p-5 space-y-4 text-sm">
+            <div className="p-5 space-y-4 text-sm overflow-y-auto">
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">
                   名前 <span className="text-red-500">*</span>
@@ -689,7 +689,7 @@ export default function StaffPage() {
                 </div>
               )}
             </div>
-            <div className="px-5 py-4 bg-gray-50 rounded-b-xl flex gap-2 justify-end border-t border-gray-200">
+            <div className="px-5 py-4 bg-gray-50 rounded-b-xl flex gap-2 justify-end border-t border-gray-200 flex-shrink-0">
               <button
                 onClick={() => setModalOpen(false)}
                 className="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors"
