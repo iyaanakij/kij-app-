@@ -260,7 +260,8 @@ export default function StaffPage() {
 
   async function deleteStaff(id: number, name: string) {
     if (!confirm(`${name} を削除しますか？\nこのスタッフのシフトと予約データも影響を受けます。`)) return
-    await supabase.from('staff').delete().eq('id', id)
+    const { error } = await supabase.from('staff').delete().eq('id', id)
+    if (error) { alert(`削除失敗: ${error.message}`); return }
     fetchStaff()
   }
 
