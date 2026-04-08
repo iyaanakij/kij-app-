@@ -41,8 +41,16 @@ export async function GET(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // ── LINEでログイン ──────────────────────────────────
-  if (state === 'login') {
+  // ── LINEでログイン（共通処理） ──────────────────────────────────
+  if (state === 'login' || state === 'login_diary') {
+    const loginErrorUrl = state === 'login_diary'
+      ? `${appUrl}/photodiary/login?error=line_not_linked`
+      : `${appUrl}/cast/login?error=line_not_linked`
+    const sessionErrorUrl = state === 'login_diary'
+      ? `${appUrl}/photodiary/login?error=session_failed`
+      : `${appUrl}/cast/login?error=session_failed`
+    const authRedirectPath = state === 'login_diary' ? '/photodiary/auth' : '/cast/auth'
+
     const { data: userRole } = await adminSupabase
       .from('user_roles')
       .select('id')
@@ -50,13 +58,12 @@ export async function GET(req: NextRequest) {
       .single()
 
     if (!userRole) {
-      return NextResponse.redirect(`${appUrl}/cast/login?error=line_not_linked`)
+      return NextResponse.redirect(loginErrorUrl)
     }
 
-    // ユーザーのメールアドレスを取得してマジックリンクを生成
     const { data: { user } } = await adminSupabase.auth.admin.getUserById(userRole.id)
     if (!user?.email) {
-      return NextResponse.redirect(`${appUrl}/cast/login?error=session_failed`)
+      return NextResponse.redirect(sessionErrorUrl)
     }
 
     const { data: linkData, error: linkError } = await adminSupabase.auth.admin.generateLink({
@@ -64,10 +71,10 @@ export async function GET(req: NextRequest) {
       email: user.email,
     })
     if (linkError || !linkData?.properties?.hashed_token) {
-      return NextResponse.redirect(`${appUrl}/cast/login?error=session_failed`)
+      return NextResponse.redirect(sessionErrorUrl)
     }
 
-    return NextResponse.redirect(`${appUrl}/cast/auth?hash=${linkData.properties.hashed_token}`)
+    return NextResponse.redirect(`${appUrl}${authRedirectPath}?hash=${linkData.properties.hashed_token}`)
   }
 
   // ── LINE新規登録 ────────────────────────────────────────
