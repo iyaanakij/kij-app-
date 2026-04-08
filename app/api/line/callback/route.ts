@@ -131,18 +131,24 @@ export async function GET(req: NextRequest) {
 
   // ── LINE連携（既存ログイン済みユーザーがLINEを紐付け）─────────
   if (state?.startsWith('link:')) {
-    const currentUserId = state.slice(5)
-    console.log('[LINE link] userId:', currentUserId, 'lineUserId:', lineUserId)
-    if (!currentUserId) {
-      return NextResponse.redirect(`${appUrl}/cast/login?error=not_logged_in`)
+    const nonce = state.slice(5)
+    const sessionCookie = req.cookies.get('line_link_session')?.value
+    if (!sessionCookie) {
+      return NextResponse.redirect(`${appUrl}/cast/shift?error=link_expired`)
     }
-    const { error: updateError } = await adminSupabase
+    const colonIdx = sessionCookie.indexOf(':')
+    const storedNonce = sessionCookie.slice(0, colonIdx)
+    const currentUserId = sessionCookie.slice(colonIdx + 1)
+    if (storedNonce !== nonce || !currentUserId) {
+      return NextResponse.redirect(`${appUrl}/cast/shift?error=link_invalid`)
+    }
+    await adminSupabase
       .from('user_roles')
       .update({ line_user_id: lineUserId })
       .eq('id', currentUserId)
-    console.log('[LINE link] update error:', updateError)
-
-    return NextResponse.redirect(`${appUrl}/cast/shift?line_linked=1`)
+    const res = NextResponse.redirect(`${appUrl}/cast/shift?line_linked=1`)
+    res.cookies.delete('line_link_session')
+    return res
   }
 
   return NextResponse.redirect(`${appUrl}/cast/login`)

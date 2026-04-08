@@ -1,13 +1,27 @@
 import { createClient } from '@supabase/supabase-js'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 const adminSupabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
+    // 管理者セッション確認
+    const token = request.headers.get('authorization')?.replace('Bearer ', '')
+    if (!token) return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
+
+    const { data: { user: caller } } = await adminSupabase.auth.getUser(token)
+    if (!caller) return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
+
+    const { data: callerRole } = await adminSupabase
+      .from('user_roles')
+      .select('role')
+      .eq('id', caller.id)
+      .maybeSingle()
+    if (callerRole?.role !== 'staff') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+
     const { staff_id } = await request.json() as { staff_id?: number }
     if (!staff_id) return NextResponse.json({ error: 'staff_id が必要です' }, { status: 400 })
 

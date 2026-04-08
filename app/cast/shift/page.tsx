@@ -13,16 +13,6 @@ function getDaysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate()
 }
 
-function getLineLinkUrl(userId: string) {
-  return `https://access.line.me/oauth2/v2.1/authorize?` +
-    new URLSearchParams({
-      response_type: 'code',
-      client_id: '2009450638',
-      redirect_uri: 'https://kij-app.vercel.app/api/line/callback',
-      state: `link:${userId}`,
-      scope: 'profile openid',
-    }).toString()
-}
 
 function CastShiftPageInner() {
   const router = useRouter()
@@ -35,6 +25,21 @@ function CastShiftPageInner() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [linkLoading, setLinkLoading] = useState(false)
+
+  async function handleLineLinkClick() {
+    setLinkLoading(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { setLinkLoading(false); return }
+    const res = await fetch('/api/line/prepare-link', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+    if (!res.ok) { setLinkLoading(false); return }
+    const { url } = await res.json()
+    window.location.href = url
+  }
+
   const now = new Date()
   const [calYear, setCalYear] = useState(now.getFullYear())
   const [calMonth, setCalMonth] = useState(now.getMonth() + 1)
@@ -171,12 +176,13 @@ function CastShiftPageInner() {
               <div className="text-sm font-bold text-[#05a347]">LINE通知を受け取る</div>
               <div className="text-xs text-gray-500 mt-0.5">予約・シフト承認をLINEでお知らせします</div>
             </div>
-            <a
-              href={user ? getLineLinkUrl(user.id) : '#'}
-              className="flex items-center gap-1.5 bg-[#06C755] hover:bg-[#05b34c] text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap transition-colors"
+            <button
+              onClick={handleLineLinkClick}
+              disabled={linkLoading}
+              className="flex items-center gap-1.5 bg-[#06C755] hover:bg-[#05b34c] text-white text-xs font-bold px-3 py-2 rounded-xl whitespace-nowrap transition-colors disabled:opacity-60"
             >
-              LINE連携
-            </a>
+              {linkLoading ? '...' : 'LINE連携'}
+            </button>
           </div>
         )}
         {lineLinked === true && params.get('line_linked') === '1' && (

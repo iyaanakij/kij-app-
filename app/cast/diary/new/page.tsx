@@ -23,14 +23,12 @@ export default function NewDiaryPage() {
   }, [router])
 
   const handleFileSelect = (selected: FileList | null) => {
-    if (!selected) return
-    const arr = Array.from(selected)
-    setFiles(prev => [...prev, ...arr])
-    arr.forEach(f => {
-      const reader = new FileReader()
-      reader.onload = e => setPreviews(prev => [...prev, e.target?.result as string])
-      reader.readAsDataURL(f)
-    })
+    if (!selected || selected.length === 0) return
+    const file = selected[0]
+    setFiles([file])
+    const reader = new FileReader()
+    reader.onload = e => setPreviews([e.target?.result as string])
+    reader.readAsDataURL(file)
   }
 
   const removeFile = (i: number) => {
@@ -135,17 +133,17 @@ export default function NewDiaryPage() {
         {/* 写真 */}
         <div>
           <label className="block text-xs font-semibold text-gray-500 mb-1.5">写真</label>
-          <label className="block w-full border-2 border-dashed border-gray-200 rounded-xl py-6 text-center cursor-pointer hover:border-pink-300 transition-colors">
-            <div className="text-gray-400 text-sm">タップして写真を選択</div>
-            <div className="text-gray-300 text-xs mt-1">複数枚選択可能</div>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={e => handleFileSelect(e.target.files)}
-            />
-          </label>
+          {files.length === 0 && (
+            <label className="block w-full border-2 border-dashed border-gray-200 rounded-xl py-6 text-center cursor-pointer hover:border-pink-300 transition-colors">
+              <div className="text-gray-400 text-sm">タップして写真を選択</div>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={e => handleFileSelect(e.target.files)}
+              />
+            </label>
+          )}
 
           {previews.length > 0 && (
             <div className="mt-3 grid grid-cols-3 gap-2">

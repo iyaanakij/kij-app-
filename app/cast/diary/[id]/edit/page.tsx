@@ -59,14 +59,12 @@ export default function EditDiaryPage() {
   useEffect(() => { fetchDiary() }, [fetchDiary])
 
   const handleFileSelect = (selected: FileList | null) => {
-    if (!selected) return
-    const arr = Array.from(selected)
-    setNewFiles(prev => [...prev, ...arr])
-    arr.forEach(f => {
-      const reader = new FileReader()
-      reader.onload = e => setNewPreviews(prev => [...prev, e.target?.result as string])
-      reader.readAsDataURL(f)
-    })
+    if (!selected || selected.length === 0) return
+    const file = selected[0]
+    setNewFiles([file])
+    const reader = new FileReader()
+    reader.onload = e => setNewPreviews([e.target?.result as string])
+    reader.readAsDataURL(file)
   }
 
   const removeExistingImage = (img: PhotoDiaryImage) => {
@@ -218,45 +216,44 @@ export default function EditDiaryPage() {
           </div>
         )}
 
-        {/* 新規写真追加 */}
-        <div>
-          <label className="block text-xs font-semibold text-gray-500 mb-1.5">写真を追加</label>
-          <label className="block w-full border-2 border-dashed border-gray-200 rounded-xl py-5 text-center cursor-pointer hover:border-pink-300 transition-colors">
-            <div className="text-gray-400 text-sm">タップして写真を選択</div>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={e => handleFileSelect(e.target.files)}
-            />
-          </label>
-          {newPreviews.length > 0 && (
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {newPreviews.map((src, i) => (
-                <div key={i} className="relative aspect-square">
-                  <img
-                    src={src}
-                    alt=""
-                    className={`w-full h-full object-cover rounded-xl border-2 transition-all ${newThumbnailIndex === i ? 'border-pink-500' : 'border-transparent'}`}
+        {/* 新規写真追加：既存画像がない場合のみ表示 */}
+        {existingImages.length === 0 && (
+          <div>
+            {newFiles.length === 0 && (
+              <>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">写真を追加</label>
+                <label className="block w-full border-2 border-dashed border-gray-200 rounded-xl py-5 text-center cursor-pointer hover:border-pink-300 transition-colors">
+                  <div className="text-gray-400 text-sm">タップして写真を選択</div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => handleFileSelect(e.target.files)}
                   />
-                  <button
-                    onClick={() => setNewThumbnailIndex(i)}
-                    className={`absolute bottom-1 left-1 text-xs px-1.5 py-0.5 rounded-full font-bold ${newThumbnailIndex === i ? 'bg-pink-500 text-white' : 'bg-black/40 text-white'}`}
-                  >
-                    {newThumbnailIndex === i ? 'TOP' : 'TOP?'}
-                  </button>
-                  <button
-                    onClick={() => removeNewFile(i)}
-                    className="absolute top-1 right-1 w-5 h-5 bg-black/50 text-white rounded-full text-xs flex items-center justify-center hover:bg-black/70"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                </label>
+              </>
+            )}
+            {newPreviews.length > 0 && (
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {newPreviews.map((src, i) => (
+                  <div key={i} className="relative aspect-square">
+                    <img
+                      src={src}
+                      alt=""
+                      className="w-full h-full object-cover rounded-xl border-2 border-pink-500"
+                    />
+                    <button
+                      onClick={() => removeNewFile(i)}
+                      className="absolute top-1 right-1 w-5 h-5 bg-black/50 text-white rounded-full text-xs flex items-center justify-center hover:bg-black/70"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ボタン */}
         <div className="space-y-3 pt-2">

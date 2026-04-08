@@ -183,9 +183,13 @@ export default function StaffPage() {
   async function deleteAccount() {
     if (!accountStaff || !confirm(`${accountStaff.name} のアカウントを削除しますか？\nログインできなくなります。`)) return
     setAccountSaving(true)
+    const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch('/api/staff/delete-account', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token ?? ''}`,
+      },
       body: JSON.stringify({ staff_id: accountStaff.id }),
     })
     const body = await res.json()
