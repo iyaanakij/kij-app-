@@ -233,17 +233,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ reply: 'ご利用ありがとうございました。お電話またはWEB予約からもご予約いただけます。' })
   }
 
-  const systemPrompt = `あなたは${store.name}のお客様対応アシスタントです。
-お客様の好みやご要望に合わせて、最適なキャストをご紹介し、ご利用のご案内をします。
-- キャスト情報はget_cast_listツールでHPから取得してください
-- 好みを聞いてキャストを絞り込む際は、年齢・身長・スリーサイズ・カップなどで比較してください
-- 詳細が必要な場合はget_cast_profileで個別プロフィールを取得してください
-- 出勤状況はget_available_staffで確認できます
-- 料金・コース・オプション・予約方法についてはget_system_infoで取得してください
-- お店の説明・サービス内容・遊び方・初めての方へのご案内はget_first_timer_infoで取得してください
+  const systemPrompt = `あなたは${store.name}の自動応答アシスタントです。
+有人対応・予約確定・空き確認はできません。サービス説明・不安解消・予約方法のご案内を担当します。
+
+【役割】
+- サービス内容・プレイ内容の説明
+- 初めての方への案内（流れ・雰囲気・よくある不安の解消）
+- 料金・コース・オプションの案内
+- キャストのタイプ紹介（HPのプロフィール情報をもとに）
+- 予約方法・アクセスの案内
+- 電話・出勤ページへの誘導
+
+【空き状況・出勤確認について】
+空き状況・出勤スケジュールは、リアルタイムで変動するためチャットでは確定案内を行っていません。
+- 「今日空いてる子は？」「○○ちゃん今日出てる？」などの質問には、確定案内をせず以下のように誘導してください：
+  「最新の空き状況はリアルタイムで変わるため、チャットでの確定案内はご遠慮しております。お急ぎの場合はお電話でご確認ください。ご希望の女性が本日出勤しているかは出勤ページでもご確認いただけます。」
+- 絶対に「○○ちゃんは本日出勤しています」「今は空いています」などの断定案内はしないこと
+
+【ツール使用方針】
+- get_cast_list / get_cast_profile：キャストのタイプや雰囲気を紹介する際に使用（出勤有無の案内には使わない）
+- get_system_info：料金・コース・予約方法の質問に使用
+- get_first_timer_info：初めての方への案内・サービス内容の説明に使用
+
+【注意】
 - 敬語で親しみやすくお答えください
 - 不確かな情報は答えないでください
-今日の日付: ${new Date().toISOString().slice(0, 10)}`
+- 有人対応・予約確定・空き状況の確定案内はできない旨を丁寧に伝えてください`
 
   try {
     const { text } = await generateText({
@@ -253,32 +268,16 @@ export async function POST(req: NextRequest) {
       stopWhen: stepCountIs(5),
       tools: {
         get_cast_list: tool({
-          description: 'HPからキャスト一覧を取得する。名前・年齢・身長・スリーサイズ・カップサイズが含まれる。好みのタイプを探す際に使用。',
+          description: 'HPからキャスト一覧を取得する。名前・年齢・身長・スリーサイズ・カップサイズが含まれる。好みのタイプを探す際に使用。出勤有無の案内には使わない。',
           inputSchema: z.object({}),
           execute: async () => getCastList(store.hpBase),
         }),
         get_cast_profile: tool({
-          description: '特定キャストの詳細プロフィールをHPから取得する。Q&A・店長コメント・サービス内容が含まれる。',
+          description: '特定キャストの詳細プロフィールをHPから取得する。Q&A・店長コメント・サービス内容が含まれる。出勤有無の案内には使わない。',
           inputSchema: z.object({
             gid: z.string().describe('キャストのgid（get_cast_listで取得）'),
           }),
           execute: async ({ gid }) => getCastProfile(store.hpBase, gid),
-        }),
-        get_available_staff: tool({
-          description: '指定した日付・時間に出勤していて空いているキャストの一覧を取得する',
-          inputSchema: z.object({
-            date: z.string().optional().describe('YYYY-MM-DD形式の日付。省略時は今日'),
-            time: z.number().optional().describe('HHMM形式の時刻（例: 1800）。省略時は現在時刻'),
-          }),
-          execute: async ({ date, time }) => getAvailableStaff(store.storeId, date, time),
-        }),
-        get_staff_schedule: tool({
-          description: '特定のキャストの出勤スケジュールを取得する',
-          inputSchema: z.object({
-            name: z.string().describe('キャスト名'),
-            date: z.string().optional().describe('YYYY-MM-DD形式の日付。省略時は今日'),
-          }),
-          execute: async ({ name, date }) => getStaffSchedule(store.storeId, name, date),
         }),
         get_system_info: tool({
           description: '料金システム・コース料金・オプション料金・予約方法などをHPから取得する。料金・値段・コースについて質問されたときに使用。',

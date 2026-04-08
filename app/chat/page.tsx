@@ -16,10 +16,10 @@ interface Message {
 }
 
 const STORAGE_KEY = 'chat_history'
-const INITIAL_MESSAGE: Message = { role: 'assistant', content: 'こんにちは！ご質問はお気軽にどうぞ。出勤状況やキャストのご紹介など、何でもお聞きください😊' }
+const INITIAL_MESSAGE: Message = { role: 'assistant', content: 'こんにちは！サービス内容・料金・初めての方へのご案内など、お気軽にどうぞ😊\n\n※このチャットは自動応答です。空き状況の確定案内・予約確定・有人対応はできません。' }
 
 const SUGGESTIONS = [
-  '今日空いてる子を教えて',
+  '料金・コースを教えて',
   'スレンダーな子はいる？',
   '初めてなんですが…',
 ]
@@ -85,8 +85,8 @@ export default function ChatPage() {
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-pink-500 flex items-center justify-center text-white text-lg">💬</div>
             <div>
-              <div className="font-bold text-gray-800 text-sm">お問い合わせ</div>
-              <div className="text-xs text-green-500 font-medium">● オンライン</div>
+              <div className="font-bold text-gray-800 text-sm">自動応答ガイド</div>
+              <div className="text-xs text-gray-400 font-medium">サービス案内・FAQ（予約確定・空き確認は非対応）</div>
             </div>
           </div>
           <button
