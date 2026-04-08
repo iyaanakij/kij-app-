@@ -244,19 +244,19 @@ export async function POST(req: NextRequest) {
       tools: {
         get_cast_list: tool({
           description: 'HPからキャスト一覧を取得する。名前・年齢・身長・スリーサイズ・カップサイズが含まれる。好みのタイプを探す際に使用。',
-          parameters: z.object({}),
-          execute: async (_: Record<string, never>) => getCastList(store.hpBase),
+          inputSchema: z.object({}),
+          execute: async () => getCastList(store.hpBase),
         }),
         get_cast_profile: tool({
           description: '特定キャストの詳細プロフィールをHPから取得する。Q&A・店長コメント・サービス内容が含まれる。',
-          parameters: z.object({
+          inputSchema: z.object({
             gid: z.string().describe('キャストのgid（get_cast_listで取得）'),
           }),
           execute: async ({ gid }) => getCastProfile(store.hpBase, gid),
         }),
         get_available_staff: tool({
           description: '指定した日付・時間に出勤していて空いているキャストの一覧を取得する',
-          parameters: z.object({
+          inputSchema: z.object({
             date: z.string().optional().describe('YYYY-MM-DD形式の日付。省略時は今日'),
             time: z.number().optional().describe('HHMM形式の時刻（例: 1800）。省略時は現在時刻'),
           }),
@@ -264,7 +264,7 @@ export async function POST(req: NextRequest) {
         }),
         get_staff_schedule: tool({
           description: '特定のキャストの出勤スケジュールを取得する',
-          parameters: z.object({
+          inputSchema: z.object({
             name: z.string().describe('キャスト名'),
             date: z.string().optional().describe('YYYY-MM-DD形式の日付。省略時は今日'),
           }),
@@ -272,13 +272,13 @@ export async function POST(req: NextRequest) {
         }),
         get_system_info: tool({
           description: '料金システム・コース料金・オプション料金・予約方法などをHPから取得する。料金・値段・コースについて質問されたときに使用。',
-          parameters: z.object({}),
-          execute: async (_: Record<string, never>) => getSystemInfo(store.hpBase),
+          inputSchema: z.object({}),
+          execute: async () => getSystemInfo(store.hpBase),
         }),
         get_first_timer_info: tool({
           description: 'お店の説明・サービス内容・遊び方・無料プレイ一覧をHPから取得する。初めての方への案内や、どんなお店か・何ができるかを説明するときに使用。',
-          parameters: z.object({}),
-          execute: async (_: Record<string, never>) => getFirstTimerInfo(store.hpBase),
+          inputSchema: z.object({}),
+          execute: async () => getFirstTimerInfo(store.hpBase),
         }),
       },
     })
