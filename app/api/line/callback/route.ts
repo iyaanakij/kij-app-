@@ -78,9 +78,15 @@ export async function GET(req: NextRequest) {
   }
 
   // ── LINE新規登録 ────────────────────────────────────────
-  if (state?.startsWith('register:')) {
-    const staffId = parseInt(state.slice(9))
-    if (!staffId) return NextResponse.redirect(`${appUrl}/cast/register?error=register_failed`)
+  if (state?.startsWith('register:') || state?.startsWith('register_diary:')) {
+    const isDiary = state.startsWith('register_diary:')
+    const prefix = isDiary ? 'register_diary:' : 'register:'
+    const registerErrorUrl = isDiary ? `${appUrl}/photodiary/register?error=register_failed` : `${appUrl}/cast/register?error=register_failed`
+    const alreadyRegisteredUrl = isDiary ? `${appUrl}/photodiary/register?error=already_registered` : `${appUrl}/cast/register?error=already_registered`
+    const authRedirectPath = isDiary ? '/photodiary/auth' : '/cast/auth'
+
+    const staffId = parseInt(state.slice(prefix.length))
+    if (!staffId) return NextResponse.redirect(registerErrorUrl)
 
     // すでにLINE IDが登録済みか確認
     const { data: existing } = await adminSupabase
@@ -89,7 +95,7 @@ export async function GET(req: NextRequest) {
       .eq('line_user_id', lineUserId)
       .maybeSingle()
     if (existing) {
-      return NextResponse.redirect(`${appUrl}/cast/register?error=already_registered`)
+      return NextResponse.redirect(alreadyRegisteredUrl)
     }
 
     // Supabaseユーザーを作成（LINE専用の内部メールを使用）
@@ -102,7 +108,7 @@ export async function GET(req: NextRequest) {
     })
     if (createError || !newUser.user) {
       console.error('[LINE register] createUser error:', createError)
-      return NextResponse.redirect(`${appUrl}/cast/register?error=register_failed`)
+      return NextResponse.redirect(registerErrorUrl)
     }
 
     await adminSupabase.from('user_roles').insert({
@@ -118,9 +124,9 @@ export async function GET(req: NextRequest) {
       email: dummyEmail,
     })
     if (linkError || !linkData?.properties?.hashed_token) {
-      return NextResponse.redirect(`${appUrl}/cast/login?error=session_failed`)
+      return NextResponse.redirect(registerErrorUrl)
     }
-    return NextResponse.redirect(`${appUrl}/cast/auth?hash=${linkData.properties.hashed_token}`)
+    return NextResponse.redirect(`${appUrl}${authRedirectPath}?hash=${linkData.properties.hashed_token}`)
   }
 
   // ── LINE連携（既存ログイン済みユーザーがLINEを紐付け）─────────
