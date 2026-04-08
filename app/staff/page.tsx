@@ -406,14 +406,13 @@ export default function StaffPage() {
                 <th className="px-4 py-3 text-left font-semibold">名前</th>
                 <th className="px-4 py-3 text-left font-semibold">入店日</th>
                 <th className="px-4 py-3 text-left font-semibold">所属店舗</th>
-                <th className="px-4 py-3 text-left font-semibold">メモ</th>
-                <th className="px-4 py-3 text-center font-semibold w-24">操作</th>
+                <th className="px-4 py-3 text-right font-semibold w-40">操作</th>
               </tr>
             </thead>
             <tbody>
               {filteredStaff.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="text-center py-16 text-gray-400">
+                  <td colSpan={4} className="text-center py-16 text-gray-400">
                     スタッフが登録されていません
                   </td>
                 </tr>
@@ -429,16 +428,9 @@ export default function StaffPage() {
                       {registeredStaffIds.has(s.id) && (
                         <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-medium">登録済</span>
                       )}
-                      {(() => {
-                        const brand = getStaffBrand(s.storeIds)
-                        if (brand === 'both') return <span className="bg-orange-100 text-orange-700 text-xs px-2 py-0.5 rounded-full font-medium">共通在籍</span>
-                        if (brand === 'M') return <span className="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded-full font-medium">M性感</span>
-                        if (brand === 'Y') return <span className="bg-teal-100 text-teal-700 text-xs px-2 py-0.5 rounded-full font-medium">癒したくて</span>
-                        return null
-                      })()}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-600 font-mono text-sm">
+                  <td className="px-4 py-3 text-gray-500 text-sm">
                     {s.join_date ? s.join_date.replace(/-/g, '/') : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-4 py-3">
@@ -460,31 +452,25 @@ export default function StaffPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-600 max-w-xs truncate text-sm">
-                    {s.notes || <span className="text-gray-300">—</span>}
-                  </td>
-                  <td className="px-3 py-3 text-center">
-                    <div className="flex gap-1 justify-center items-center">
+                  <td className="px-3 py-3 text-right">
+                    <div className="flex gap-1.5 justify-end items-center">
                       <button
                         onClick={() => openEdit(s)}
-                        title="編集"
-                        className="w-7 h-7 flex items-center justify-center rounded-md bg-amber-100 hover:bg-amber-200 text-amber-700 transition-colors"
+                        className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-medium transition-colors"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
+                        編集
                       </button>
                       <button
                         onClick={() => openAccountModal(s)}
-                        title="アカウント"
-                        className="w-7 h-7 flex items-center justify-center rounded-md bg-purple-100 hover:bg-purple-200 text-purple-700 transition-colors"
+                        className="px-3 py-1.5 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs font-medium transition-colors"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"/></svg>
+                        アカウント
                       </button>
                       <button
                         onClick={() => deleteStaff(s.id, s.name)}
-                        title="削除"
-                        className="w-7 h-7 flex items-center justify-center rounded-md bg-red-100 hover:bg-red-200 text-red-600 transition-colors"
+                        className="px-3 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 text-xs font-medium transition-colors"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"/></svg>
+                        削除
                       </button>
                     </div>
                   </td>
