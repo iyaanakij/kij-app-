@@ -184,6 +184,17 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
       return next
     })
   }
+
+  const deleteShift = async (staffId: number) => {
+    if (!confirm('このシフトをDBから削除しますか？（HP同期で再登録される場合があります）')) return
+    const area = AREAS.find(a => a.id === selectedAreaId)!
+    await supabase.from('shifts')
+      .delete()
+      .eq('staff_id', staffId)
+      .eq('date', selectedDate)
+      .in('store_id', area.storeIds)
+    fetchData()
+  }
   const showAll = () => { setHiddenStaffIds(new Set()); localStorage.removeItem(hiddenKey) }
   const visibleRows = staffRows.filter(r => !hiddenStaffIds.has(r.staff.id))
   const hiddenCount = staffRows.filter(r => hiddenStaffIds.has(r.staff.id)).length
@@ -380,13 +391,21 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                     <tr key={staff.id} className="border-b border-gray-100">
                       <td className="sticky left-0 z-10 bg-white border-r border-gray-200 py-1.5" style={{ width: STAFF_COL_WIDTH, minWidth: STAFF_COL_WIDTH, paddingLeft:8, paddingRight:8 }}>
                         <div className="flex items-center justify-between gap-1">
-                          <div className="font-semibold text-gray-800 truncate" style={{ maxWidth: STAFF_COL_WIDTH-32 }}>{staff.name}</div>
-                          <button
-                            onClick={e => { e.stopPropagation(); toggleHidden(staff.id) }}
-                            className="flex-shrink-0 text-gray-300 hover:text-gray-600 transition-colors"
-                            title="非表示"
-                            style={{ fontSize: 12, lineHeight: 1 }}
-                          >✕</button>
+                          <div className="font-semibold text-gray-800 truncate" style={{ maxWidth: STAFF_COL_WIDTH-48 }}>{staff.name}</div>
+                          <div className="flex gap-0.5 flex-shrink-0">
+                            <button
+                              onClick={e => { e.stopPropagation(); toggleHidden(staff.id) }}
+                              className="text-gray-300 hover:text-gray-600 transition-colors"
+                              title="非表示"
+                              style={{ fontSize: 12, lineHeight: 1 }}
+                            >✕</button>
+                            <button
+                              onClick={e => { e.stopPropagation(); deleteShift(staff.id) }}
+                              className="text-gray-300 hover:text-red-500 transition-colors"
+                              title="シフト削除"
+                              style={{ fontSize: 12, lineHeight: 1 }}
+                            >🗑</button>
+                          </div>
                         </div>
                         {shift
                           ? <div className="text-gray-500" style={{ fontSize:10 }}>{formatShiftTime(shift.start_time)} 〜 {formatShiftTime(shift.end_time)}</div>

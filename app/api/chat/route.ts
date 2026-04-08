@@ -148,10 +148,17 @@ function formatTime(t: number) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
+// JST時刻を返す（Vercelサーバーは UTC なので +9時間）
+function nowJST(): Date {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000)
+}
+
 async function getAvailableStaff(storeId: number, date?: string, time?: number) {
-  const targetDate = date ?? new Date().toISOString().slice(0, 10)
-  const now = new Date()
-  const targetTime = time ?? parseInt(`${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`)
+  const jst = nowJST()
+  const targetDate = date ?? jst.toISOString().slice(0, 10)
+  const targetTime = time ?? parseInt(
+    `${String(jst.getUTCHours()).padStart(2, '0')}${String(jst.getUTCMinutes()).padStart(2, '0')}`
+  )
 
   const { data: shifts } = await supabase
     .from('shifts')
@@ -175,7 +182,10 @@ async function getAvailableStaff(storeId: number, date?: string, time?: number) 
     (reservations ?? [])
       .filter(r => {
         if (!r.time || !r.course_duration) return false
-        return targetTime >= r.time && targetTime < r.time + r.course_duration
+        // r.time は HHMM整数、r.course_duration は分 → decimal時間で比較
+        const startDecimal = Math.floor(r.time / 100) + (r.time % 100) / 60
+        const endDecimal = startDecimal + r.course_duration / 60
+        return timeDecimal >= startDecimal && timeDecimal < endDecimal
       })
       .map(r => r.staff_id)
   )
@@ -190,7 +200,7 @@ async function getAvailableStaff(storeId: number, date?: string, time?: number) 
 }
 
 async function getStaffSchedule(storeId: number, name: string, date?: string) {
-  const targetDate = date ?? new Date().toISOString().slice(0, 10)
+  const targetDate = date ?? nowJST().toISOString().slice(0, 10)
   const { data: staff } = await supabase.from('staff').select('id, name').ilike('name', `%${name}%`).single()
   if (!staff) return null
   const { data: shifts } = await supabase
