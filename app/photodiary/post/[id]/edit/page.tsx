@@ -70,10 +70,12 @@ export default function PhotoDiaryEditPage() {
   useEffect(() => { return () => newPreviews.forEach(p => URL.revokeObjectURL(p.url)) }, [])
 
   const handleFileSelect = (selected: FileList | null) => {
-    if (!selected) return
-    const arr = Array.from(selected)
-    setNewFiles(prev => [...prev, ...arr])
-    setNewPreviews(prev => [...prev, ...arr.map(f => ({ url: URL.createObjectURL(f), isVideo: f.type.startsWith('video/') }))])
+    if (!selected || selected.length === 0) return
+    newPreviews.forEach(p => URL.revokeObjectURL(p.url))
+    const file = selected[0]
+    setNewFiles([file])
+    setNewPreviews([{ url: URL.createObjectURL(file), isVideo: file.type.startsWith('video/') }])
+    setNewThumbnailIndex(0)
   }
 
   const removeExistingImage = (img: PhotoDiaryImage) => {
@@ -202,31 +204,28 @@ export default function PhotoDiaryEditPage() {
           </div>
         )}
 
-        <div>
-          <label className="block text-xs font-semibold text-gray-500 mb-1.5">写真・動画を追加</label>
-          <label className="block w-full border-2 border-dashed border-gray-200 rounded-xl py-5 text-center cursor-pointer hover:border-pink-300 transition-colors">
-            <div className="text-gray-400 text-sm">タップして写真・動画を選択</div>
-            <input type="file" accept="image/*,video/*" multiple className="hidden" onChange={e => handleFileSelect(e.target.files)} />
-          </label>
-          {newPreviews.length > 0 && (
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {newPreviews.map((p, i) => (
-                <div key={i} className="relative aspect-square">
-                  {p.isVideo ? (
-                    <video src={p.url} className={`w-full h-full object-cover rounded-xl border-2 ${newThumbnailIndex === i ? 'border-pink-500' : 'border-transparent'}`} muted playsInline />
-                  ) : (
-                    <img src={p.url} alt="" className={`w-full h-full object-cover rounded-xl border-2 ${newThumbnailIndex === i ? 'border-pink-500' : 'border-transparent'}`} />
-                  )}
-                  {p.isVideo && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="text-white text-2xl drop-shadow">▶</span></div>}
-                  <button onClick={() => setNewThumbnailIndex(i)} className={`absolute bottom-1 left-1 text-xs px-1.5 py-0.5 rounded-full font-bold ${newThumbnailIndex === i ? 'bg-pink-500 text-white' : 'bg-black/40 text-white'}`}>
-                    {newThumbnailIndex === i ? 'TOP' : 'TOP?'}
-                  </button>
-                  <button onClick={() => removeNewFile(i)} className="absolute top-1 right-1 w-5 h-5 bg-black/50 text-white rounded-full text-xs flex items-center justify-center hover:bg-black/70">✕</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {existingImages.length === 0 && (
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 mb-1.5">写真・動画を追加</label>
+            {newPreviews.length === 0 ? (
+              <label className="block w-full border-2 border-dashed border-gray-200 rounded-xl py-5 text-center cursor-pointer hover:border-pink-300 transition-colors">
+                <div className="text-gray-400 text-sm">タップして写真・動画を選択</div>
+                <div className="text-gray-300 text-xs mt-1">1枚まで</div>
+                <input type="file" accept="image/*,video/*" className="hidden" onChange={e => handleFileSelect(e.target.files)} />
+              </label>
+            ) : (
+              <div className="relative aspect-square w-40">
+                {newPreviews[0].isVideo ? (
+                  <video src={newPreviews[0].url} className="w-full h-full object-cover rounded-xl border-2 border-pink-300" muted playsInline />
+                ) : (
+                  <img src={newPreviews[0].url} alt="" className="w-full h-full object-cover rounded-xl border-2 border-pink-300" />
+                )}
+                {newPreviews[0].isVideo && <div className="absolute inset-0 flex items-center justify-center pointer-events-none"><span className="text-white text-2xl drop-shadow">▶</span></div>}
+                <button onClick={() => removeNewFile(0)} className="absolute top-1 right-1 w-5 h-5 bg-black/50 text-white rounded-full text-xs flex items-center justify-center hover:bg-black/70">✕</button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 投稿設定 */}
         <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3">
