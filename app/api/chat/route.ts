@@ -237,7 +237,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { text } = await generateText({
-      model: anthropic('claude-haiku-4.5'),
+      model: anthropic('claude-haiku-4-5'),
       system: systemPrompt,
       messages,
       stopWhen: stepCountIs(5),
