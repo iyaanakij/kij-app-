@@ -41,6 +41,7 @@ export default function StaffPage() {
   const [accountMessage, setAccountMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [accountExists, setAccountExists] = useState(false)
   const [accountLoading, setAccountLoading] = useState(false)
+  const [accountUserId, setAccountUserId] = useState<string | null>(null)
   const [registeredStaffIds, setRegisteredStaffIds] = useState<Set<number>>(new Set())
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<Record<number, { added: number; linked: number; skipped: number; total: number }> | null>(null)
@@ -160,21 +161,44 @@ export default function StaffPage() {
     setAccountLineId('')
     setAccountMessage(null)
     setAccountExists(false)
+    setAccountUserId(null)
     setAccountLoading(true)
     setAccountModalOpen(true)
 
     const { data } = await supabase
       .from('user_roles')
-      .select('line_user_id')
+      .select('id, line_user_id')
       .eq('staff_id', s.id)
       .eq('role', 'cast')
       .maybeSingle()
 
     if (data) {
       setAccountExists(true)
+      setAccountUserId(data.id)
       setAccountLineId(data.line_user_id ?? '')
     }
     setAccountLoading(false)
+  }
+
+  async function deleteAccount() {
+    if (!accountStaff || !confirm(`${accountStaff.name} のアカウントを削除しますか？\nログインできなくなります。`)) return
+    setAccountSaving(true)
+    const res = await fetch('/api/staff/delete-account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staff_id: accountStaff.id }),
+    })
+    const body = await res.json()
+    if (!res.ok) {
+      setAccountMessage({ type: 'error', text: `削除失敗: ${body.error}` })
+    } else {
+      setAccountExists(false)
+      setAccountUserId(null)
+      setAccountLineId('')
+      setRegisteredStaffIds(prev => { const s = new Set(prev); s.delete(accountStaff.id); return s })
+      setAccountMessage({ type: 'success', text: 'アカウントを削除しました' })
+    }
+    setAccountSaving(false)
   }
 
   async function resetLineId() {
@@ -540,7 +564,7 @@ export default function StaffPage() {
             </div>
             )}
             <div className="px-5 py-4 bg-gray-50 rounded-b-xl flex gap-2 justify-between border-t border-gray-200">
-              <div>
+              <div className="flex gap-2">
                 {accountExists && accountLineId && !accountLoading && (
                   <button
                     onClick={resetLineId}
@@ -548,6 +572,15 @@ export default function StaffPage() {
                     className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg font-medium text-sm transition-colors disabled:opacity-50"
                   >
                     LINE連携リセット
+                  </button>
+                )}
+                {accountExists && !accountLoading && (
+                  <button
+                    onClick={deleteAccount}
+                    disabled={accountSaving}
+                    className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50"
+                  >
+                    アカウント削除
                   </button>
                 )}
               </div>
