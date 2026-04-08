@@ -159,7 +159,6 @@ export default function PhotoDiaryNewPage() {
           {previews.length === 0 ? (
             <label className="block w-full border-2 border-dashed border-gray-200 rounded-xl py-6 text-center cursor-pointer hover:border-pink-300 transition-colors">
               <div className="text-gray-400 text-sm">タップして写真・動画を選択</div>
-              <div className="text-gray-300 text-xs mt-1">1枚まで</div>
               <input type="file" accept="image/*,video/*" className="hidden" onChange={e => handleFileSelect(e.target.files)} />
             </label>
           ) : (
