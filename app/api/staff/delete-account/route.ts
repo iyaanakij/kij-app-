@@ -22,6 +22,27 @@ export async function POST(request: Request) {
     if (roleError) return NextResponse.json({ error: roleError.message }, { status: 500 })
     if (!userRole) return NextResponse.json({ error: 'アカウントが見つかりません' }, { status: 404 })
 
+    // 日記IDを取得
+    const { data: diaries } = await adminSupabase
+      .from('photo_diaries')
+      .select('id')
+      .eq('staff_id', staff_id)
+    const diaryIds = (diaries ?? []).map(d => d.id)
+
+    if (diaryIds.length > 0) {
+      // ストレージ画像を削除
+      const { data: images } = await adminSupabase
+        .from('photo_diary_images')
+        .select('storage_path')
+        .in('diary_id', diaryIds)
+      if (images && images.length > 0) {
+        await adminSupabase.storage.from('diary-images').remove(images.map(i => i.storage_path))
+      }
+
+      // 日記を削除（photo_diary_images / diary_delivery_logs は CASCADE で削除）
+      await adminSupabase.from('photo_diaries').delete().in('id', diaryIds)
+    }
+
     // Auth ユーザーを削除（user_roles は cascade で削除される）
     const { error: deleteError } = await adminSupabase.auth.admin.deleteUser(userRole.id)
     if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 })
