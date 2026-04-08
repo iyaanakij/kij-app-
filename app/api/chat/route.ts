@@ -245,7 +245,7 @@ export async function POST(req: NextRequest) {
         get_cast_list: tool({
           description: 'HPからキャスト一覧を取得する。名前・年齢・身長・スリーサイズ・カップサイズが含まれる。好みのタイプを探す際に使用。',
           parameters: z.object({}),
-          execute: async () => getCastList(store.hpBase),
+          execute: async (_: Record<string, never>) => getCastList(store.hpBase),
         }),
         get_cast_profile: tool({
           description: '特定キャストの詳細プロフィールをHPから取得する。Q&A・店長コメント・サービス内容が含まれる。',
@@ -273,12 +273,12 @@ export async function POST(req: NextRequest) {
         get_system_info: tool({
           description: '料金システム・コース料金・オプション料金・予約方法などをHPから取得する。料金・値段・コースについて質問されたときに使用。',
           parameters: z.object({}),
-          execute: async () => getSystemInfo(store.hpBase),
+          execute: async (_: Record<string, never>) => getSystemInfo(store.hpBase),
         }),
         get_first_timer_info: tool({
           description: 'お店の説明・サービス内容・遊び方・無料プレイ一覧をHPから取得する。初めての方への案内や、どんなお店か・何ができるかを説明するときに使用。',
           parameters: z.object({}),
-          execute: async () => getFirstTimerInfo(store.hpBase),
+          execute: async (_: Record<string, never>) => getFirstTimerInfo(store.hpBase),
         }),
       },
     })
