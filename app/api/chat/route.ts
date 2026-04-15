@@ -125,46 +125,16 @@ async function fetchPageText(url: string): Promise<string> {
     .trim()
 }
 
-async function getNearbyHotels() {
-  const res = await fetch('https://happyhotel.jp/chiba/', {
-    headers: { 'User-Agent': 'Mozilla/5.0' },
-    next: { revalidate: 86400 }, // 24時間キャッシュ
-  })
-  const html = await res.text()
-
-  const stripped = html
-    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
-    .replace(/<[^>]+>/g, '\n')
-  const lines = stripped.split('\n').map(l => l.trim()).filter(Boolean)
-
-  const hotels: { name: string; address: string }[] = []
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    // 番地（数字-数字）まで含む中央区アドレスのみ対象
-    if (/千葉市中央区.+\d+-\d+/.test(line)) {
-      for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
-        const candidate = lines[j]
-        if (
-          candidate &&
-          candidate.length < 40 &&
-          !candidate.includes('特典') &&
-          !candidate.includes('円') &&
-          !candidate.includes('千葉') &&
-          !candidate.includes('クーポン')
-        ) {
-          hotels.push({ name: candidate, address: line })
-          break
-        }
-      }
-    }
-  }
-
-  const seen = new Set<string>()
-  return hotels.filter(h => {
-    if (seen.has(h.name)) return false
-    seen.add(h.name)
-    return true
-  })
+function getNearbyHotels() {
+  return [
+    { name: 'ホテルパーマン',         recommendation: '★一番人気', note: '清潔感があってリーズナブル。最初の1軒におすすめ' },
+    { name: 'ホテルガーネット',        recommendation: '★おすすめ', note: '清潔感あり・コスパ良好' },
+    { name: 'ホテルセンチュリー',      recommendation: '★おすすめ', note: '清潔感あり・コスパ良好' },
+    { name: 'Nホテル',                recommendation: '高級志向向け', note: '清潔感◎だが料金やや高め' },
+    { name: 'ホテルセンチュリーアネックス', recommendation: '中間グレード', note: '料金は中間だが駅から少し遠め' },
+    { name: 'ホテルピーコック',        recommendation: '非推奨', note: '設備・機器が古め' },
+    { name: 'ビバリーヒルズ',          recommendation: '非推奨', note: '設備・機器が古め' },
+  ]
 }
 
 async function getSystemInfo(hpBase: string) {
