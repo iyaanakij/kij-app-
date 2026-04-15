@@ -132,7 +132,6 @@ async function getNearbyHotels() {
   })
   const html = await res.text()
 
-  // script/styleを除去してテキスト抽出
   const stripped = html
     .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
     .replace(/<[^>]+>/g, '\n')
@@ -140,19 +139,26 @@ async function getNearbyHotels() {
 
   const hotels: { name: string; address: string }[] = []
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes('千葉市中央区')) {
-      // 直前の行からホテル名を探す
+    const line = lines[i]
+    // 番地（数字-数字）まで含む中央区アドレスのみ対象
+    if (/千葉市中央区.+\d+-\d+/.test(line)) {
       for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
         const candidate = lines[j]
-        if (candidate && candidate.length < 40 && !candidate.includes('特典') && !candidate.includes('円') && !candidate.includes('千葉')) {
-          hotels.push({ name: candidate, address: lines[i] })
+        if (
+          candidate &&
+          candidate.length < 40 &&
+          !candidate.includes('特典') &&
+          !candidate.includes('円') &&
+          !candidate.includes('千葉') &&
+          !candidate.includes('クーポン')
+        ) {
+          hotels.push({ name: candidate, address: line })
           break
         }
       }
     }
   }
 
-  // 重複除去
   const seen = new Set<string>()
   return hotels.filter(h => {
     if (seen.has(h.name)) return false
