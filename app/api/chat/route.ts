@@ -125,6 +125,42 @@ async function fetchPageText(url: string): Promise<string> {
     .trim()
 }
 
+async function getNearbyHotels() {
+  const res = await fetch('https://happyhotel.jp/chiba/', {
+    headers: { 'User-Agent': 'Mozilla/5.0' },
+    next: { revalidate: 86400 }, // 24時間キャッシュ
+  })
+  const html = await res.text()
+
+  // script/styleを除去してテキスト抽出
+  const stripped = html
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<[^>]+>/g, '\n')
+  const lines = stripped.split('\n').map(l => l.trim()).filter(Boolean)
+
+  const hotels: { name: string; address: string }[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes('千葉市中央区')) {
+      // 直前の行からホテル名を探す
+      for (let j = i - 1; j >= Math.max(0, i - 6); j--) {
+        const candidate = lines[j]
+        if (candidate && candidate.length < 40 && !candidate.includes('特典') && !candidate.includes('円') && !candidate.includes('千葉')) {
+          hotels.push({ name: candidate, address: lines[i] })
+          break
+        }
+      }
+    }
+  }
+
+  // 重複除去
+  const seen = new Set<string>()
+  return hotels.filter(h => {
+    if (seen.has(h.name)) return false
+    seen.add(h.name)
+    return true
+  })
+}
+
 async function getSystemInfo(hpBase: string) {
   const text = await fetchPageText(`${hpBase}/system/`)
   const start = text.indexOf('基本システム')
@@ -256,10 +292,9 @@ export async function POST(req: NextRequest) {
 - get_first_timer_info：初めての方への案内・サービス内容の説明に使用
 
 【ラブホテル案内】
-千葉店（千葉市中央区栄町エリア）のご利用に際して、近隣のラブホテルについて質問された場合は、千葉市中央区栄町・富士見周辺のラブホテルをご案内してください。
-- 知っている範囲で施設名・特徴・おおよその料金帯を案内する
-- 「最新情報はハピホテ等でご確認ください」と添えること
+千葉店のご利用で近隣ラブホテルを聞かれたら get_nearby_hotels ツールで取得した情報をもとに案内してください。
 - 千葉店以外の店舗（成田・西船橋・錦糸町）では案内しない
+- 「最新情報はハピホテでご確認ください」と添えること
 
 【注意】
 - 敬語で親しみやすくお答えください
@@ -294,6 +329,14 @@ export async function POST(req: NextRequest) {
           description: 'お店の説明・サービス内容・遊び方・無料プレイ一覧をHPから取得する。初めての方への案内や、どんなお店か・何ができるかを説明するときに使用。',
           inputSchema: z.object({}),
           execute: async () => getFirstTimerInfo(store.hpBase),
+        }),
+        get_nearby_hotels: tool({
+          description: '千葉店近隣（千葉市中央区）のラブホテル一覧をハピホテから取得する。千葉店利用時にラブホテルを聞かれたときのみ使用。',
+          inputSchema: z.object({}),
+          execute: async () => {
+            if (storeKey !== 'chiba') return { error: '他店舗ではラブホテル案内に対応していません' }
+            return getNearbyHotels()
+          },
         }),
       },
     })
