@@ -132,8 +132,8 @@ function getNearbyHotels() {
     { name: 'ホテルセンチュリー',      recommendation: '★おすすめ', note: '清潔感あり・コスパ良好' },
     { name: 'Nホテル',                recommendation: '高級志向向け', note: '清潔感◎だが料金やや高め' },
     { name: 'ホテルセンチュリーアネックス', recommendation: '中間グレード', note: '料金は中間だが駅から少し遠め' },
-    { name: 'ホテルピーコック',        recommendation: '非推奨', note: '設備・機器が古め' },
-    { name: 'ビバリーヒルズ',          recommendation: '非推奨', note: '設備・機器が古め' },
+    { name: 'ホテルピーコック',        recommendation: '', note: '' },
+    { name: 'ビバリーヒルズ',          recommendation: '', note: '' },
   ]
 }
 
