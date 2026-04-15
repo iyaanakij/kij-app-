@@ -3,6 +3,20 @@
 import { useState, useRef, useEffect } from 'react'
 
 function renderMarkdown(text: string) {
+  // テーブルブロックをHTMLに変換
+  const tableRegex = /((?:\|.+\|\n?)+)/g
+  text = text.replace(tableRegex, (block) => {
+    const rows = block.trim().split('\n').filter(r => r.trim())
+    if (rows.length < 2) return block
+    const cells = (row: string) => row.split('|').filter((_, i, a) => i > 0 && i < a.length - 1).map(c => c.trim())
+    const header = cells(rows[0])
+    const isSeparator = (row: string) => /^\|[\s\-|]+\|$/.test(row.trim())
+    const dataRows = rows.slice(1).filter(r => !isSeparator(r))
+    const th = header.map(h => `<th>${h}</th>`).join('')
+    const trs = dataRows.map(r => `<tr>${cells(r).map(c => `<td>${c}</td>`).join('')}</tr>`).join('')
+    return `<table class="chat-table"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>`
+  })
+
   return text
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')

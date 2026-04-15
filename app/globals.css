@@ -15,6 +15,28 @@ body {
   box-sizing: border-box;
 }
 
+/* Chat table */
+.chat-table {
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  margin: 0.5rem 0;
+  width: 100%;
+}
+.chat-table th,
+.chat-table td {
+  border: 1px solid #e5e7eb;
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+.chat-table thead th {
+  background: #fce7f3;
+  font-weight: 600;
+}
+.chat-table tbody tr:nth-child(even) {
+  background: #fdf2f8;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   height: 6px;
