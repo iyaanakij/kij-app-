@@ -204,8 +204,7 @@ export default function ChatPage() {
             placeholder="メッセージを入力..."
             rows={1}
             className="flex-1 border border-gray-200 rounded-2xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-pink-400 bg-gray-50 resize-none"
-            style={{ fontSize: '16px' }}
-            style={{ maxHeight: '120px', overflowY: 'auto' }}
+            style={{ fontSize: '16px', maxHeight: '120px', overflowY: 'auto' }}
             disabled={loading}
           />
           <button
