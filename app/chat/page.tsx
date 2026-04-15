@@ -101,9 +101,9 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 shadow-sm px-4 py-4 sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-100 shadow-sm px-4 py-4 flex-shrink-0">
         <div className="max-w-lg mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-pink-500 flex items-center justify-center text-white text-lg">💬</div>
@@ -179,13 +179,13 @@ export default function ChatPage() {
       </div>
 
       {/* Input */}
-      <div className="bg-white border-t border-gray-100 px-4 py-3 sticky bottom-0">
+      <div className="bg-white border-t border-gray-100 px-4 py-3 flex-shrink-0">
         <div className="max-w-lg mx-auto flex gap-2">
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); send() } }}
-            placeholder="メッセージを入力... (Shift+Enterで送信)"
+            placeholder="メッセージを入力..."
             rows={1}
             className="flex-1 border border-gray-200 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-gray-50 resize-none"
             style={{ maxHeight: '120px', overflowY: 'auto' }}
