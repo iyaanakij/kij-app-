@@ -17,6 +17,10 @@ interface Message {
 
 const STORAGE_KEY = 'chat_history'
 const INITIAL_MESSAGE: Message = { role: 'assistant', content: 'こんにちは！サービス内容・料金・初めての方へのご案内など、お気軽にどうぞ😊\n\n※このチャットは自動応答です。空き状況の確定案内・予約確定・有人対応はできません。' }
+const RULES_MESSAGE: Message = {
+  role: 'assistant',
+  content: '当店は「M性感」専門店です。まずご確認ください。\n\n**【当店のスタイルについて】**\n- 施術はすべてキャストからお客様へ\n- お客様からキャストへの責め・おさわりはございません\n- キス・フェラ・素股などのヘルスサービス、および本番行為は一切ございません\n\n「女性を一方的に楽しむ」のではなく、「キャストから責められ、感じる」体験を提供するお店です。\n\nご理解いただいた上でご利用ください😊'
+}
 
 const SUGGESTIONS = [
   '料金・コースを教えて',
@@ -30,15 +34,20 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // localStorageから履歴を復元
+  // localStorageから履歴を復元。履歴がなければ初回訪問としてルール表示
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as Message[]
-        if (parsed.length > 0) setMessages(parsed)
+        if (parsed.length > 0) {
+          setMessages(parsed)
+          return
+        }
       } catch {}
     }
+    // 初回訪問: ウェルカム + ルール説明を初期メッセージとして表示
+    setMessages([INITIAL_MESSAGE, RULES_MESSAGE])
   }, [])
 
   useEffect(() => {
@@ -136,8 +145,8 @@ export default function ChatPage() {
             </div>
           )}
 
-          {/* サジェスト（最初のメッセージのみ表示） */}
-          {messages.length === 1 && !loading && (
+          {/* サジェスト（初期メッセージのみ表示、ユーザー発言がない間） */}
+          {messages.every(m => m.role === 'assistant') && !loading && (
             <div className="flex flex-wrap gap-2 mt-2">
               {SUGGESTIONS.map(s => (
                 <button
