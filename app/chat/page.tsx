@@ -49,21 +49,6 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // キーボード表示時にvisualViewportの高さでコンテナを調整（iOS Safari対応）
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-    const onResize = () => {
-      if (containerRef.current) {
-        containerRef.current.style.height = `${vv.height}px`
-      }
-      bottomRef.current?.scrollIntoView({ behavior: 'instant' })
-    }
-    vv.addEventListener('resize', onResize)
-    onResize()
-    return () => vv.removeEventListener('resize', onResize)
-  }, [])
-
   // localStorageから履歴を復元。履歴がなければ初回訪問としてルール表示
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY)
@@ -117,7 +102,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div ref={containerRef} className="bg-gray-50 flex flex-col overflow-hidden" style={{ height: '100dvh' }}>
+    <div ref={containerRef} className="h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="bg-white border-b border-gray-100 shadow-sm px-4 py-4 flex-shrink-0">
         <div className="max-w-lg mx-auto flex items-center justify-between">
