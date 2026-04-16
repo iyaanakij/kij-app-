@@ -70,7 +70,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [store] = useState<StoreKey>(() => getStoreFromUrl())
+  const [store, setStore] = useState<StoreKey>('chiba')
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -79,6 +79,11 @@ export default function ChatPage() {
     const prev = document.body.style.overscrollBehavior
     document.body.style.overscrollBehavior = 'none'
     return () => { document.body.style.overscrollBehavior = prev }
+  }, [])
+
+  // Next.jsの事前描画ではwindowがないため、マウント後に必ずURLからstoreを反映する
+  useEffect(() => {
+    setStore(getStoreFromUrl())
   }, [])
 
   // localStorageから履歴を復元。なければ初回訪問扱いでルール表示
