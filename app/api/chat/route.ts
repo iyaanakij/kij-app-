@@ -71,14 +71,19 @@ async function getCastList(hpBase: string) {
   }
 
   // 形式B: <a href="...profile?gid=NNNNN">（成田・一部店舗）
+  // cast_nameとcast_sizeをForm Aと同じdivセレクタで抽出する
   if (castList.length === 0) {
     const aPattern = /href="[^"]*profile\?gid=(\d+)"[^>]*>([\s\S]*?)<\/a>/g
     while ((m = aPattern.exec(html)) !== null) {
       const gid = m[1]
-      const inner = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-      const na = inner.match(/^(.+?)\((\d+)\)/)
+      const block = m[2]
+      const nameMatch = block.match(/<div[^>]*class="cast_name"[^>]*>([\s\S]*?)<\/div>/)
+      if (!nameMatch) continue
+      const nameRaw = nameMatch[1].replace(/<[^>]+>/g, '').trim()
+      const na = nameRaw.match(/^(.+?)\((\d+)\)/)
       if (!na) continue
-      const ms = parseSize(inner)
+      const sizeMatch = block.match(/<div[^>]*class="cast_size"[^>]*>([^<]+)<\/div>/)
+      const ms = sizeMatch ? parseSize(sizeMatch[1]) : null
       castList.push({
         gid, name: na[1].trim(), age: parseInt(na[2]),
         height: ms ? parseInt(ms[1]) : null, bust: ms ? parseInt(ms[2]) : null,
