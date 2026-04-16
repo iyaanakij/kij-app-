@@ -36,10 +36,17 @@ const RULES_MESSAGE: Message = {
   content: '当店は「M性感」専門店です。まずご確認ください。\n\n**【当店のスタイルについて】**\n- 施術はすべてキャストからお客様へ\n- お客様からキャストへの責め・おさわりはございません\n- キス・フェラ・素股などのヘルスサービス、および本番行為は一切ございません\n\n「女性を一方的に楽しむ」のではなく、「キャストから責められ、感じる」体験を提供するお店です。\n\nご理解いただいた上でご利用ください😊'
 }
 
-const SUGGESTIONS = [
-  '料金・コースを教えて',
-  'スレンダーな子はいる？',
-  '初めてなんですが…',
+type ChatSuggestion = { label: string; kind: 'chat' }
+type CtaSuggestion  = { label: string; kind: 'link' | 'tel'; href: string }
+type Suggestion = ChatSuggestion | CtaSuggestion
+
+const SUGGESTIONS: Suggestion[] = [
+  { label: '初めてなので流れを知りたい',   kind: 'chat' },
+  { label: '自分に合う女性を知りたい',     kind: 'chat' },
+  { label: 'プレイ内容を知りたい',         kind: 'chat' },
+  { label: '料金・予約方法を知りたい',     kind: 'chat' },
+  { label: '本日の出勤を見る',             kind: 'link', href: 'https://www.m-kairaku.com/chiba/schedule/' },
+  { label: '電話で確認する',               kind: 'tel',  href: 'tel:043-305-5968' },
 ]
 
 export default function ChatPage() {
@@ -163,15 +170,27 @@ export default function ChatPage() {
           {/* サジェスト（初期メッセージのみ表示、ユーザー発言がない間） */}
           {messages.every(m => m.role === 'assistant') && !loading && (
             <div className="flex flex-wrap gap-2 mt-2">
-              {SUGGESTIONS.map(s => (
-                <button
-                  key={s}
-                  onClick={() => send(s)}
-                  className="text-xs bg-white border border-pink-200 text-pink-500 rounded-full px-3 py-1.5 hover:bg-pink-50 transition-colors"
-                >
-                  {s}
-                </button>
-              ))}
+              {SUGGESTIONS.map(s =>
+                s.kind === 'chat' ? (
+                  <button
+                    key={s.label}
+                    onClick={() => send(s.label)}
+                    className="text-xs bg-white border border-pink-200 text-pink-500 rounded-full px-3 py-1.5 hover:bg-pink-50 transition-colors"
+                  >
+                    {s.label}
+                  </button>
+                ) : (
+                  <a
+                    key={s.label}
+                    href={s.href}
+                    target={s.kind === 'link' ? '_blank' : undefined}
+                    rel={s.kind === 'link' ? 'noopener noreferrer' : undefined}
+                    className="text-xs bg-pink-500 text-white rounded-full px-3 py-1.5 hover:bg-pink-600 transition-colors"
+                  >
+                    {s.label}
+                  </a>
+                )
+              )}
             </div>
           )}
 
