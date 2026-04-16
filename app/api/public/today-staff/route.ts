@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
   }
 
   // staff_id 重複排除して limit 件取り出す
-  const rows = (shifts ?? []) as ShiftRow[]
+  const rows = (shifts ?? []) as unknown as ShiftRow[]
   const seen = new Set<number>()
   const picked: ShiftRow[] = []
   for (const row of rows) {
@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
       .not('thumbnail_image_id', 'is', null)
       .order('published_at', { ascending: false })
 
-    for (const d of (diaries ?? []) as { staff_id: number; thumbnail: { storage_path: string } | null }[]) {
+    for (const d of (diaries ?? []) as unknown as { staff_id: number; thumbnail: { storage_path: string } | null }[]) {
       if (!photoMap.has(d.staff_id) && d.thumbnail?.storage_path) {
         const { data } = supabase.storage.from('diary-images').getPublicUrl(d.thumbnail.storage_path)
         photoMap.set(d.staff_id, data.publicUrl)
