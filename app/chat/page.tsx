@@ -39,7 +39,14 @@ const STORE_INFO: Record<StoreKey, { tel: string; schedule: string; system: stri
 }
 
 // ─── 初期メッセージ ────────────────────────────────────────────
-const STORAGE_KEY = 'chat_history'
+const LEGACY_STORAGE_KEY = 'chat_history'
+const storageKeyFor = (store: StoreKey) => `chat_history_${store}`
+
+function getStoreFromUrl(): StoreKey {
+  if (typeof window === 'undefined') return 'chiba'
+  const raw = new URLSearchParams(window.location.search).get('store') ?? ''
+  return (VALID_STORES as readonly string[]).includes(raw) ? raw as StoreKey : 'chiba'
+}
 
 const INITIAL_MESSAGE: Message = {
   role: 'assistant',
@@ -63,7 +70,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [store, setStore] = useState<StoreKey>('chiba')
+  const [store] = useState<StoreKey>(() => getStoreFromUrl())
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -74,17 +81,10 @@ export default function ChatPage() {
     return () => { document.body.style.overscrollBehavior = prev }
   }, [])
 
-  // URLパラメータからstore読み取り（不正値はchibaにフォールバック）
-  useEffect(() => {
-    const raw = new URLSearchParams(window.location.search).get('store') ?? ''
-    if ((VALID_STORES as readonly string[]).includes(raw)) {
-      setStore(raw as StoreKey)
-    }
-  }, [])
-
   // localStorageから履歴を復元。なければ初回訪問扱いでルール表示
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY)
+    const key = storageKeyFor(store)
+    const saved = localStorage.getItem(key) ?? (store === 'chiba' ? localStorage.getItem(LEGACY_STORAGE_KEY) : null)
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as Message[]
@@ -95,7 +95,7 @@ export default function ChatPage() {
       } catch {}
     }
     setMessages([INITIAL_MESSAGE, RULES_MESSAGE])
-  }, [])
+  }, [store])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -108,7 +108,7 @@ export default function ChatPage() {
 
     const newMessages: Message[] = [...messages, { role: 'user', content: userText }]
     setMessages(newMessages)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newMessages))
+    localStorage.setItem(storageKeyFor(store), JSON.stringify(newMessages))
     setLoading(true)
 
     try {
@@ -123,7 +123,7 @@ export default function ChatPage() {
       if (data.error) throw new Error(data.error)
       setMessages(prev => {
         const updated = [...prev, { role: 'assistant' as const, content: data.reply }]
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+        localStorage.setItem(storageKeyFor(store), JSON.stringify(updated))
         return updated
       })
     } catch (e: unknown) {
@@ -149,7 +149,8 @@ export default function ChatPage() {
           </div>
           <button
             onClick={() => {
-              localStorage.removeItem(STORAGE_KEY)
+              localStorage.removeItem(storageKeyFor(store))
+              if (store === 'chiba') localStorage.removeItem(LEGACY_STORAGE_KEY)
               setMessages([INITIAL_MESSAGE, RULES_MESSAGE])
             }}
             className="text-xs text-gray-400 hover:text-gray-600 transition-colors"

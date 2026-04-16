@@ -1,35 +1,33 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { generateText, tool, stepCountIs } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { z } from 'zod'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
-
 // ─── 店舗設定 ────────────────────────────────────────────────
-const STORE_CONFIG: Record<string, { name: string; hpBase: string; storeId: number }> = {
+const STORE_CONFIG: Record<string, { name: string; hpBase: string; area: string; phone: string }> = {
   chiba: {
     name: '千葉快楽M性感倶楽部',
     hpBase: 'https://www.m-kairaku.com/chiba',
-    storeId: 2,
+    area: '千葉市中央区栄町',
+    phone: '043-305-5968',
   },
   nishifunabashi: {
     name: '西船橋快楽M性感倶楽部',
     hpBase: 'https://www.m-kairaku.com',
-    storeId: 3,
+    area: '西船橋駅周辺',
+    phone: '047-404-7396',
   },
   kinshicho: {
     name: '錦糸町快楽M性感倶楽部',
     hpBase: 'https://www.m-kairaku.com/kinshicho',
-    storeId: 4,
+    area: '錦糸町駅周辺',
+    phone: '03-6659-2835',
   },
   narita: {
     name: '成田快楽M性感倶楽部',
     hpBase: 'https://www.m-kairaku.com/narita',
-    storeId: 1,
+    area: '成田駅周辺',
+    phone: '0476-29-5573',
   },
 }
 
@@ -153,84 +151,6 @@ async function getFirstTimerInfo(hpBase: string) {
   return text.slice(start, end !== -1 ? end : start + 3000).trim()
 }
 
-// ─── Supabase取得関数 ─────────────────────────────────────────
-function formatTime(t: number) {
-  const h = Math.floor(t)
-  const m = Math.round((t - h) * 60)
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-}
-
-// JST時刻を返す（Vercelサーバーは UTC なので +9時間）
-function nowJST(): Date {
-  return new Date(Date.now() + 9 * 60 * 60 * 1000)
-}
-
-async function getAvailableStaff(storeId: number, date?: string, time?: number) {
-  const jst = nowJST()
-  const targetDate = date ?? jst.toISOString().slice(0, 10)
-  const targetTime = time ?? parseInt(
-    `${String(jst.getUTCHours()).padStart(2, '0')}${String(jst.getUTCMinutes()).padStart(2, '0')}`
-  )
-
-  const { data: shifts } = await supabase
-    .from('shifts')
-    .select('staff_id, start_time, end_time, staff(name)')
-    .eq('date', targetDate)
-    .eq('status', 'normal')
-    .eq('store_id', storeId)
-
-  if (!shifts || shifts.length === 0) return []
-
-  const timeDecimal = Math.floor(targetTime / 100) + (targetTime % 100) / 60
-  const onShift = shifts.filter(s => s.start_time <= timeDecimal && s.end_time > timeDecimal)
-
-  const { data: reservations } = await supabase
-    .from('reservations')
-    .select('staff_id, time, course_duration')
-    .eq('date', targetDate)
-    .not('staff_id', 'is', null)
-
-  const busyStaffIds = new Set(
-    (reservations ?? [])
-      .filter(r => {
-        if (!r.time || !r.course_duration) return false
-        // r.time は HHMM整数、r.course_duration は分 → decimal時間で比較
-        const startDecimal = Math.floor(r.time / 100) + (r.time % 100) / 60
-        const endDecimal = startDecimal + r.course_duration / 60
-        return timeDecimal >= startDecimal && timeDecimal < endDecimal
-      })
-      .map(r => r.staff_id)
-  )
-
-  return onShift
-    .filter(s => !busyStaffIds.has(s.staff_id))
-    .map(s => ({
-      name: (s.staff as unknown as { name: string } | null)?.name,
-      start_time: formatTime(s.start_time),
-      end_time: formatTime(s.end_time),
-    }))
-}
-
-async function getStaffSchedule(storeId: number, name: string, date?: string) {
-  const targetDate = date ?? nowJST().toISOString().slice(0, 10)
-  const { data: staff } = await supabase.from('staff').select('id, name').ilike('name', `%${name}%`).single()
-  if (!staff) return null
-  const { data: shifts } = await supabase
-    .from('shifts')
-    .select('date, start_time, end_time')
-    .eq('staff_id', staff.id)
-    .eq('date', targetDate)
-    .eq('status', 'normal')
-    .eq('store_id', storeId)
-  return {
-    name: staff.name,
-    shifts: (shifts ?? []).map(s => ({
-      start_time: formatTime(s.start_time),
-      end_time: formatTime(s.end_time),
-    })),
-  }
-}
-
 // ─── API Route ────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -283,7 +203,7 @@ export async function POST(req: NextRequest) {
 フェラチオ・口内射精 / キス / 素股 / 本番（性交） / お客様からキャストへのタッチ・挿入
 
 ━━━━━━━━━━━━━━━━━━━━━━
-【料金・コース（千葉店）】
+【料金・コース（${store.name}）】
 ━━━━━━━━━━━━━━━━━━━━━━
 ※正確な最新料金は get_system_info で確認してください。以下は目安です。
 
@@ -328,7 +248,7 @@ export async function POST(req: NextRequest) {
 ━━━━━━━━━━━━━━━━━━━━━━
 - 新規のお客様：当日9:00から電話で受付
 - 会員のお客様：前々日9:00からWEB予約可能（翌日〜7日後まで）
-- お電話：043-305-5968
+- お電話：${store.phone}
 - 営業時間：9:00〜翌5:00
 
 ━━━━━━━━━━━━━━━━━━━━━━
@@ -382,8 +302,8 @@ A: 請求書の名義・明細については直接お電話でご確認くだ�
 【店舗情報】
 ━━━━━━━━━━━━━━━━━━━━━━
 - 店名：${store.name}
-- エリア：${storeKey === 'chiba' ? '千葉市中央区栄町' : storeKey === 'nishifunabashi' ? '西船橋駅周辺' : storeKey === 'kinshicho' ? '錦糸町駅周辺' : '成田駅周辺'}
-- 電話：${storeKey === 'chiba' ? '043-305-5968' : 'お電話でご確認ください'}
+- エリア：${store.area}
+- 電話：${store.phone}
 - 営業時間：9:00〜翌5:00
 - HP：${store.hpBase}/
 
