@@ -305,7 +305,7 @@ async function searchCastProfiles(storeKey: string, query: string, limit = 5) {
   const filtered = docs.filter(doc =>
     Object.entries(requiredOptions).every(([k, v]) => {
       if (v !== true) return true
-      return doc.options[k as keyof CastOptions] !== false
+      return doc.options[k as keyof CastOptions] === true
     })
   )
 
