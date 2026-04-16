@@ -142,6 +142,19 @@ function makeExcerpt(text: string, keyword: string) {
   return text.slice(Math.max(0, index - 55), index + keyword.length + 85)
 }
 
+// キーワードが「×」「NG」「不可」等の否定形で登場していないか確認
+function isPositiveMatch(text: string, keyword: string): boolean {
+  let pos = 0
+  while (true) {
+    const idx = text.indexOf(keyword, pos)
+    if (idx === -1) return false
+    // キーワード直後15文字に否定表現がなければ陽性とみなす
+    const after = text.slice(idx + keyword.length, idx + keyword.length + 15)
+    if (!/[×✕]|NG|不可|なし|対応外/.test(after)) return true
+    pos = idx + 1
+  }
+}
+
 async function searchCastProfiles(hpBase: string, query: string, limit = 5) {
   const casts = await getCastList(hpBase)
   const keywords = getPreferenceKeywords(query)
@@ -155,7 +168,7 @@ async function searchCastProfiles(hpBase: string, query: string, limit = 5) {
         .replace(/&nbsp;/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
-      const matched = keywords.filter(keyword => text.includes(keyword))
+      const matched = keywords.filter(keyword => isPositiveMatch(text, keyword))
       return {
         ...cast,
         matched_keywords: matched,
