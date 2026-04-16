@@ -39,44 +39,53 @@ async function getCastList(hpBase: string) {
   const res = await fetch(`${hpBase}/cast/`, { next: { revalidate: 300 } })
   const html = await res.text()
 
-  const castList: {
-    gid: string
-    name: string
-    age: number | null
-    height: number | null
-    bust: number | null
-    cup: string | null
-    waist: number | null
-    hip: number | null
-    profile_url: string
-  }[] = []
+  type CastEntry = {
+    gid: string; name: string; age: number | null
+    height: number | null; bust: number | null; cup: string | null
+    waist: number | null; hip: number | null; profile_url: string
+  }
+  const castList: CastEntry[] = []
 
+  const parseSize = (text: string) =>
+    text.match(/T(\d+)\s+B(\d+)\(([A-Z]+)\)\s+W(\d+)\s+H(\d+)/)
+
+  // 形式A: <li data-girlid="NNN">（西船橋・千葉・錦糸町）
   const liPattern = /<li[^>]*data-girlid="(\d+)"[^>]*>([\s\S]*?)<\/li>/g
-  let match
-  while ((match = liPattern.exec(html)) !== null) {
-    const gid = match[1]
-    const block = match[2]
-
+  let m
+  while ((m = liPattern.exec(html)) !== null) {
+    const gid = m[1]
+    const block = m[2]
     const nameMatch = block.match(/<div[^>]*class="cast_name"[^>]*>([\s\S]*?)<\/div>/)
     if (!nameMatch) continue
     const nameRaw = nameMatch[1].replace(/<[^>]+>/g, '').trim()
-    const nameAgeMatch = nameRaw.match(/^(.+?)\((\d+)\)/)
-    if (!nameAgeMatch) continue
-
+    const na = nameRaw.match(/^(.+?)\((\d+)\)/)
+    if (!na) continue
     const sizeMatch = block.match(/<div[^>]*class="cast_size"[^>]*>([^<]+)<\/div>/)
-    const measureMatch = sizeMatch?.[1].match(/T(\d+)\s+B(\d+)\(([A-Z]+)\)\s+W(\d+)\s+H(\d+)/)
-
+    const ms = sizeMatch ? parseSize(sizeMatch[1]) : null
     castList.push({
-      gid,
-      name: nameAgeMatch[1].trim(),
-      age: parseInt(nameAgeMatch[2]),
-      height: measureMatch ? parseInt(measureMatch[1]) : null,
-      bust: measureMatch ? parseInt(measureMatch[2]) : null,
-      cup: measureMatch ? measureMatch[3] : null,
-      waist: measureMatch ? parseInt(measureMatch[4]) : null,
-      hip: measureMatch ? parseInt(measureMatch[5]) : null,
+      gid, name: na[1].trim(), age: parseInt(na[2]),
+      height: ms ? parseInt(ms[1]) : null, bust: ms ? parseInt(ms[2]) : null,
+      cup: ms ? ms[3] : null, waist: ms ? parseInt(ms[4]) : null, hip: ms ? parseInt(ms[5]) : null,
       profile_url: `${hpBase}/profile?gid=${gid}`,
     })
+  }
+
+  // 形式B: <a href="...profile?gid=NNNNN">（成田・一部店舗）
+  if (castList.length === 0) {
+    const aPattern = /href="[^"]*profile\?gid=(\d+)"[^>]*>([\s\S]*?)<\/a>/g
+    while ((m = aPattern.exec(html)) !== null) {
+      const gid = m[1]
+      const inner = m[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      const na = inner.match(/^(.+?)\((\d+)\)/)
+      if (!na) continue
+      const ms = parseSize(inner)
+      castList.push({
+        gid, name: na[1].trim(), age: parseInt(na[2]),
+        height: ms ? parseInt(ms[1]) : null, bust: ms ? parseInt(ms[2]) : null,
+        cup: ms ? ms[3] : null, waist: ms ? parseInt(ms[4]) : null, hip: ms ? parseInt(ms[5]) : null,
+        profile_url: `${hpBase}/profile?gid=${gid}`,
+      })
+    }
   }
 
   return castList
@@ -275,8 +284,9 @@ export async function POST(req: NextRequest) {
 ■ 延長
 30分 9,000円
 
-■ 主なオプション
+■ 主なオプション（コース問わず追加可能）
 トップレス 1,100円 / 聖水 2,200円 / ロープ 2,200円 / コスプレ 2,200円
+※ロープはVIP限定ではありません。ランジェリーコースでも追加できます。
 
 ■ 支払い
 各種カード決済対応（SMSで決済URL送付）
