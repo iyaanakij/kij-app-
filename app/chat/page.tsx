@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from 'react'
 
 function renderMarkdown(text: string) {
-  // テーブルブロックをHTMLに変換
   const tableRegex = /((?:\|.+\|\n?)+)/g
   text = text.replace(tableRegex, (block) => {
     const rows = block.trim().split('\n').filter(r => r.trim())
@@ -16,7 +15,6 @@ function renderMarkdown(text: string) {
     const trs = dataRows.map(r => `<tr>${cells(r).map(c => `<td>${c}</td>`).join('')}</tr>`).join('')
     return `<table class="chat-table"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>`
   })
-
   return text
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
@@ -29,34 +27,55 @@ interface Message {
   content: string
 }
 
-const STORAGE_KEY = 'chat_history'
-const INITIAL_MESSAGE: Message = { role: 'assistant', content: 'こんにちは！サービス内容・料金・初めての方へのご案内など、お気軽にどうぞ😊\n\n※このチャットは自動応答です。空き状況の確定案内・予約確定・有人対応はできません。' }
-const RULES_MESSAGE: Message = {
-  role: 'assistant',
-  content: '当店は「M性感」専門店です。まずご確認ください。\n\n**【当店のスタイルについて】**\n- 施術はすべてキャストからお客様へ\n- お客様からキャストへの責め・おさわりはございません\n- キス・フェラ・素股などのヘルスサービス、および本番行為は一切ございません\n\n「女性を一方的に楽しむ」のではなく、「キャストから責められ、感じる」体験を提供するお店です。\n\nご理解いただいた上でご利用ください😊'
+// ─── 店舗設定 ─────────────────────────────────────────────────
+const VALID_STORES = ['chiba', 'nishifunabashi', 'kinshicho', 'narita'] as const
+type StoreKey = typeof VALID_STORES[number]
+
+const STORE_INFO: Record<StoreKey, { tel: string; schedule: string; system: string; cast: string }> = {
+  chiba:          { tel: 'tel:0433055968', schedule: 'https://www.m-kairaku.com/chiba/schedule/',     system: 'https://www.m-kairaku.com/chiba/system/',     cast: 'https://www.m-kairaku.com/chiba/cast/'     },
+  nishifunabashi: { tel: 'tel:0474047396', schedule: 'https://www.m-kairaku.com/schedule/',           system: 'https://www.m-kairaku.com/system/',           cast: 'https://www.m-kairaku.com/cast/'           },
+  kinshicho:      { tel: 'tel:0366592835', schedule: 'https://www.m-kairaku.com/kinshicho/schedule/', system: 'https://www.m-kairaku.com/kinshicho/system/', cast: 'https://www.m-kairaku.com/kinshicho/cast/' },
+  narita:         { tel: 'tel:0476295573', schedule: 'https://www.m-kairaku.com/narita/schedule/',    system: 'https://www.m-kairaku.com/narita/system/',    cast: 'https://www.m-kairaku.com/narita/cast/'    },
 }
 
-type ChatSuggestion = { label: string; kind: 'chat' }
-type CtaSuggestion  = { label: string; kind: 'link' | 'tel'; href: string }
-type Suggestion = ChatSuggestion | CtaSuggestion
+// ─── 初期メッセージ ────────────────────────────────────────────
+const STORAGE_KEY = 'chat_history'
 
-const SUGGESTIONS: Suggestion[] = [
-  { label: '初めてなので流れを知りたい',   kind: 'chat' },
-  { label: '自分に合う女性を知りたい',     kind: 'chat' },
-  { label: 'プレイ内容を知りたい',         kind: 'chat' },
-  { label: '料金・予約方法を知りたい',     kind: 'chat' },
-  { label: '本日の出勤を見る',             kind: 'link', href: 'https://www.m-kairaku.com/chiba/schedule/' },
-  { label: '電話で確認する',               kind: 'tel',  href: 'tel:043-305-5968' },
+const INITIAL_MESSAGE: Message = {
+  role: 'assistant',
+  content: 'こんにちは！サービス内容・料金・初めての方へのご案内など、お気軽にどうぞ😊\n\n※このチャットは自動応答です。空き状況の確定案内・予約確定・有人対応はできません。',
+}
+
+const RULES_MESSAGE: Message = {
+  role: 'assistant',
+  content: '当店について、最初にご確認ください😊\n\n• 女性からお客様へ施術する「M性感」専門店です\n• お客様から女性へのおさわり・責めは禁止です\n• キス・フェラ・素股・本番などのヘルスサービスはありません\n• 初めての方も安心。プレイの進め方はキャストがすべてリードします\n• 空き確認・予約確定はチャット非対応。最新情報はお電話または出勤ページでご確認ください',
+}
+
+// ─── チャット用サジェスト ──────────────────────────────────────
+const CHAT_SUGGESTIONS = [
+  '初めてなので流れを知りたい',
+  '自分に合う女性を知りたい',
+  'プレイ内容を知りたい',
+  '料金・予約方法を知りたい',
 ]
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [store, setStore] = useState<StoreKey>('chiba')
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // localStorageから履歴を復元。履歴がなければ初回訪問としてルール表示
+  // URLパラメータからstore読み取り（不正値はchibaにフォールバック）
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get('store') ?? ''
+    if ((VALID_STORES as readonly string[]).includes(raw)) {
+      setStore(raw as StoreKey)
+    }
+  }, [])
+
+  // localStorageから履歴を復元。なければ初回訪問扱いでルール表示
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY)
     if (saved) {
@@ -68,7 +87,6 @@ export default function ChatPage() {
         }
       } catch {}
     }
-    // 初回訪問: ウェルカム + ルール説明を初期メッセージとして表示
     setMessages([INITIAL_MESSAGE, RULES_MESSAGE])
   }, [])
 
@@ -87,7 +105,7 @@ export default function ChatPage() {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/chat?store=chiba', {
+      const res = await fetch(`/api/chat?store=${store}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -108,6 +126,8 @@ export default function ChatPage() {
     }
   }
 
+  const info = STORE_INFO[store]
+
   return (
     <div ref={containerRef} className="h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
       {/* Header */}
@@ -123,7 +143,7 @@ export default function ChatPage() {
           <button
             onClick={() => {
               localStorage.removeItem(STORAGE_KEY)
-              setMessages([INITIAL_MESSAGE])
+              setMessages([INITIAL_MESSAGE, RULES_MESSAGE])
             }}
             className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
           >
@@ -167,34 +187,62 @@ export default function ChatPage() {
             </div>
           )}
 
-          {/* サジェスト（初期メッセージのみ表示、ユーザー発言がない間） */}
+          {/* チャットサジェスト（ユーザー発言がない間だけ表示） */}
           {messages.every(m => m.role === 'assistant') && !loading && (
             <div className="flex flex-wrap gap-2 mt-2">
-              {SUGGESTIONS.map(s =>
-                s.kind === 'chat' ? (
-                  <button
-                    key={s.label}
-                    onClick={() => send(s.label)}
-                    className="text-xs bg-white border border-pink-200 text-pink-500 rounded-full px-3 py-1.5 hover:bg-pink-50 transition-colors"
-                  >
-                    {s.label}
-                  </button>
-                ) : (
-                  <a
-                    key={s.label}
-                    href={s.href}
-                    target={s.kind === 'link' ? '_blank' : undefined}
-                    rel={s.kind === 'link' ? 'noopener noreferrer' : undefined}
-                    className="text-xs bg-pink-500 text-white rounded-full px-3 py-1.5 hover:bg-pink-600 transition-colors"
-                  >
-                    {s.label}
-                  </a>
-                )
-              )}
+              {CHAT_SUGGESTIONS.map(s => (
+                <button
+                  key={s}
+                  onClick={() => send(s)}
+                  className="text-xs bg-white border border-pink-200 text-pink-500 rounded-full px-3 py-1.5 hover:bg-pink-50 transition-colors"
+                >
+                  {s}
+                </button>
+              ))}
             </div>
           )}
 
           <div ref={bottomRef} />
+        </div>
+      </div>
+
+      {/* 固定CTAバー */}
+      <div className="bg-white border-t border-gray-100 px-3 py-2 flex-shrink-0">
+        <div className="max-w-lg mx-auto grid grid-cols-4 gap-1.5">
+          <a
+            href={info.tel}
+            className="flex flex-col items-center justify-center gap-0.5 bg-pink-500 text-white rounded-xl py-2 hover:bg-pink-600 transition-colors min-w-0"
+          >
+            <span className="text-base leading-none">📞</span>
+            <span className="text-[10px] font-medium leading-tight w-full text-center">電話する</span>
+          </a>
+          <a
+            href={info.schedule}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-col items-center justify-center gap-0.5 bg-white border border-pink-200 text-pink-600 rounded-xl py-2 hover:bg-pink-50 transition-colors min-w-0"
+          >
+            <span className="text-base leading-none">📅</span>
+            <span className="text-[10px] font-medium leading-tight w-full text-center">本日の出勤</span>
+          </a>
+          <a
+            href={info.system}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-col items-center justify-center gap-0.5 bg-white border border-pink-200 text-pink-600 rounded-xl py-2 hover:bg-pink-50 transition-colors min-w-0"
+          >
+            <span className="text-base leading-none">💰</span>
+            <span className="text-[10px] font-medium leading-tight w-full text-center">料金を見る</span>
+          </a>
+          <a
+            href={info.cast}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-col items-center justify-center gap-0.5 bg-white border border-pink-200 text-pink-600 rounded-xl py-2 hover:bg-pink-50 transition-colors min-w-0"
+          >
+            <span className="text-base leading-none">👩</span>
+            <span className="text-[10px] font-medium leading-tight w-full text-center">プロフィール</span>
+          </a>
         </div>
       </div>
 
