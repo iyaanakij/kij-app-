@@ -140,12 +140,31 @@ async function getCastProfile(hpBase: string, gid: string) {
     if (q && a && q.length < 30) qaItems.push({ question: q, answer: a })
   }
 
+  // option_check_left / option_check_right div からオプション可否を抽出（最優先）
+  const optionTable: Partial<CastOptions> = {}
+  const optPattern = /option_check_left[^>]*>([\s\S]*?)<\/div>[\s\S]*?option_check_right[^>]*>([\s\S]*?)<\/div>/g
+  let optMatch
+  while ((optMatch = optPattern.exec(html)) !== null) {
+    const label = optMatch[1].replace(/<[^>]+>/g, '').trim()
+    const val   = optMatch[2].replace(/<[^>]+>/g, '').trim()
+    const bool  = /[○◎]/.test(val) ? true : /[×✗]/.test(val) ? false : null
+    if (bool === null) continue
+    if (/ロープ/.test(label))                           optionTable.rope           = bool
+    else if (/トップレス/.test(label))                  optionTable.topless        = bool
+    else if (/混浴/.test(label))                        optionTable.mixedBath      = bool
+    else if (/聖水/.test(label))                        optionTable.holyWater      = bool
+    else if (/パンスト|ストッキング/.test(label))        optionTable.stockings      = bool
+    else if (/私物コスプレ/.test(label))                optionTable.privateCosplay = bool
+    else if (/^VIP$|VIPコース/.test(label))             optionTable.vip            = bool
+  }
+
   return {
     gid,
     profile_url: `${hpBase}/profile?gid=${gid}`,
     manager_comment: managerComment,
     cast_comment: castComment,
     qa: qaItems.slice(0, 15),
+    option_table: optionTable,
   }
 }
 
@@ -196,6 +215,19 @@ function extractOptions(
   }
 }
 
+// option_table（div構造）を最優先し、null の項目だけ Q&A/コメントで補完
+function mergeOptions(table: Partial<CastOptions>, fallback: CastOptions): CastOptions {
+  return {
+    vip:            table.vip            ?? fallback.vip,
+    holyWater:      table.holyWater      ?? fallback.holyWater,
+    rope:           table.rope           ?? fallback.rope,
+    topless:        table.topless        ?? fallback.topless,
+    stockings:      table.stockings      ?? fallback.stockings,
+    mixedBath:      table.mixedBath      ?? fallback.mixedBath,
+    privateCosplay: table.privateCosplay ?? fallback.privateCosplay,
+  }
+}
+
 // ─── タグ・理由抽出 ──────────────────────────────────────────
 function extractTags(searchableText: string): string[] {
   return Object.entries(CATEGORY_DICT)
@@ -238,7 +270,8 @@ async function buildSearchDoc(cast: CastEntry, store: StoreKey): Promise<CastSea
     searchableText,
     categoryTags: extractTags(searchableText),
     reasons: extractReasons(searchableText),
-    options: extractOptions(profile.qa, managerComment, castComment),
+    // option_table（HPのdiv構造）を最優先し、取れなかった項目だけQ&A/コメントで補完
+    options: mergeOptions(profile.option_table, extractOptions(profile.qa, managerComment, castComment)),
   }
 }
 
@@ -252,7 +285,7 @@ const buildCastIndex = unstable_cache(
     )
     return results.flatMap(r => r.status === 'fulfilled' ? [r.value] : [])
   },
-  ['cast-index-v2'],
+  ['cast-index-v3'],
   { revalidate: 1800 }
 )
 
