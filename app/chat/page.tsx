@@ -67,6 +67,13 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // チャットページ滞在中はbodyのゴムバンドスクロールを無効化
+  useEffect(() => {
+    const prev = document.body.style.overscrollBehavior
+    document.body.style.overscrollBehavior = 'none'
+    return () => { document.body.style.overscrollBehavior = prev }
+  }, [])
+
   // URLパラメータからstore読み取り（不正値はchibaにフォールバック）
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get('store') ?? ''
@@ -131,7 +138,7 @@ export default function ChatPage() {
   return (
     <div ref={containerRef} className="fixed inset-0 bg-gray-50 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="bg-white border-b border-gray-100 shadow-sm px-4 py-4 flex-shrink-0">
+      <div className="bg-white border-b border-gray-100 shadow-sm px-4 py-4 flex-shrink-0 touch-none">
         <div className="max-w-lg mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-pink-500 flex items-center justify-center text-white text-lg">💬</div>
@@ -207,7 +214,7 @@ export default function ChatPage() {
       </div>
 
       {/* 固定CTAバー */}
-      <div className="bg-white border-t border-gray-100 px-3 py-2 flex-shrink-0">
+      <div className="bg-white border-t border-gray-100 px-3 py-2 flex-shrink-0 touch-none">
         <div className="max-w-lg mx-auto grid grid-cols-4 gap-1.5">
           <a
             href={info.tel}
@@ -247,7 +254,7 @@ export default function ChatPage() {
       </div>
 
       {/* Input */}
-      <div className="bg-white border-t border-gray-100 px-4 py-3 flex-shrink-0">
+      <div className="bg-white border-t border-gray-100 px-4 py-3 flex-shrink-0 touch-none">
         <div className="max-w-lg mx-auto flex gap-2">
           <textarea
             value={input}
