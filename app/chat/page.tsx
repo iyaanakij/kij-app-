@@ -129,7 +129,7 @@ export default function ChatPage() {
   const info = STORE_INFO[store]
 
   return (
-    <div ref={containerRef} className="h-[100dvh] bg-gray-50 flex flex-col overflow-hidden">
+    <div ref={containerRef} className="h-[100svh] bg-gray-50 flex flex-col overflow-hidden overscroll-none">
       {/* Header */}
       <div className="bg-white border-b border-gray-100 shadow-sm px-4 py-4 flex-shrink-0">
         <div className="max-w-lg mx-auto flex items-center justify-between">
@@ -153,7 +153,7 @@ export default function ChatPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto overscroll-y-contain px-4 py-4">
         <div className="max-w-lg mx-auto space-y-3">
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
