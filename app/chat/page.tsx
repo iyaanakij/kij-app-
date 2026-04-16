@@ -129,7 +129,7 @@ export default function ChatPage() {
   const info = STORE_INFO[store]
 
   return (
-    <div ref={containerRef} className="h-[100svh] bg-gray-50 flex flex-col overflow-hidden overscroll-none">
+    <div ref={containerRef} className="fixed inset-0 bg-gray-50 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="bg-white border-b border-gray-100 shadow-sm px-4 py-4 flex-shrink-0">
         <div className="max-w-lg mx-auto flex items-center justify-between">
