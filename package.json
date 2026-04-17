@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "normalize:cast-sheets": "node scripts/normalize-cast-sheets.js"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.68",

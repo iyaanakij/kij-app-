@@ -3,6 +3,7 @@ import { generateText, tool, stepCountIs } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { unstable_cache } from 'next/cache'
 import { z } from 'zod'
+import { lookupSheetOptions } from '@/lib/cast-sheet-data'
 
 // ─── 型定義 ──────────────────────────────────────────────────
 type StoreKey = 'chiba' | 'nishifunabashi' | 'kinshicho' | 'narita'
@@ -215,16 +216,22 @@ function extractOptions(
   }
 }
 
-// option_table（div構造）を最優先し、null の項目だけ Q&A/コメントで補完
-function mergeOptions(table: Partial<CastOptions>, fallback: CastOptions): CastOptions {
+// 優先順位: シートマスタ > HP option_table（div構造）> Q&A fallback
+// シートにある項目(rope/holyWater/privateCosplay)はシート値を最優先。
+// シートにない項目(vip/topless/stockings/mixedBath)はHP div→Q&Aで補完。
+function mergeOptions(
+  sheet: { holyWater: boolean | null; rope: boolean | null; privateCosplay: boolean | null },
+  table: Partial<CastOptions>,
+  fallback: CastOptions,
+): CastOptions {
   return {
     vip:            table.vip            ?? fallback.vip,
-    holyWater:      table.holyWater      ?? fallback.holyWater,
-    rope:           table.rope           ?? fallback.rope,
+    holyWater:      sheet.holyWater      ?? table.holyWater      ?? fallback.holyWater,
+    rope:           sheet.rope           ?? table.rope           ?? fallback.rope,
     topless:        table.topless        ?? fallback.topless,
     stockings:      table.stockings      ?? fallback.stockings,
     mixedBath:      table.mixedBath      ?? fallback.mixedBath,
-    privateCosplay: table.privateCosplay ?? fallback.privateCosplay,
+    privateCosplay: sheet.privateCosplay ?? table.privateCosplay ?? fallback.privateCosplay,
   }
 }
 
@@ -270,8 +277,12 @@ async function buildSearchDoc(cast: CastEntry, store: StoreKey): Promise<CastSea
     searchableText,
     categoryTags: extractTags(searchableText),
     reasons: extractReasons(searchableText),
-    // option_table（HPのdiv構造）を最優先し、取れなかった項目だけQ&A/コメントで補完
-    options: mergeOptions(profile.option_table, extractOptions(profile.qa, managerComment, castComment)),
+    // シートマスタ > HP div(option_table) > Q&A の優先順でオプションを確定
+    options: mergeOptions(
+      lookupSheetOptions(store, cast.name),
+      profile.option_table,
+      extractOptions(profile.qa, managerComment, castComment),
+    ),
   }
 }
 
