@@ -489,7 +489,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { text } = await generateText({
-      model: anthropic('claude-opus-4-7'),
+      model: anthropic('claude-sonnet-4-6'),
       system: systemPrompt,
       messages,
       stopWhen: stepCountIs(5),
