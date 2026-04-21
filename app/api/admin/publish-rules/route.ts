@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     .order('cast_name')
     .order('source_shop_id')
     .order('site_id')
+    .limit(10000)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ rules: data })
