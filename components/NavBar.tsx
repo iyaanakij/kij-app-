@@ -87,6 +87,17 @@ export default function NavBar() {
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>
             チャット
           </Link>
+          <Link
+            href="/admin/publish-rules"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+              pathname.startsWith('/admin')
+                ? 'bg-orange-600/40 text-orange-100 border-orange-500/60'
+                : 'bg-orange-600/20 text-orange-300 hover:bg-orange-600/40 hover:text-orange-100 border-orange-600/30'
+            }`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-400 inline-block"></span>
+            配信ルール
+          </Link>
           {storeName && (
             <div className="flex items-center gap-1.5 bg-gray-800 px-3 py-1 rounded-full">
               <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
