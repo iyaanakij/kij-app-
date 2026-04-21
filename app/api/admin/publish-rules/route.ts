@@ -20,16 +20,25 @@ export async function GET(request: NextRequest) {
   const user = await verifyStaff(request)
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await adminSupabase
-    .from('publish_rules')
-    .select('cs3_cast_id, source_shop_id, site_id, enabled, cp4_gid, venrey_cast_id, cast_name')
-    .order('cast_name')
-    .order('source_shop_id')
-    .order('site_id')
-    .limit(10000)
+  const all: Record<string, unknown>[] = []
+  const CHUNK = 1000
+  let from = 0
+  while (true) {
+    const { data, error } = await adminSupabase
+      .from('publish_rules')
+      .select('cs3_cast_id, source_shop_id, site_id, enabled, cp4_gid, venrey_cast_id, cast_name')
+      .order('cast_name')
+      .order('source_shop_id')
+      .order('site_id')
+      .range(from, from + CHUNK - 1)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ rules: data })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    all.push(...data)
+    if (data.length < CHUNK) break
+    from += CHUNK
+  }
+
+  return NextResponse.json({ rules: all })
 }
 
 export async function POST(request: NextRequest) {
