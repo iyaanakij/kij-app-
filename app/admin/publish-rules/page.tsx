@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react'
 
-// CS3 source shop 定義（111701=西船橋 / 111702=成田 / 111703=千葉 / 111704=錦糸町）
 const SHOPS = [
   { id: '111701', label: '西船橋' },
   { id: '111702', label: '成田' },
@@ -10,7 +9,6 @@ const SHOPS = [
   { id: '111704', label: '錦糸町' },
 ]
 
-// 掲載先サイト定義（ユーザー指定の列順）
 const SITES = [
   { id: 'mka_narita',    label: '成田M' },
   { id: 'iya_narita',    label: '成田癒' },
@@ -34,7 +32,8 @@ type RuleRow = {
   cast_name: string | null
 }
 
-type RuleKey = string // `${source_shop_id}:${site_id}`
+type RuleKey = string
+type FilterType = 'all' | 'venrey' | 'cp4' | 'unset'
 
 function ruleKey(shopId: string, siteId: string): RuleKey {
   return `${shopId}:${siteId}`
@@ -44,7 +43,15 @@ function hasCredentials(row: RuleRow): boolean {
   return !!(row.cp4_gid || row.venrey_cast_id)
 }
 
-// キャスト単位のマトリクスコンポーネント
+function castCreds(rowMap: Map<RuleKey, RuleRow>) {
+  let hasVenrey = false, hasCP4 = false
+  for (const r of rowMap.values()) {
+    if (r.venrey_cast_id) hasVenrey = true
+    if (r.cp4_gid) hasCP4 = true
+  }
+  return { hasVenrey, hasCP4 }
+}
+
 function CastMatrix({
   castId,
   castName,
@@ -56,7 +63,6 @@ function CastMatrix({
   rowMap: Map<RuleKey, RuleRow>
   onSaved: (castId: string, updates: Pick<RuleRow, 'source_shop_id' | 'site_id' | 'enabled'>[]) => void
 }) {
-  // ローカル編集状態: key → enabled
   const [edits, setEdits] = useState<Record<RuleKey, boolean>>(() => {
     const init: Record<RuleKey, boolean> = {}
     for (const [k, row] of rowMap) init[k] = row.enabled
@@ -65,6 +71,7 @@ function CastMatrix({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
+  const { hasVenrey, hasCP4 } = castCreds(rowMap)
   const enabledCount = Object.values(edits).filter(Boolean).length
 
   const handleChange = (shopId: string, siteId: string, checked: boolean) => {
@@ -90,17 +97,27 @@ function CastMatrix({
       body: JSON.stringify({ updates }),
     })
     setSaving(false)
-    if (res.ok) {
-      setSaved(true)
-      onSaved(castId, updates)
-    }
+    if (res.ok) { setSaved(true); onSaved(castId, updates) }
   }
 
   return (
     <details className="border border-gray-200 rounded-lg overflow-hidden">
       <summary className="flex items-center justify-between px-4 py-3 bg-white cursor-pointer hover:bg-gray-50 select-none">
-        <span className="font-medium text-gray-800 text-sm">{castName}</span>
-        <span className="text-xs text-gray-400">{enabledCount} / 32 有効</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-medium text-gray-800 text-sm truncate">{castName}</span>
+          <div className="flex gap-1 shrink-0">
+            {hasVenrey && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">V</span>
+            )}
+            {hasCP4 && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">C</span>
+            )}
+            {!hasVenrey && !hasCP4 && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-400">未登録</span>
+            )}
+          </div>
+        </div>
+        <span className="text-xs text-gray-400 shrink-0 ml-3">{enabledCount} / 32 有効</span>
       </summary>
       <div className="p-4 bg-white border-t border-gray-100">
         <div className="overflow-x-auto">
@@ -123,6 +140,17 @@ function CastMatrix({
                     const row = rowMap.get(ruleKey(shop.id, site.id))
                     const hasCreds = row ? hasCredentials(row) : false
                     const checked = edits[ruleKey(shop.id, site.id)] ?? false
+                    const credType = row?.venrey_cast_id && row?.cp4_gid ? 'both'
+                      : row?.venrey_cast_id ? 'venrey'
+                      : row?.cp4_gid ? 'cp4'
+                      : 'none'
+                    const accentClass = credType === 'both' ? 'accent-green-500'
+                      : credType === 'venrey' ? 'accent-blue-500'
+                      : credType === 'cp4' ? 'accent-orange-500'
+                      : ''
+                    const tooltipParts = []
+                    if (row?.cp4_gid) tooltipParts.push(`CP4: ${row.cp4_gid}`)
+                    if (row?.venrey_cast_id) tooltipParts.push(`Venrey: ${row.venrey_cast_id}`)
                     return (
                       <td key={site.id} className="px-1.5 py-2 text-center">
                         <input
@@ -130,10 +158,8 @@ function CastMatrix({
                           checked={checked}
                           disabled={!hasCreds}
                           onChange={e => handleChange(shop.id, site.id, e.target.checked)}
-                          className={`w-4 h-4 rounded ${hasCreds ? 'cursor-pointer accent-blue-500' : 'opacity-20 cursor-not-allowed'}`}
-                          title={hasCreds
-                            ? `${row?.cp4_gid ? `CP4 gid=${row.cp4_gid}` : ''}${row?.venrey_cast_id ? ` Venrey id=${row.venrey_cast_id}` : ''}`
-                            : '未登録'}
+                          className={`w-4 h-4 rounded ${hasCreds ? `cursor-pointer ${accentClass}` : 'opacity-20 cursor-not-allowed'}`}
+                          title={tooltipParts.length ? tooltipParts.join(' / ') : '未登録'}
                         />
                       </td>
                     )
@@ -158,10 +184,18 @@ function CastMatrix({
   )
 }
 
+const FILTERS: { key: FilterType; label: string; activeClass: string }[] = [
+  { key: 'all',    label: '全員',       activeClass: 'bg-gray-700 text-white' },
+  { key: 'venrey', label: 'Venreyあり', activeClass: 'bg-blue-600 text-white' },
+  { key: 'cp4',    label: 'CP4あり',    activeClass: 'bg-orange-500 text-white' },
+  { key: 'unset',  label: '未登録',     activeClass: 'bg-gray-400 text-white' },
+]
+
 export default function PublishRulesPage() {
   const [rules, setRules] = useState<RuleRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<FilterType>('all')
   const [page, setPage] = useState(0)
 
   useEffect(() => {
@@ -170,7 +204,6 @@ export default function PublishRulesPage() {
       .then(json => { setRules(json.rules ?? []); setLoading(false) })
   }, [])
 
-  // ルール保存後の state 更新
   const handleSaved = useCallback((
     castId: string,
     updates: Pick<RuleRow, 'source_shop_id' | 'site_id' | 'enabled'>[],
@@ -182,7 +215,6 @@ export default function PublishRulesPage() {
     }))
   }, [])
 
-  // キャスト単位にグループ化
   const casts = (() => {
     const map = new Map<string, { castId: string; castName: string; rowMap: Map<RuleKey, RuleRow> }>()
     for (const row of rules) {
@@ -194,9 +226,23 @@ export default function PublishRulesPage() {
     return Array.from(map.values()).sort((a, b) => a.castName.localeCompare(b.castName, 'ja'))
   })()
 
-  const filtered = search
-    ? casts.filter(c => c.castName.includes(search))
-    : casts
+  // フィルタカウント
+  const counts = {
+    all: casts.length,
+    venrey: casts.filter(c => { const { hasVenrey } = castCreds(c.rowMap); return hasVenrey }).length,
+    cp4:    casts.filter(c => { const { hasCP4 } = castCreds(c.rowMap); return hasCP4 }).length,
+    unset:  casts.filter(c => { const { hasVenrey, hasCP4 } = castCreds(c.rowMap); return !hasVenrey && !hasCP4 }).length,
+  }
+
+  const filtered = (() => {
+    let result = search ? casts.filter(c => c.castName.includes(search)) : casts
+    if (filter === 'venrey') result = result.filter(c => castCreds(c.rowMap).hasVenrey)
+    else if (filter === 'cp4')  result = result.filter(c => castCreds(c.rowMap).hasCP4)
+    else if (filter === 'unset') {
+      result = result.filter(c => { const { hasVenrey, hasCP4 } = castCreds(c.rowMap); return !hasVenrey && !hasCP4 })
+    }
+    return result
+  })()
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
@@ -211,9 +257,31 @@ export default function PublishRulesPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
-      <div className="mb-6">
+      <div className="mb-5">
         <h1 className="text-xl font-bold text-gray-800">配信ルール管理</h1>
         <p className="text-xs text-gray-400 mt-0.5">どのCS3店舗からのシフトをどの掲載先に反映するかを設定します</p>
+      </div>
+
+      {/* 凡例 */}
+      <div className="flex gap-3 mb-5 text-xs text-gray-500">
+        <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded font-bold bg-blue-100 text-blue-700">V</span> Venrey登録あり</span>
+        <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded font-bold bg-orange-100 text-orange-700">C</span> CP4登録あり</span>
+        <span className="flex items-center gap-1 ml-2">チェックボックス色：<span className="text-blue-500">青=V</span> / <span className="text-orange-500">橙=C</span> / <span className="text-green-500">緑=両方</span></span>
+      </div>
+
+      {/* フィルタ */}
+      <div className="flex gap-2 flex-wrap mb-4">
+        {FILTERS.map(f => (
+          <button
+            key={f.key}
+            onClick={() => { setFilter(f.key); setPage(0) }}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              filter === f.key ? f.activeClass : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {f.label} <span className="opacity-70">({counts[f.key]})</span>
+          </button>
+        ))}
       </div>
 
       {/* 検索 */}
