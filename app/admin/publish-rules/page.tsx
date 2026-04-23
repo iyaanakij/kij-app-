@@ -185,10 +185,10 @@ function CastMatrix({
 }
 
 const FILTERS: { key: FilterType; label: string; activeClass: string }[] = [
-  { key: 'all',    label: '全員',       activeClass: 'bg-gray-700 text-white' },
-  { key: 'venrey', label: 'Venreyあり', activeClass: 'bg-blue-600 text-white' },
-  { key: 'cp4',    label: 'CP4あり',    activeClass: 'bg-orange-500 text-white' },
-  { key: 'unset',  label: '未登録',     activeClass: 'bg-gray-400 text-white' },
+  { key: 'all',    label: '全員',        activeClass: 'bg-gray-700 text-white' },
+  { key: 'venrey', label: 'Venrey同期ON', activeClass: 'bg-blue-600 text-white' },
+  { key: 'cp4',    label: 'CP4同期ON',   activeClass: 'bg-orange-500 text-white' },
+  { key: 'unset',  label: '未登録',      activeClass: 'bg-gray-400 text-white' },
 ]
 
 export default function PublishRulesPage() {
@@ -226,18 +226,28 @@ export default function PublishRulesPage() {
     return Array.from(map.values()).sort((a, b) => a.castName.localeCompare(b.castName, 'ja'))
   })()
 
+  // enabled=true かつ credential あり = 実際に同期されている
+  const isSyncingVenrey = (rowMap: Map<RuleKey, RuleRow>) => {
+    for (const r of rowMap.values()) if (r.venrey_cast_id && r.enabled) return true
+    return false
+  }
+  const isSyncingCP4 = (rowMap: Map<RuleKey, RuleRow>) => {
+    for (const r of rowMap.values()) if (r.cp4_gid && r.enabled) return true
+    return false
+  }
+
   // フィルタカウント
   const counts = {
-    all: casts.length,
-    venrey: casts.filter(c => { const { hasVenrey } = castCreds(c.rowMap); return hasVenrey }).length,
-    cp4:    casts.filter(c => { const { hasCP4 } = castCreds(c.rowMap); return hasCP4 }).length,
+    all:    casts.length,
+    venrey: casts.filter(c => isSyncingVenrey(c.rowMap)).length,
+    cp4:    casts.filter(c => isSyncingCP4(c.rowMap)).length,
     unset:  casts.filter(c => { const { hasVenrey, hasCP4 } = castCreds(c.rowMap); return !hasVenrey && !hasCP4 }).length,
   }
 
   const filtered = (() => {
     let result = search ? casts.filter(c => c.castName.includes(search)) : casts
-    if (filter === 'venrey') result = result.filter(c => castCreds(c.rowMap).hasVenrey)
-    else if (filter === 'cp4')  result = result.filter(c => castCreds(c.rowMap).hasCP4)
+    if (filter === 'venrey') result = result.filter(c => isSyncingVenrey(c.rowMap))
+    else if (filter === 'cp4')  result = result.filter(c => isSyncingCP4(c.rowMap))
     else if (filter === 'unset') {
       result = result.filter(c => { const { hasVenrey, hasCP4 } = castCreds(c.rowMap); return !hasVenrey && !hasCP4 })
     }
@@ -263,10 +273,12 @@ export default function PublishRulesPage() {
       </div>
 
       {/* 凡例 */}
-      <div className="flex gap-3 mb-5 text-xs text-gray-500">
-        <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded font-bold bg-blue-100 text-blue-700">V</span> Venrey登録あり</span>
-        <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded font-bold bg-orange-100 text-orange-700">C</span> CP4登録あり</span>
-        <span className="flex items-center gap-1 ml-2">チェックボックス色：<span className="text-blue-500">青=V</span> / <span className="text-orange-500">橙=C</span> / <span className="text-green-500">緑=両方</span></span>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 mb-5 text-xs text-gray-500">
+        <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded font-bold bg-blue-100 text-blue-700">V</span> VenreyのID登録あり</span>
+        <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded font-bold bg-orange-100 text-orange-700">C</span> CP4のID登録あり</span>
+        <span className="text-gray-300">|</span>
+        <span>チェックON = 実際に同期する設定</span>
+        <span className="flex items-center gap-1">チェック色：<span className="text-blue-500 font-medium">青=Vのみ</span> / <span className="text-orange-500 font-medium">橙=Cのみ</span> / <span className="text-green-500 font-medium">緑=両方</span></span>
       </div>
 
       {/* フィルタ */}
