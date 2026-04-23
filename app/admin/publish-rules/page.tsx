@@ -74,9 +74,17 @@ function CastMatrix({
   const { hasVenrey, hasCP4 } = castCreds(rowMap)
   const enabledCount = Object.values(edits).filter(Boolean).length
 
+  // チェックONだがIDが欠けていて実行不可なセル数
+  const warningCount = (() => {
+    let n = 0
+    for (const [k, row] of rowMap) {
+      const checked = edits[k] ?? false
+      if (checked && (!row.venrey_cast_id || !row.cp4_gid)) n++
+    }
+    return n
+  })()
+
   const handleChange = (shopId: string, siteId: string, checked: boolean) => {
-    const row = rowMap.get(ruleKey(shopId, siteId))
-    if (!row || !hasCredentials(row)) return
     setSaved(false)
     setEdits(prev => ({ ...prev, [ruleKey(shopId, siteId)]: checked }))
   }
@@ -115,6 +123,9 @@ function CastMatrix({
             {!hasVenrey && !hasCP4 && (
               <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-400">未登録</span>
             )}
+            {warningCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">⚠ {warningCount}件反映不可</span>
+            )}
           </div>
         </div>
         <span className="text-xs text-gray-400 shrink-0 ml-3">{enabledCount} / 32 有効</span>
@@ -138,7 +149,6 @@ function CastMatrix({
                   <td className="py-2 pr-2 text-gray-500 whitespace-nowrap">{shop.label}</td>
                   {SITES.map(site => {
                     const row = rowMap.get(ruleKey(shop.id, site.id))
-                    const hasCreds = row ? hasCredentials(row) : false
                     const checked = edits[ruleKey(shop.id, site.id)] ?? false
                     const credType = row?.venrey_cast_id && row?.cp4_gid ? 'both'
                       : row?.venrey_cast_id ? 'venrey'
@@ -147,19 +157,28 @@ function CastMatrix({
                     const accentClass = credType === 'both' ? 'accent-green-500'
                       : credType === 'venrey' ? 'accent-blue-500'
                       : credType === 'cp4' ? 'accent-orange-500'
-                      : ''
-                    const tooltipParts = []
-                    if (row?.cp4_gid) tooltipParts.push(`CP4: ${row.cp4_gid}`)
-                    if (row?.venrey_cast_id) tooltipParts.push(`Venrey: ${row.venrey_cast_id}`)
+                      : 'accent-gray-400'
+
+                    // チェックON & ID未登録 → 反映不可警告
+                    const warnC = checked && !row?.cp4_gid
+                    const warnV = checked && !row?.venrey_cast_id
+                    const hasWarning = warnC || warnV
+
+                    const tipLines: string[] = [
+                      row?.cp4_gid ? `CP4: ${row.cp4_gid}` : 'CP4 gid: 未登録',
+                      row?.venrey_cast_id ? `Venrey: ${row.venrey_cast_id}` : 'Venrey ID: 未登録',
+                    ]
+                    if (warnC) tipLines.push('⚠ CP4 gid未登録・反映不可')
+                    if (warnV) tipLines.push('⚠ Venrey ID未登録・反映不可')
+
                     return (
-                      <td key={site.id} className="px-1.5 py-2 text-center">
+                      <td key={site.id} className={`px-1.5 py-2 text-center${hasWarning ? ' bg-amber-50' : ''}`}>
                         <input
                           type="checkbox"
                           checked={checked}
-                          disabled={!hasCreds}
                           onChange={e => handleChange(shop.id, site.id, e.target.checked)}
-                          className={`w-4 h-4 rounded ${hasCreds ? `cursor-pointer ${accentClass}` : 'opacity-20 cursor-not-allowed'}`}
-                          title={tooltipParts.length ? tooltipParts.join(' / ') : '未登録'}
+                          className={`w-4 h-4 rounded cursor-pointer ${accentClass}`}
+                          title={tipLines.join(' / ')}
                         />
                       </td>
                     )
@@ -273,12 +292,12 @@ export default function PublishRulesPage() {
       </div>
 
       {/* 凡例 */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 mb-5 text-xs text-gray-500">
-        <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded font-bold bg-blue-100 text-blue-700">V</span> VenreyのID登録あり</span>
-        <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded font-bold bg-orange-100 text-orange-700">C</span> CP4のID登録あり</span>
-        <span className="text-gray-300">|</span>
-        <span>チェックON = 実際に同期する設定</span>
-        <span className="flex items-center gap-1">チェック色：<span className="text-blue-500 font-medium">青=Vのみ</span> / <span className="text-orange-500 font-medium">橙=Cのみ</span> / <span className="text-green-500 font-medium">緑=両方</span></span>
+      <div className="flex flex-wrap gap-x-5 gap-y-1.5 mb-5 text-xs text-gray-500">
+        <span className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded font-bold bg-blue-100 text-blue-700">V</span>Venrey ID登録あり</span>
+        <span className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded font-bold bg-orange-100 text-orange-700">C</span>CP4 gid登録あり</span>
+        <span className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-700">⚠ N件</span>チェックONだがID未登録（反映不可）</span>
+        <span className="text-gray-300 self-center">|</span>
+        <span>チェックON = 同期する意思表示（IDがあるものだけ実際に反映される）</span>
       </div>
 
       {/* フィルタ */}
