@@ -1,9 +1,6 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { getCurrentUser } from '@/lib/auth'
 
 // CS3 source shop 定義（111701=西船橋 / 111702=成田 / 111703=千葉 / 111704=錦糸町）
 const SHOPS = [
@@ -52,13 +49,11 @@ function CastMatrix({
   castId,
   castName,
   rowMap,
-  token,
   onSaved,
 }: {
   castId: string
   castName: string
   rowMap: Map<RuleKey, RuleRow>
-  token: string
   onSaved: (castId: string, updates: Pick<RuleRow, 'source_shop_id' | 'site_id' | 'enabled'>[]) => void
 }) {
   // ローカル編集状態: key → enabled
@@ -91,7 +86,7 @@ function CastMatrix({
     )
     const res = await fetch('/api/admin/publish-rules', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ updates }),
     })
     setSaving(false)
@@ -164,31 +159,16 @@ function CastMatrix({
 }
 
 export default function PublishRulesPage() {
-  const router = useRouter()
-  const [token, setToken] = useState('')
   const [rules, setRules] = useState<RuleRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
 
-  // 認証チェック + ルール取得
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) { router.replace('/admin/login'); return }
-      const u = await getCurrentUser()
-      if (u?.role !== 'staff') { router.replace('/admin/login'); return }
-
-      setToken(session.access_token)
-
-      const res = await fetch('/api/admin/publish-rules', {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      })
-      if (!res.ok) { router.replace('/admin/login'); return }
-      const json = await res.json()
-      setRules(json.rules ?? [])
-      setLoading(false)
-    })
-  }, [router])
+    fetch('/api/admin/publish-rules')
+      .then(r => r.json())
+      .then(json => { setRules(json.rules ?? []); setLoading(false) })
+  }, [])
 
   // ルール保存後の state 更新
   const handleSaved = useCallback((
@@ -231,17 +211,9 @@ export default function PublishRulesPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">配信ルール管理</h1>
-          <p className="text-xs text-gray-400 mt-0.5">どのCS3店舗からのシフトをどの掲載先に反映するかを設定します</p>
-        </div>
-        <button
-          onClick={() => supabase.auth.signOut().then(() => router.replace('/admin/login'))}
-          className="text-xs text-gray-400 hover:text-gray-600"
-        >
-          ログアウト
-        </button>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-gray-800">配信ルール管理</h1>
+        <p className="text-xs text-gray-400 mt-0.5">どのCS3店舗からのシフトをどの掲載先に反映するかを設定します</p>
       </div>
 
       {/* 検索 */}
@@ -264,7 +236,6 @@ export default function PublishRulesPage() {
             castId={c.castId}
             castName={c.castName}
             rowMap={c.rowMap}
-            token={token}
             onSaved={handleSaved}
           />
         ))}

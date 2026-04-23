@@ -6,19 +6,7 @@ const adminSupabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-async function verifyStaff(request: NextRequest) {
-  const token = request.headers.get('authorization')?.replace('Bearer ', '')
-  if (!token) return null
-  const { data: { user } } = await adminSupabase.auth.getUser(token)
-  if (!user) return null
-  const { data } = await adminSupabase.from('user_roles').select('role').eq('id', user.id).maybeSingle()
-  if (data?.role !== 'staff') return null
-  return user
-}
-
-export async function GET(request: NextRequest) {
-  const user = await verifyStaff(request)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+export async function GET(_request: NextRequest) {
 
   const all: Record<string, unknown>[] = []
   const CHUNK = 1000
@@ -42,9 +30,6 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const user = await verifyStaff(request)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
   const body = await request.json()
   const updates: { cs3_cast_id: string; source_shop_id: string; site_id: string; enabled: boolean }[] = body.updates
   if (!Array.isArray(updates) || updates.length === 0) {
