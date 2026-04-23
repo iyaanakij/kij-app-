@@ -124,7 +124,7 @@ function CastMatrix({
               <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-400">未登録</span>
             )}
             {warningCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">⚠ {warningCount}件反映不可</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">⚠ {warningCount}件 ID未登録あり</span>
             )}
           </div>
         </div>
@@ -168,8 +168,9 @@ function CastMatrix({
                       row?.cp4_gid ? `CP4: ${row.cp4_gid}` : 'CP4 gid: 未登録',
                       row?.venrey_cast_id ? `Venrey: ${row.venrey_cast_id}` : 'Venrey ID: 未登録',
                     ]
-                    if (warnC) tipLines.push('⚠ CP4 gid未登録・反映不可')
-                    if (warnV) tipLines.push('⚠ Venrey ID未登録・反映不可')
+                    if (warnC && warnV) tipLines.push('⚠ CP4・Venrey とも未登録（反映不可）')
+                    else if (warnC) tipLines.push('⚠ CP4 gid未登録（Venreyは反映可能）')
+                    else if (warnV) tipLines.push('⚠ Venrey ID未登録（CP4は反映可能）')
 
                     return (
                       <td key={site.id} className={`px-1.5 py-2 text-center${hasWarning ? ' bg-amber-50' : ''}`}>
@@ -295,7 +296,7 @@ export default function PublishRulesPage() {
       <div className="flex flex-wrap gap-x-5 gap-y-1.5 mb-5 text-xs text-gray-500">
         <span className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded font-bold bg-blue-100 text-blue-700">V</span>Venrey ID登録あり</span>
         <span className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded font-bold bg-orange-100 text-orange-700">C</span>CP4 gid登録あり</span>
-        <span className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-700">⚠ N件</span>チェックONだがID未登録（反映不可）</span>
+        <span className="flex items-center gap-1.5"><span className="px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-700">⚠ N件</span>チェックONだが未登録のIDあり（セルにカーソルで詳細）</span>
         <span className="text-gray-300 self-center">|</span>
         <span>チェックON = 同期する意思表示（IDがあるものだけ実際に反映される）</span>
       </div>
