@@ -9,16 +9,14 @@ const SHOPS = [
   { id: '111704', label: '錦糸町' },
 ]
 
-const SITES = [
-  { id: 'mka_narita',    label: '成田M' },
-  { id: 'iya_narita',    label: '成田癒' },
-  { id: 'mka_chiba',     label: '千葉M' },
-  { id: 'iya_chiba',     label: '千葉癒' },
-  { id: 'mka_funabashi', label: '西船橋M' },
-  { id: 'iya_funabashi', label: '西船橋癒' },
-  { id: 'mka_kinshicho', label: '錦糸町M' },
-  { id: 'iya_kinshicho', label: '錦糸町癒' },
+// エリア別グループで視認性向上
+const SITE_GROUPS = [
+  { area: '成田',   sites: [{ id: 'mka_narita',    label: 'M性感' }, { id: 'iya_narita',    label: '癒し' }] },
+  { area: '千葉',   sites: [{ id: 'mka_chiba',     label: 'M性感' }, { id: 'iya_chiba',     label: '癒し' }] },
+  { area: '西船橋', sites: [{ id: 'mka_funabashi', label: 'M性感' }, { id: 'iya_funabashi', label: '癒し' }] },
+  { area: '錦糸町', sites: [{ id: 'mka_kinshicho', label: 'M性感' }, { id: 'iya_kinshicho', label: '癒し' }] },
 ]
+const SITES = SITE_GROUPS.flatMap(g => g.sites)
 
 const PAGE_SIZE = 20
 
@@ -33,94 +31,22 @@ type RuleRow = {
 }
 
 type RuleKey = string
-type FilterType = 'all' | 'venrey' | 'cp4' | 'review' | 'unset'
+type FilterType = 'all' | 'venrey' | 'hp' | 'review' | 'unset'
 
 function ruleKey(shopId: string, siteId: string): RuleKey {
   return `${shopId}:${siteId}`
 }
 
 function castCreds(rowMap: Map<RuleKey, RuleRow>) {
-  let hasVenrey = false, hasCP4 = false
+  let hasVenrey = false, hasHP = false
   for (const r of rowMap.values()) {
     if (r.venrey_cast_id) hasVenrey = true
-    if (r.cp4_gid) hasCP4 = true
+    if (r.cp4_gid) hasHP = true
   }
-  return { hasVenrey, hasCP4 }
+  return { hasVenrey, hasHP }
 }
 
-function isSiteEnabled(edits: Record<RuleKey, boolean>, siteId: string): boolean {
-  return SHOPS.some(shop => edits[ruleKey(shop.id, siteId)] ?? false)
-}
-
-function getSiteCreds(rowMap: Map<RuleKey, RuleRow>, siteId: string): { hasV: boolean; hasC: boolean } {
-  for (const shop of SHOPS) {
-    const row = rowMap.get(ruleKey(shop.id, siteId))
-    if (row) return { hasV: !!row.venrey_cast_id, hasC: !!row.cp4_gid }
-  }
-  return { hasV: false, hasC: false }
-}
-
-function SiteToggle({
-  siteId,
-  label,
-  isOn,
-  hasV,
-  hasC,
-  onChange,
-}: {
-  siteId: string
-  label: string
-  isOn: boolean
-  hasV: boolean
-  hasC: boolean
-  onChange: (siteId: string, value: boolean) => void
-}) {
-  const noId = !hasV && !hasC
-  const bgColor = !isOn
-    ? 'bg-gray-200'
-    : noId
-      ? 'bg-amber-400'
-      : hasV && hasC
-        ? 'bg-green-500'
-        : hasV
-          ? 'bg-blue-500'
-          : 'bg-orange-500'
-
-  const statusLabel = !isOn
-    ? 'OFF'
-    : noId
-      ? '⚠ ID未登録'
-      : hasV && hasC
-        ? 'V + C'
-        : hasV
-          ? 'Venrey'
-          : 'CP4'
-
-  const statusColor = !isOn
-    ? 'text-gray-300'
-    : noId
-      ? 'text-amber-500 font-medium'
-      : 'text-gray-500'
-
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <span className="text-[11px] font-semibold text-gray-600 whitespace-nowrap">{label}</span>
-      <button
-        onClick={() => onChange(siteId, !isOn)}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${bgColor}`}
-      >
-        <span
-          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-            isOn ? 'translate-x-6' : 'translate-x-1'
-          }`}
-        />
-      </button>
-      <span className={`text-[10px] ${statusColor}`}>{statusLabel}</span>
-    </div>
-  )
-}
-
-function CastCard({
+function CastMatrix({
   castId,
   castName,
   rowMap,
@@ -139,19 +65,21 @@ function CastCard({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  const { hasVenrey, hasCP4 } = castCreds(rowMap)
-  const enabledSites = SITES.filter(s => isSiteEnabled(edits, s.id)).length
-  const warningSites = SITES.filter(s => {
-    if (!isSiteEnabled(edits, s.id)) return false
-    const { hasV, hasC } = getSiteCreds(rowMap, s.id)
-    return !hasV && !hasC
-  }).length
+  const { hasVenrey, hasHP } = castCreds(rowMap)
+  const enabledCount = Object.values(edits).filter(Boolean).length
 
-  const toggleSite = (siteId: string, value: boolean) => {
+  const warningCount = (() => {
+    let n = 0
+    for (const [k, row] of rowMap) {
+      const checked = edits[k] ?? false
+      if (checked && (!row.venrey_cast_id || !row.cp4_gid)) n++
+    }
+    return n
+  })()
+
+  const handleChange = (shopId: string, siteId: string, checked: boolean) => {
     setSaved(false)
-    const next: Record<string, boolean> = {}
-    for (const shop of SHOPS) next[ruleKey(shop.id, siteId)] = value
-    setEdits(prev => ({ ...prev, ...next }))
+    setEdits(prev => ({ ...prev, [ruleKey(shopId, siteId)]: checked }))
   }
 
   const handleSave = async () => {
@@ -182,44 +110,100 @@ function CastCard({
             {hasVenrey && (
               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">Venrey</span>
             )}
-            {hasCP4 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">CP4</span>
+            {hasHP && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700">HP</span>
             )}
-            {!hasVenrey && !hasCP4 && (
+            {!hasVenrey && !hasHP && (
               <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-400">ID未登録</span>
             )}
-            {warningSites > 0 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">
-                ⚠ {warningSites}サイト ID未登録
-              </span>
+            {warningCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">⚠ {warningCount}件 ID未登録</span>
             )}
           </div>
         </div>
-        <span className="text-xs text-gray-400 shrink-0 ml-3">
-          {enabledSites > 0 ? `${enabledSites} / 8 サイト有効` : '未設定'}
-        </span>
+        <span className="text-xs text-gray-400 shrink-0 ml-3">{enabledCount} / 32 有効</span>
       </summary>
 
-      <div className="p-5 bg-white border-t border-gray-100">
-        <p className="text-[11px] text-gray-400 mb-4">ONにしたサイトに出勤スケジュールが自動反映されます</p>
-        <div className="grid grid-cols-4 gap-x-6 gap-y-5">
-          {SITES.map(site => {
-            const isOn = isSiteEnabled(edits, site.id)
-            const { hasV, hasC } = getSiteCreds(rowMap, site.id)
-            return (
-              <SiteToggle
-                key={site.id}
-                siteId={site.id}
-                label={site.label}
-                isOn={isOn}
-                hasV={hasV}
-                hasC={hasC}
-                onChange={toggleSite}
-              />
-            )
-          })}
+      <div className="p-4 bg-white border-t border-gray-100">
+        <p className="text-[11px] text-gray-400 mb-3">
+          CS3の承認元店舗ごとに、どのサイトに反映するかを設定します
+        </p>
+        <div className="overflow-x-auto">
+          <table className="text-xs border-collapse w-full">
+            <thead>
+              <tr>
+                <th className="w-16 py-1 pr-3 text-left text-gray-400 font-normal">CS3<br />承認元</th>
+                {SITE_GROUPS.map(g => (
+                  <th key={g.area} colSpan={2} className="px-1 py-1 text-center text-gray-500 font-semibold border-b border-gray-200">
+                    {g.area}
+                  </th>
+                ))}
+              </tr>
+              <tr>
+                <th />
+                {SITE_GROUPS.map(g =>
+                  g.sites.map(s => (
+                    <th key={s.id} className="px-2 py-1 text-center text-gray-400 font-normal whitespace-nowrap">
+                      {s.label}
+                    </th>
+                  ))
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {SHOPS.map(shop => (
+                <tr key={shop.id} className="border-t border-gray-100">
+                  <td className="py-2 pr-3 text-gray-600 font-medium whitespace-nowrap">{shop.label}</td>
+                  {SITE_GROUPS.map((g, gi) =>
+                    g.sites.map((site, si) => {
+                      const row = rowMap.get(ruleKey(shop.id, site.id))
+                      const checked = edits[ruleKey(shop.id, site.id)] ?? false
+                      const credType = row?.venrey_cast_id && row?.cp4_gid ? 'both'
+                        : row?.venrey_cast_id ? 'venrey'
+                        : row?.cp4_gid ? 'hp'
+                        : 'none'
+                      const accentClass = credType === 'both' ? 'accent-green-500'
+                        : credType === 'venrey' ? 'accent-blue-500'
+                        : credType === 'hp' ? 'accent-orange-500'
+                        : 'accent-gray-400'
+                      const hasWarning = checked && (!row?.cp4_gid || !row?.venrey_cast_id)
+
+                      const tipLines: string[] = [
+                        row?.venrey_cast_id ? `Venrey: ${row.venrey_cast_id}` : 'Venrey ID: 未登録',
+                        row?.cp4_gid ? `HP: ${row.cp4_gid}` : 'HP ID: 未登録',
+                      ]
+                      if (hasWarning) {
+                        if (!row?.cp4_gid && !row?.venrey_cast_id) tipLines.push('⚠ HP・Venrey とも未登録（反映不可）')
+                        else if (!row?.cp4_gid) tipLines.push('⚠ HP ID未登録（Venreyは反映可能）')
+                        else tipLines.push('⚠ Venrey ID未登録（HPは反映可能）')
+                      }
+
+                      // エリア区切り線
+                      const isFirstInGroup = si === 0
+                      const borderClass = isFirstInGroup && gi > 0 ? 'border-l border-gray-200' : ''
+
+                      return (
+                        <td
+                          key={site.id}
+                          className={`px-2 py-2 text-center ${hasWarning ? 'bg-amber-50' : ''} ${borderClass}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={e => handleChange(shop.id, site.id, e.target.checked)}
+                            className={`w-4 h-4 rounded cursor-pointer ${accentClass}`}
+                            title={tipLines.join(' / ')}
+                          />
+                        </td>
+                      )
+                    })
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div className="mt-5 flex items-center gap-3">
+        <div className="mt-3 flex items-center gap-3">
           <button
             onClick={handleSave}
             disabled={saving}
@@ -237,7 +221,7 @@ function CastCard({
 const FILTERS: { key: FilterType; label: string; activeClass: string }[] = [
   { key: 'all',    label: '全員',        activeClass: 'bg-gray-700 text-white' },
   { key: 'venrey', label: 'Venrey同期中', activeClass: 'bg-blue-600 text-white' },
-  { key: 'cp4',    label: 'CP4同期中',   activeClass: 'bg-orange-500 text-white' },
+  { key: 'hp',     label: 'HP同期中',    activeClass: 'bg-orange-500 text-white' },
   { key: 'review', label: '要確認',      activeClass: 'bg-amber-500 text-white' },
   { key: 'unset',  label: 'ID未登録',    activeClass: 'bg-gray-400 text-white' },
 ]
@@ -281,14 +265,14 @@ export default function PublishRulesPage() {
     for (const r of rowMap.values()) if (r.venrey_cast_id && r.enabled) return true
     return false
   }
-  const isSyncingCP4 = (rowMap: Map<RuleKey, RuleRow>) => {
+  const isSyncingHP = (rowMap: Map<RuleKey, RuleRow>) => {
     for (const r of rowMap.values()) if (r.cp4_gid && r.enabled) return true
     return false
   }
-  // 要確認 = IDあり・全サイト未設定（新規自動追加キャストが確認待ち）
+  // 要確認 = IDあり・全行 disabled（新規自動追加キャストが確認待ち）
   const needsReview = (rowMap: Map<RuleKey, RuleRow>) => {
-    const { hasVenrey, hasCP4 } = castCreds(rowMap)
-    if (!hasVenrey && !hasCP4) return false
+    const { hasVenrey, hasHP } = castCreds(rowMap)
+    if (!hasVenrey && !hasHP) return false
     for (const r of rowMap.values()) if (r.enabled) return false
     return true
   }
@@ -296,18 +280,18 @@ export default function PublishRulesPage() {
   const counts = {
     all:    casts.length,
     venrey: casts.filter(c => isSyncingVenrey(c.rowMap)).length,
-    cp4:    casts.filter(c => isSyncingCP4(c.rowMap)).length,
+    hp:     casts.filter(c => isSyncingHP(c.rowMap)).length,
     review: casts.filter(c => needsReview(c.rowMap)).length,
-    unset:  casts.filter(c => { const { hasVenrey, hasCP4 } = castCreds(c.rowMap); return !hasVenrey && !hasCP4 }).length,
+    unset:  casts.filter(c => { const { hasVenrey, hasHP } = castCreds(c.rowMap); return !hasVenrey && !hasHP }).length,
   }
 
   const filtered = (() => {
     let result = search ? casts.filter(c => c.castName.includes(search)) : casts
     if (filter === 'venrey') result = result.filter(c => isSyncingVenrey(c.rowMap))
-    else if (filter === 'cp4') result = result.filter(c => isSyncingCP4(c.rowMap))
+    else if (filter === 'hp') result = result.filter(c => isSyncingHP(c.rowMap))
     else if (filter === 'review') result = result.filter(c => needsReview(c.rowMap))
     else if (filter === 'unset') {
-      result = result.filter(c => { const { hasVenrey, hasCP4 } = castCreds(c.rowMap); return !hasVenrey && !hasCP4 })
+      result = result.filter(c => { const { hasVenrey, hasHP } = castCreds(c.rowMap); return !hasVenrey && !hasHP })
     }
     return result
   })()
@@ -324,20 +308,20 @@ export default function PublishRulesPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="mb-5">
         <h1 className="text-xl font-bold text-gray-800">配信ルール管理</h1>
-        <p className="text-xs text-gray-400 mt-0.5">各女性の出勤スケジュールをどのサイトに反映するかを設定します</p>
+        <p className="text-xs text-gray-400 mt-0.5">CS3の承認元店舗ごとに、どのサイト（HP / Venrey）に反映するかを設定します</p>
       </div>
 
       {/* 凡例 */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-5 px-3 py-2.5 bg-gray-50 rounded-lg text-xs text-gray-500">
-        <span className="font-medium text-gray-600 shrink-0">トグルの色：</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-green-500 shrink-0" />ON（Venrey + CP4 両方）</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-blue-500 shrink-0" />ON（Venreyのみ）</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-orange-500 shrink-0" />ON（CP4のみ）</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-amber-400 shrink-0" />ON（⚠ ID未登録・反映されない）</span>
-        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-gray-200 shrink-0" />OFF</span>
+      <div className="flex flex-wrap gap-x-5 gap-y-1.5 mb-5 px-3 py-2.5 bg-gray-50 rounded-lg text-xs text-gray-500">
+        <span className="font-medium text-gray-600 shrink-0">チェックの色：</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-green-500 shrink-0" />Venrey + HP 両方登録済み</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-blue-500 shrink-0" />Venreyのみ登録済み</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-orange-400 shrink-0" />HPのみ登録済み</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-gray-300 shrink-0" />ID未登録</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-amber-100 border border-amber-300 shrink-0" />チェックONだが反映不可（黄背景）</span>
       </div>
 
       {/* フィルタ */}
@@ -352,7 +336,7 @@ export default function PublishRulesPage() {
           >
             {f.label}
             {f.key === 'review' && counts.review > 0
-              ? <span className="ml-1 px-1 py-0.5 bg-amber-600 text-white rounded-full text-[10px]">{counts.review}</span>
+              ? <span className="ml-1 px-1.5 py-0.5 bg-amber-600 text-white rounded-full text-[10px]">{counts.review}</span>
               : <span className="opacity-60 ml-1">({counts[f.key]})</span>
             }
           </button>
@@ -374,7 +358,7 @@ export default function PublishRulesPage() {
       {/* キャスト一覧 */}
       <div className="space-y-2">
         {paginated.map(c => (
-          <CastCard
+          <CastMatrix
             key={c.castId}
             castId={c.castId}
             castName={c.castName}
