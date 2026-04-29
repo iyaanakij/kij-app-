@@ -9,6 +9,7 @@ const navItems = [
   { href: '/reservations', label: '予約管理' },
   { href: '/operations', label: '稼働ボード' },
   { href: '/shift', label: 'シフト管理' },
+  { href: '/dorm', label: '寮管理' },
   { href: '/staff', label: 'スタッフ' },
   { href: '/photodiary', label: '写メ日記' },
 ]

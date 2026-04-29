@@ -37,6 +37,7 @@ const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土']
 const NARITA_AREA_ID = 1
 const DORM_TOTAL_ROOMS = 5
 const DORM_USAGE_MEMO = '__SHIFT_DORM_USAGE__'
+const DORM_ENTRY_MEMO_PREFIX = '__NARITA_DORM_ENTRY__'
 
 interface DormUsage {
   id: string
@@ -119,7 +120,7 @@ export default function ShiftPage() {
     const { data, error } = await supabase
       .from('board_annotations')
       .select('id, staff_id, date, store_id')
-      .eq('memo', DORM_USAGE_MEMO)
+      .or(`memo.eq.${DORM_USAGE_MEMO},memo.like.${DORM_ENTRY_MEMO_PREFIX}%`)
       .in('store_id', area.storeIds)
       .gte('date', startDate)
       .lte('date', endDate)
@@ -243,6 +244,12 @@ export default function ShiftPage() {
       .eq('staff_id', staffId)
       .eq('date', dateStr)
       .eq('memo', DORM_USAGE_MEMO)
+    await supabase
+      .from('board_annotations')
+      .delete()
+      .eq('staff_id', staffId)
+      .eq('date', dateStr)
+      .like('memo', `${DORM_ENTRY_MEMO_PREFIX}%`)
     setDormUsage(current => current.filter(d => !(d.staff_id === staffId && d.date === dateStr)))
   }
 
