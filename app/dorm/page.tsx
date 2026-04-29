@@ -306,16 +306,16 @@ export default function DormPage() {
       ) : (
         <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1500px] text-xs border-collapse">
+            <table className="w-full min-w-[1180px] text-xs border-collapse table-fixed">
               <thead>
                 <tr className="bg-gray-900 text-white">
                   <th className="sticky left-0 z-30 bg-gray-900 px-2 py-2 text-center border-r border-gray-700 w-12">日</th>
                   <th className="sticky left-12 z-30 bg-gray-900 px-2 py-2 text-center border-r border-gray-700 w-12">曜</th>
-                  <th className="px-2 py-2 text-center border-r border-gray-700 w-12">泊</th>
+                  <th className="px-2 py-2 text-center border-r border-gray-700 w-16">泊</th>
                   {DORM_ROOMS.map(room => (
                     <th key={room} colSpan={3} className="px-2 py-2 text-center border-r border-gray-700">{room}</th>
                   ))}
-                  <th rowSpan={2} className="px-3 py-2 text-left border-l border-gray-700 min-w-64">寮についてのコメント</th>
+                  <th rowSpan={2} className="px-3 py-2 text-left border-l border-gray-700 w-44">寮についてのコメント</th>
                 </tr>
                 <tr className="bg-gray-800 text-white">
                   <th className="sticky left-0 z-30 bg-gray-800 px-2 py-1 border-r border-gray-700"></th>
@@ -399,9 +399,9 @@ export default function DormPage() {
 function FragmentCells() {
   return (
     <>
-      <th className="px-1 py-1 text-center border-r border-gray-700 min-w-32">入or泊</th>
-      <th className="px-1 py-1 text-center border-r border-gray-700 min-w-20">退室</th>
-      <th className="px-1 py-1 text-center border-r border-gray-700 min-w-16">清掃</th>
+      <th className="px-1 py-1 text-center border-r border-gray-700 w-24">入or泊</th>
+      <th className="px-1 py-1 text-center border-r border-gray-700 w-24">退室</th>
+      <th className="px-1 py-1 text-center border-r border-gray-700 w-14">清掃</th>
     </>
   )
 }
@@ -425,7 +425,7 @@ function RoomTopCells({
         <select
           value={entry?.checkinStaffId ?? ''}
           onChange={e => onSave(date, room, { checkinStaffId: e.target.value ? Number(e.target.value) : null })}
-          className="h-8 w-full min-w-32 border-0 bg-transparent px-1 text-xs text-gray-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
+          className="h-8 w-full border-0 bg-transparent px-1 text-xs text-gray-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
         >
           <option value="">-</option>
           {staffOptions.map(staff => (
@@ -437,7 +437,7 @@ function RoomTopCells({
         <select
           value={entry?.checkoutStaffId ?? ''}
           onChange={e => onSave(date, room, { checkoutStaffId: e.target.value ? Number(e.target.value) : null })}
-          className="h-8 w-full min-w-32 border-0 bg-transparent px-1 text-xs text-gray-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
+          className="h-8 w-full border-0 bg-transparent px-1 text-xs text-gray-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
         >
           <option value="">-</option>
           {staffOptions.map(staff => (
@@ -449,7 +449,7 @@ function RoomTopCells({
         <select
           value={entry?.cleaningStatus ?? ''}
           onChange={e => onSave(date, room, { cleaningStatus: e.target.value })}
-          className="h-8 w-full min-w-16 border-0 bg-transparent px-1 text-center text-xs text-gray-700 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
+          className="h-8 w-full border-0 bg-transparent px-1 text-center text-xs text-gray-700 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
         >
           <option value="">-</option>
           {CLEANING_OPTIONS.map(option => (
@@ -478,7 +478,7 @@ function RoomBottomCells({
         <select
           value={entry?.checkinStatus ?? ''}
           onChange={e => onSave(date, room, { checkinStatus: e.target.value === '-' ? '' : e.target.value })}
-          className="h-8 w-full min-w-32 border-0 bg-transparent px-1 text-xs text-gray-700 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
+          className="h-8 w-full border-0 bg-transparent px-1 text-xs text-gray-700 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
         >
           {DETAIL_OPTIONS.map(option => (
             <option key={option} value={option === '-' ? '' : option}>{option}</option>
@@ -489,7 +489,7 @@ function RoomBottomCells({
         <select
           value={entry?.checkoutStatus ?? ''}
           onChange={e => onSave(date, room, { checkoutStatus: e.target.value === '-' ? '' : e.target.value })}
-          className="h-8 w-full min-w-32 border-0 bg-transparent px-1 text-xs text-gray-700 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
+          className="h-8 w-full border-0 bg-transparent px-1 text-xs text-gray-700 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
         >
           {DETAIL_OPTIONS.map(option => (
             <option key={option} value={option === '-' ? '' : option}>{option}</option>
