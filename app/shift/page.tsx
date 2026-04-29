@@ -34,6 +34,16 @@ function parseShiftValue(value: string): { mode: 'delete' | 'x' | 'normal'; star
 }
 
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土']
+const NARITA_AREA_ID = 1
+const DORM_TOTAL_ROOMS = 5
+const DORM_USAGE_MEMO = '__SHIFT_DORM_USAGE__'
+
+interface DormUsage {
+  id: string
+  staff_id: number
+  date: string
+  store_id: number
+}
 
 export default function ShiftPage() {
   const todayStr = todayString()
@@ -44,6 +54,7 @@ export default function ShiftPage() {
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [staffStores, setStaffStores] = useState<{ staff_id: number; store_id: number }[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
+  const [dormUsage, setDormUsage] = useState<DormUsage[]>([])
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<'calendar' | 'requests'>('calendar')
   const [requests, setRequests] = useState<ShiftRequest[]>([])
@@ -97,6 +108,29 @@ export default function ShiftPage() {
     setLoading(false)
   }, [year, month, selectedAreaId, daysInMonth])
 
+  const fetchDormUsage = useCallback(async () => {
+    if (selectedAreaId !== NARITA_AREA_ID) {
+      setDormUsage([])
+      return
+    }
+    const area = AREAS.find(a => a.id === selectedAreaId)!
+    const startDate = formatDateStr(year, month, 1)
+    const endDate = formatDateStr(year, month, daysInMonth)
+    const { data, error } = await supabase
+      .from('board_annotations')
+      .select('id, staff_id, date, store_id')
+      .eq('memo', DORM_USAGE_MEMO)
+      .in('store_id', area.storeIds)
+      .gte('date', startDate)
+      .lte('date', endDate)
+    if (error) {
+      console.warn('failed to fetch dorm usage', error)
+      setDormUsage([])
+      return
+    }
+    setDormUsage((data ?? []) as DormUsage[])
+  }, [year, month, selectedAreaId, daysInMonth])
+
   const fetchRequests = useCallback(async () => {
     const { data } = await supabase
       .from('shift_requests')
@@ -118,6 +152,7 @@ export default function ShiftPage() {
 
   useEffect(() => { fetchStaff() }, [fetchStaff])
   useEffect(() => { fetchShifts() }, [fetchShifts])
+  useEffect(() => { fetchDormUsage() }, [fetchDormUsage])
   useEffect(() => { fetchRequests() }, [fetchRequests])
   useEffect(() => { fetchLastSyncAt() }, [fetchLastSyncAt])
 
@@ -180,6 +215,66 @@ export default function ShiftPage() {
     return ids.size
   }
 
+  function getDormUsage(staffId: number, day: number): DormUsage | undefined {
+    const dateStr = formatDateStr(year, month, day)
+    return dormUsage.find(d => d.staff_id === staffId && d.date === dateStr)
+  }
+
+  function getDormCountForDay(day: number): number {
+    const dateStr = formatDateStr(year, month, day)
+    const ids = new Set(
+      dormUsage
+        .filter(d => d.date === dateStr && shifts.some(s => s.staff_id === d.staff_id && s.date === dateStr && s.status !== 'x'))
+        .map(d => d.staff_id)
+    )
+    return ids.size
+  }
+
+  function getDormVacancyForDay(day: number): number {
+    return Math.max(0, DORM_TOTAL_ROOMS - getDormCountForDay(day))
+  }
+
+  async function clearDormUsage(staffId: number, day: number) {
+    if (selectedAreaId !== NARITA_AREA_ID) return
+    const dateStr = formatDateStr(year, month, day)
+    await supabase
+      .from('board_annotations')
+      .delete()
+      .eq('staff_id', staffId)
+      .eq('date', dateStr)
+      .eq('memo', DORM_USAGE_MEMO)
+    setDormUsage(current => current.filter(d => !(d.staff_id === staffId && d.date === dateStr)))
+  }
+
+  async function toggleDormUsage(staffId: number, day: number) {
+    if (selectedAreaId !== NARITA_AREA_ID) return
+    const shift = getShift(staffId, day)
+    if (!shift || shift.status === 'x') return
+    const dateStr = formatDateStr(year, month, day)
+    const existing = getDormUsage(staffId, day)
+    if (existing) {
+      await supabase.from('board_annotations').delete().eq('id', existing.id)
+      setDormUsage(current => current.filter(d => d.id !== existing.id))
+      return
+    }
+    const area = AREAS.find(a => a.id === selectedAreaId)!
+    const payload = {
+      staff_id: staffId,
+      date: dateStr,
+      start_time: 0,
+      end_time: 0,
+      color: 'green',
+      memo: DORM_USAGE_MEMO,
+      store_id: shift.store_id && area.storeIds.includes(shift.store_id) ? shift.store_id : area.storeIds[0],
+    }
+    const { data, error } = await supabase.from('board_annotations').insert(payload).select('id, staff_id, date, store_id').single()
+    if (error) {
+      console.warn('failed to save dorm usage', error)
+      return
+    }
+    if (data) setDormUsage(current => [...current, data as DormUsage])
+  }
+
   function getWeekday(day: number): number {
     return new Date(year, month - 1, day).getDay()
   }
@@ -217,6 +312,7 @@ export default function ShiftPage() {
       if (existingShift?.id) {
         await supabase.from('shifts').delete().eq('id', existingShift.id)
       }
+      await clearDormUsage(staffId, day)
     } else if (parsed.mode === 'x') {
       const payload = {
         staff_id: staffId,
@@ -229,6 +325,7 @@ export default function ShiftPage() {
       }
       if (existingShift?.id) await supabase.from('shifts').update(payload).eq('id', existingShift.id)
       else await supabase.from('shifts').insert(payload)
+      await clearDormUsage(staffId, day)
     } else if (parsed.mode === 'normal' && parsed.start !== undefined) {
       const payload = {
         staff_id: staffId,
@@ -483,10 +580,16 @@ export default function ShiftPage() {
                   })}
                 </tr>
                 <tr className="bg-gray-800 text-white">
-                  <td className="sticky left-0 z-10 bg-gray-800 px-3 py-1.5 border-r border-gray-600 text-xs text-gray-300">出勤人数</td>
+                  <td className="sticky left-0 z-10 bg-gray-800 px-3 py-1.5 border-r border-gray-600 text-xs text-gray-300">
+                    <div>出勤人数</div>
+                    {selectedAreaId === NARITA_AREA_ID && <div className="text-[10px] text-emerald-200">寮空室</div>}
+                  </td>
                   {days.map(d => (
-                    <td key={d} className={`px-1 py-1 border-l border-gray-600 text-center font-bold text-yellow-300 ${isToday(d) ? 'bg-blue-900' : ''}`}>
-                      {getStaffCountForDay(d) || ''}
+                    <td key={d} className={`px-1 py-1 border-l border-gray-600 text-center font-bold ${isToday(d) ? 'bg-blue-900' : ''}`}>
+                      <div className="text-yellow-300">{getStaffCountForDay(d) || ''}</div>
+                      {selectedAreaId === NARITA_AREA_ID && (
+                        <div className="text-[10px] leading-3 text-emerald-200">{getDormVacancyForDay(d)}</div>
+                      )}
                     </td>
                   ))}
                 </tr>
@@ -505,6 +608,7 @@ export default function ShiftPage() {
                       const isSat = wd === 6
                       const today = isToday(d)
                       const isEditing = editingCell?.staffId === staff.id && editingCell?.day === d
+                      const isDorm = selectedAreaId === NARITA_AREA_ID && !!shift && shift.status !== 'x' && !!getDormUsage(staff.id, d)
 
                       let cellBg = 'hover:bg-blue-50'
                       let cellText = ''
@@ -518,17 +622,17 @@ export default function ShiftPage() {
                         cellText = '×'
                         textColor = 'text-red-700 font-bold'
                       } else {
-                        cellBg = 'bg-pink-200 hover:bg-pink-300'
+                        cellBg = isDorm ? 'bg-emerald-200 hover:bg-emerald-300' : 'bg-pink-200 hover:bg-pink-300'
                         cellText = displayShiftTime(shift)
-                        textColor = 'text-pink-900 font-medium'
+                        textColor = isDorm ? 'text-emerald-950 font-semibold' : 'text-pink-900 font-medium'
                       }
 
                       return (
                         <td
                           key={d}
                           onClick={e => { e.stopPropagation(); startEdit(staff.id, d) }}
-                          className={`relative border-l border-gray-100 px-0.5 py-0 text-center cursor-pointer transition-colors ${isEditing ? 'bg-yellow-50 ring-2 ring-inset ring-yellow-400 z-10' : `${cellBg} ${textColor}`} ${today ? 'ring-1 ring-inset ring-blue-400' : ''}`}
-                          style={{ minWidth: 52, height: 30 }}
+                          className={`group relative border-l border-gray-100 px-0.5 py-0 text-center cursor-pointer transition-colors ${isEditing ? 'bg-yellow-50 ring-2 ring-inset ring-yellow-400 z-10' : `${cellBg} ${textColor}`} ${today ? 'ring-1 ring-inset ring-blue-400' : ''}`}
+                          style={{ minWidth: 52, height: selectedAreaId === NARITA_AREA_ID ? 34 : 30 }}
                         >
                           {isEditing ? (
                             <input
@@ -545,7 +649,19 @@ export default function ShiftPage() {
                               placeholder="14-22"
                             />
                           ) : (
-                            <span className="block truncate text-center" style={{ fontSize: 10 }}>{cellText}</span>
+                            <>
+                              <span className={`block truncate text-center ${isDorm ? 'pt-3' : ''}`} style={{ fontSize: 10 }}>{cellText}</span>
+                              {selectedAreaId === NARITA_AREA_ID && shift && shift.status !== 'x' && (
+                                <button
+                                  type="button"
+                                  onClick={e => { e.stopPropagation(); toggleDormUsage(staff.id, d) }}
+                                  className={`absolute right-0.5 top-0.5 rounded px-1 text-[9px] font-bold leading-3 transition-opacity ${isDorm ? 'bg-emerald-700 text-white opacity-100' : 'bg-white/90 text-emerald-700 border border-emerald-300 opacity-0 shadow-sm group-hover:opacity-100'}`}
+                                  title={isDorm ? '寮使用を解除' : '寮使用にする'}
+                                >
+                                  寮
+                                </button>
+                              )}
+                            </>
                           )}
                         </td>
                       )
@@ -561,6 +677,9 @@ export default function ShiftPage() {
       {/* Legend */}
       <div className="mt-3 flex gap-4 text-xs text-gray-500 flex-wrap">
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-pink-200 inline-block rounded border border-pink-300"></span> 出勤（例: <code className="bg-gray-100 px-1 rounded">14-22</code>）</span>
+        {selectedAreaId === NARITA_AREA_ID && (
+          <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-emerald-200 inline-block rounded border border-emerald-300"></span> 寮使用</span>
+        )}
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-red-200 inline-block rounded border border-red-300"></span> 休み（<code className="bg-gray-100 px-1 rounded">x</code>）</span>
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-white inline-block rounded border border-gray-200"></span> 未登録（空欄で削除）</span>
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-red-50 inline-block rounded border border-red-200"></span> 日曜</span>
