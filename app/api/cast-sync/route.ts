@@ -43,7 +43,7 @@ async function fetchCastNames(url: string): Promise<string[]> {
   if (names.length === 0) {
     const re2 = /<div[^>]*class="girllisttext"[^>]*>\s*([\s\S]*?)\s*<br/g
     while ((m = re2.exec(html)) !== null) {
-      const name = m[1].replace(/<[^>]+>/g, '').trim()
+      const name = m[1].replace(/<[^>]+>/g, '').trim().split('\n')[0].trim()
       if (name && !seen.has(name)) { names.push(name); seen.add(name) }
     }
   }
