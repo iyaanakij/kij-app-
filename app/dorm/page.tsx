@@ -306,20 +306,33 @@ export default function DormPage() {
       ) : (
         <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1180px] text-xs border-collapse table-fixed">
+            <table className="w-full min-w-[1740px] text-xs border-collapse table-fixed">
+              <colgroup>
+                <col className="w-9" />
+                <col className="w-9" />
+                <col className="w-14" />
+                {DORM_ROOMS.map(room => (
+                  <Fragment key={room}>
+                    <col className="w-28" />
+                    <col className="w-28" />
+                    <col className="w-12" />
+                  </Fragment>
+                ))}
+                <col className="w-40" />
+              </colgroup>
               <thead>
                 <tr className="bg-gray-900 text-white">
-                  <th className="sticky left-0 z-30 bg-gray-900 px-2 py-2 text-center border-r border-gray-700 w-12">日</th>
-                  <th className="sticky left-12 z-30 bg-gray-900 px-2 py-2 text-center border-r border-gray-700 w-12">曜</th>
-                  <th className="px-2 py-2 text-center border-r border-gray-700 w-16">泊</th>
+                  <th className="sticky left-0 z-30 bg-gray-900 px-1 py-2 text-center border-r border-gray-700">日</th>
+                  <th className="sticky left-9 z-30 bg-gray-900 px-1 py-2 text-center border-r border-gray-700">曜</th>
+                  <th className="px-1 py-2 text-center border-r border-gray-700">泊</th>
                   {DORM_ROOMS.map(room => (
                     <th key={room} colSpan={3} className="px-2 py-2 text-center border-r border-gray-700">{room}</th>
                   ))}
-                  <th rowSpan={2} className="px-3 py-2 text-left border-l border-gray-700 w-44">寮についてのコメント</th>
+                  <th rowSpan={2} className="px-2 py-2 text-left border-l border-gray-700">寮についてのコメント</th>
                 </tr>
                 <tr className="bg-gray-800 text-white">
-                  <th className="sticky left-0 z-30 bg-gray-800 px-2 py-1 border-r border-gray-700"></th>
-                  <th className="sticky left-12 z-30 bg-gray-800 px-2 py-1 border-r border-gray-700"></th>
+                  <th className="sticky left-0 z-30 bg-gray-800 px-1 py-1 border-r border-gray-700"></th>
+                  <th className="sticky left-9 z-30 bg-gray-800 px-1 py-1 border-r border-gray-700"></th>
                   <th className="px-2 py-1 text-center border-r border-gray-700">残</th>
                   {DORM_ROOMS.map(room => (
                     <FragmentCells key={room} />
@@ -337,9 +350,9 @@ export default function DormPage() {
                   return (
                     <Fragment key={date}>
                       <tr className={`${rowBg} border-t border-gray-200`}>
-                        <td rowSpan={2} className="sticky left-0 z-20 bg-inherit border-r border-gray-200 px-2 py-2 text-center text-sm font-bold text-gray-800">{day}</td>
-                        <td rowSpan={2} className={`sticky left-12 z-20 bg-inherit border-r border-gray-200 px-2 py-2 text-center font-bold ${wd === 0 ? 'text-red-500' : wd === 6 ? 'text-sky-500' : 'text-gray-500'}`}>{WEEKDAY_LABELS[wd]}</td>
-                        <td className="border-r border-gray-200 px-2 py-1 text-center text-sm font-bold text-emerald-700">{occupied || ''}</td>
+                        <td rowSpan={2} className="sticky left-0 z-20 bg-inherit border-r border-gray-200 px-1 py-2 text-center text-sm font-bold text-gray-800">{day}</td>
+                        <td rowSpan={2} className={`sticky left-9 z-20 bg-inherit border-r border-gray-200 px-1 py-2 text-center font-bold ${wd === 0 ? 'text-red-500' : wd === 6 ? 'text-sky-500' : 'text-gray-500'}`}>{WEEKDAY_LABELS[wd]}</td>
+                        <td className="border-r border-gray-200 px-1 py-1 text-center text-sm font-bold text-emerald-700">{occupied || ''}</td>
                         {DORM_ROOMS.map(room => {
                           const entry = getEntry(date, room)
                           return (
@@ -364,7 +377,7 @@ export default function DormPage() {
                         </td>
                       </tr>
                       <tr className={`${rowBg} border-b border-gray-100`}>
-                        <td className={`border-r border-gray-200 px-2 py-1 text-center text-sm font-bold ${vacancy === 0 ? 'text-red-600' : 'text-gray-700'}`}>{vacancy}</td>
+                        <td className={`border-r border-gray-200 px-1 py-1 text-center text-sm font-bold ${vacancy === 0 ? 'text-red-600' : 'text-gray-700'}`}>{vacancy}</td>
                         {DORM_ROOMS.map(room => {
                           const entry = getEntry(date, room)
                           return (
@@ -399,9 +412,9 @@ export default function DormPage() {
 function FragmentCells() {
   return (
     <>
-      <th className="px-1 py-1 text-center border-r border-gray-700 w-24">入or泊</th>
-      <th className="px-1 py-1 text-center border-r border-gray-700 w-24">退室</th>
-      <th className="px-1 py-1 text-center border-r border-gray-700 w-14">清掃</th>
+      <th className="px-1 py-1 text-center border-r border-gray-700">入or泊</th>
+      <th className="px-1 py-1 text-center border-r border-gray-700">退室</th>
+      <th className="px-1 py-1 text-center border-r border-gray-700">清掃</th>
     </>
   )
 }
