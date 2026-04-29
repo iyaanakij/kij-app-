@@ -35,7 +35,7 @@ function parseShiftValue(value: string): { mode: 'delete' | 'x' | 'normal'; star
 
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土']
 const NARITA_AREA_ID = 1
-const DORM_TOTAL_ROOMS = 5
+const DORM_TOTAL_ROOMS = 6
 const DORM_USAGE_MEMO = '__SHIFT_DORM_USAGE__'
 const DORM_ENTRY_MEMO_PREFIX = '__NARITA_DORM_ENTRY__'
 
