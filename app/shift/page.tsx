@@ -50,11 +50,7 @@ export default function ShiftPage() {
   const [rejectModalId, setRejectModalId] = useState<number | null>(null)
   const [rejectReason, setRejectReason] = useState('')
 
-  const [syncing, setSyncing] = useState(false)
-  const [syncCountdown, setSyncCountdown] = useState(0)
-  const [syncResult, setSyncResult] = useState<{ synced: number; skipped: number; deleted: number } | null>(null)
-  const [syncError, setSyncError] = useState<string | null>(null)
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
 
   // Inline editing
   const [editingCell, setEditingCell] = useState<{ staffId: number; day: number } | null>(null)
@@ -109,35 +105,21 @@ export default function ShiftPage() {
     if (data) setRequests(data as ShiftRequest[])
   }, [])
 
+  const fetchLastSyncAt = useCallback(async () => {
+    const { data } = await supabase
+      .from('shifts')
+      .select('created_at')
+      .eq('notes', 'CS3同期')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    setLastSyncAt(data?.created_at ?? null)
+  }, [])
+
   useEffect(() => { fetchStaff() }, [fetchStaff])
   useEffect(() => { fetchShifts() }, [fetchShifts])
   useEffect(() => { fetchRequests() }, [fetchRequests])
-
-  const clearCountdown = useCallback(() => {
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current)
-      countdownRef.current = null
-    }
-    setSyncCountdown(0)
-  }, [])
-
-  useEffect(() => {
-    const ch = supabase.channel('shift-sync')
-      .on('broadcast', { event: 'shift-sync-done' }, ({ payload }) => {
-        clearCountdown()
-        setSyncing(false)
-        setSyncError(null)
-        setSyncResult(payload as { synced: number; skipped: number; deleted: number })
-        fetchShifts()
-      })
-      .on('broadcast', { event: 'shift-sync-error' }, ({ payload }) => {
-        clearCountdown()
-        setSyncing(false)
-        setSyncError((payload as { error: string }).error ?? '同期エラー')
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [fetchShifts, clearCountdown])
+  useEffect(() => { fetchLastSyncAt() }, [fetchLastSyncAt])
 
   const notifyLine = (staff_id: number, message: string) => {
     fetch('/api/line/notify', {
@@ -319,31 +301,6 @@ export default function ShiftPage() {
     }
   }
 
-  async function syncShifts() {
-    setSyncing(true)
-    setSyncResult(null)
-    setSyncError(null)
-    // デーモンに shift-sync-request をブロードキャスト
-    // デーモンが起動していない場合は shift-sync-done が届かないためタイムアウト
-    await supabase.channel('shift-sync').send({
-      type: 'broadcast',
-      event: 'shift-sync-request',
-      payload: {},
-    })
-    // 60秒以内に shift-sync-done が届かなければタイムアウト
-    let n = 60
-    setSyncCountdown(n)
-    countdownRef.current = setInterval(() => {
-      n--
-      setSyncCountdown(n)
-      if (n <= 0) {
-        clearCountdown()
-        setSyncing(false)
-        setSyncError('デーモンが起動していません。node scripts/cs3-sync-daemon.js を実行してください。')
-      }
-    }, 1000)
-  }
-
   function prevMonth() {
     if (month === 1) { setYear(y => y - 1); setMonth(12) }
     else setMonth(m => m - 1)
@@ -478,13 +435,11 @@ export default function ShiftPage() {
             ))}
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={syncShifts}
-              disabled={syncing}
-              className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-1.5 rounded-full text-sm font-medium transition-colors shadow-sm"
-            >
-              {syncing ? (syncCountdown > 0 ? `同期中... あと${syncCountdown}秒` : '同期中...') : 'HP同期'}
-            </button>
+            {lastSyncAt && (
+              <span className="text-xs text-gray-400">
+                CS3同期: {new Date(lastSyncAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
             <div className="group relative">
               <button className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 text-xs font-bold transition-colors">?</button>
               <div className="absolute right-0 top-8 w-64 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 hidden group-hover:block z-10 shadow-lg leading-5">
@@ -497,18 +452,6 @@ export default function ShiftPage() {
         </div>
       </div>
 
-      {syncResult && (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-xs text-green-700">
-          HP同期完了: {syncResult.synced}件反映
-          {syncResult.deleted > 0 && <span className="text-red-600 ml-1">/ {syncResult.deleted}件削除</span>}
-          {syncResult.skipped > 0 && <span className="text-gray-400 ml-1">（スキップ {syncResult.skipped}件）</span>}
-        </div>
-      )}
-      {syncError && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4 text-xs text-red-700">
-          同期エラー: {syncError}
-        </div>
-      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
