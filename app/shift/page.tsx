@@ -176,7 +176,8 @@ export default function ShiftPage() {
 
   function getStaffCountForDay(day: number): number {
     const dateStr = formatDateStr(year, month, day)
-    return shifts.filter(s => s.date === dateStr && s.status !== 'x').length
+    const ids = new Set(shifts.filter(s => s.date === dateStr && s.status !== 'x').map(s => s.staff_id))
+    return ids.size
   }
 
   function getWeekday(day: number): number {
