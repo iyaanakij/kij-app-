@@ -10,8 +10,6 @@ const DORM_ROOMS = ['203', '303', '305', '306', '307', '308']
 const DORM_ENTRY_MEMO_PREFIX = '__NARITA_DORM_ENTRY__'
 const DORM_COMMENT_MEMO_PREFIX = '__NARITA_DORM_COMMENT__'
 
-type DormStatus = '' | 'stay' | 'checkin' | 'checkout' | 'after_shift'
-
 interface StaffStore {
   staff_id: number
   store_id: number
@@ -19,14 +17,21 @@ interface StaffStore {
 
 interface DormEntryData {
   room: string
-  status: DormStatus
-  checkoutTime: string
-  cleaned: boolean
+  checkinStaffId: number | null
+  checkinStatus: string
+  checkoutStaffId: number | null
+  checkoutStatus: string
+  cleaningStatus: string
+}
+
+type LegacyDormEntryData = Partial<DormEntryData> & {
+  status?: string
+  checkoutTime?: string
+  cleaned?: boolean
 }
 
 interface DormEntry extends DormEntryData {
   id: string
-  staff_id: number | null
   date: string
 }
 
@@ -37,13 +42,17 @@ interface BoardAnnotationRow {
   memo: string | null
 }
 
-const STATUS_OPTIONS: { value: DormStatus; label: string }[] = [
-  { value: '', label: '-' },
-  { value: 'stay', label: '宿泊中' },
-  { value: 'checkin', label: '入室' },
-  { value: 'checkout', label: '退室' },
-  { value: 'after_shift', label: '出勤後帰宅' },
+const DETAIL_OPTIONS = [
+  '-', '宿泊中', '前乗り',
+  '9:00', '9:30', '10:00', '10:30', '11:00', '11:30',
+  '12:00', '12:30', '13:00', '13:30', '14:00', '14:30',
+  '15:00', '15:30', '16:00', '16:30', '17:00', '17:30',
+  '18:00', '18:30', '19:00', '19:30', '20:00', '20:30',
+  '21:00', '21:30', '22:00', '22:30', '23:00', '23:30',
+  '24:00', '出勤後帰宅', '朝帰宅', '退室', '始発', '退室→待機',
 ]
+
+const CLEANING_OPTIONS = ['-', '済', '未', 'ﾌﾄﾝ', '掃除機']
 
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土']
 
@@ -58,16 +67,17 @@ function formatDateStr(year: number, month: number, day: number): string {
 function parseDormEntry(row: BoardAnnotationRow): DormEntry | null {
   if (!row.memo?.startsWith(DORM_ENTRY_MEMO_PREFIX)) return null
   try {
-    const raw = JSON.parse(row.memo.slice(DORM_ENTRY_MEMO_PREFIX.length)) as Partial<DormEntryData>
+    const raw = JSON.parse(row.memo.slice(DORM_ENTRY_MEMO_PREFIX.length)) as LegacyDormEntryData
     if (!raw.room || !DORM_ROOMS.includes(raw.room)) return null
     return {
       id: row.id,
-      staff_id: row.staff_id,
       date: row.date,
       room: raw.room,
-      status: raw.status ?? '',
-      checkoutTime: raw.checkoutTime ?? '',
-      cleaned: Boolean(raw.cleaned),
+      checkinStaffId: raw.checkinStaffId ?? row.staff_id ?? null,
+      checkinStatus: raw.checkinStatus ?? (raw.status ? String(raw.status) : ''),
+      checkoutStaffId: raw.checkoutStaffId ?? null,
+      checkoutStatus: raw.checkoutStatus ?? raw.checkoutTime ?? '',
+      cleaningStatus: raw.cleaningStatus ?? (raw.cleaned ? '済' : ''),
     }
   } catch {
     return null
@@ -163,13 +173,13 @@ export default function DormPage() {
 
   function getStaffOptionsForDate(date: string): Staff[] {
     const shiftStaffIds = new Set(shifts.filter(s => s.date === date).map(s => s.staff_id))
-    const shiftStaff = staffList.filter(s => shiftStaffIds.has(s.id))
+    const shiftStaff = staffList.filter(s => shiftStaffIds.has(s.id) && naritaStaffIds.has(s.id))
     const remaining = naritaStaff.filter(s => !shiftStaffIds.has(s.id))
     return [...shiftStaff, ...remaining]
   }
 
   function getOccupiedCount(date: string): number {
-    return new Set(entries.filter(e => e.date === date && e.staff_id).map(e => e.room)).size
+    return new Set(entries.filter(e => e.date === date && e.checkinStaffId).map(e => e.room)).size
   }
 
   function applyEntryToState(entry: DormEntry) {
@@ -182,17 +192,18 @@ export default function DormPage() {
     })
   }
 
-  async function saveEntry(date: string, room: string, patch: Partial<DormEntryData> & { staff_id?: number | null }) {
+  async function saveEntry(date: string, room: string, patch: Partial<DormEntryData>) {
     const existing = getEntry(date, room)
     const current: DormEntryData = {
       room,
-      status: existing?.status ?? '',
-      checkoutTime: existing?.checkoutTime ?? '',
-      cleaned: existing?.cleaned ?? false,
+      checkinStaffId: existing?.checkinStaffId ?? null,
+      checkinStatus: existing?.checkinStatus ?? '',
+      checkoutStaffId: existing?.checkoutStaffId ?? null,
+      checkoutStatus: existing?.checkoutStatus ?? '',
+      cleaningStatus: existing?.cleaningStatus ?? '',
     }
     const nextData: DormEntryData = { ...current, ...patch, room }
-    const staffId = patch.staff_id !== undefined ? patch.staff_id : existing?.staff_id ?? null
-    const shouldDelete = !staffId && !nextData.status && !nextData.checkoutTime && !nextData.cleaned
+    const shouldDelete = !nextData.checkinStaffId && !nextData.checkinStatus && !nextData.checkoutStaffId && !nextData.checkoutStatus && !nextData.cleaningStatus
 
     if (shouldDelete) {
       if (existing) {
@@ -204,14 +215,13 @@ export default function DormPage() {
 
     const optimistic: DormEntry = {
       id: existing?.id ?? `pending-${date}-${room}`,
-      staff_id: staffId,
       date,
       ...nextData,
     }
     applyEntryToState(optimistic)
 
     const payload = {
-      staff_id: staffId,
+      staff_id: nextData.checkinStaffId,
       date,
       start_time: 0,
       end_time: 0,
@@ -333,7 +343,7 @@ export default function DormPage() {
                         {DORM_ROOMS.map(room => {
                           const entry = getEntry(date, room)
                           return (
-                            <RoomNameCells
+                            <RoomTopCells
                               key={room}
                               date={date}
                               room={room}
@@ -358,7 +368,7 @@ export default function DormPage() {
                         {DORM_ROOMS.map(room => {
                           const entry = getEntry(date, room)
                           return (
-                            <RoomStatusCells
+                            <RoomBottomCells
                               key={room}
                               date={date}
                               room={room}
@@ -396,7 +406,7 @@ function FragmentCells() {
   )
 }
 
-function RoomNameCells({
+function RoomTopCells({
   date,
   room,
   entry,
@@ -407,14 +417,14 @@ function RoomNameCells({
   room: string
   entry: DormEntry | undefined
   staffOptions: Staff[]
-  onSave: (date: string, room: string, patch: Partial<DormEntryData> & { staff_id?: number | null }) => void
+  onSave: (date: string, room: string, patch: Partial<DormEntryData>) => void
 }) {
   return (
     <>
-      <td className={`border-r border-gray-200 px-1 py-1 ${entry?.staff_id ? 'bg-emerald-50' : ''}`}>
+      <td className={`border-r border-gray-200 px-1 py-1 ${entry?.checkinStaffId ? 'bg-emerald-50' : ''}`}>
         <select
-          value={entry?.staff_id ?? ''}
-          onChange={e => onSave(date, room, { staff_id: e.target.value ? Number(e.target.value) : null })}
+          value={entry?.checkinStaffId ?? ''}
+          onChange={e => onSave(date, room, { checkinStaffId: e.target.value ? Number(e.target.value) : null })}
           className="h-8 w-full min-w-32 border-0 bg-transparent px-1 text-xs text-gray-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
         >
           <option value="">-</option>
@@ -423,13 +433,35 @@ function RoomNameCells({
           ))}
         </select>
       </td>
-      <td className="border-r border-gray-200 px-1 py-1 text-center text-gray-400">-</td>
-      <td className="border-r border-gray-200 px-1 py-1 text-center text-gray-400">{entry?.cleaned ? '済' : '-'}</td>
+      <td className="border-r border-gray-200 px-1 py-1">
+        <select
+          value={entry?.checkoutStaffId ?? ''}
+          onChange={e => onSave(date, room, { checkoutStaffId: e.target.value ? Number(e.target.value) : null })}
+          className="h-8 w-full min-w-32 border-0 bg-transparent px-1 text-xs text-gray-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
+        >
+          <option value="">-</option>
+          {staffOptions.map(staff => (
+            <option key={staff.id} value={staff.id}>{staff.name}</option>
+          ))}
+        </select>
+      </td>
+      <td rowSpan={2} className="border-r border-gray-200 px-1 py-1 align-middle">
+        <select
+          value={entry?.cleaningStatus ?? ''}
+          onChange={e => onSave(date, room, { cleaningStatus: e.target.value })}
+          className="h-8 w-full min-w-16 border-0 bg-transparent px-1 text-center text-xs text-gray-700 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
+        >
+          <option value="">-</option>
+          {CLEANING_OPTIONS.map(option => (
+            <option key={option} value={option === '-' ? '' : option}>{option}</option>
+          ))}
+        </select>
+      </td>
     </>
   )
 }
 
-function RoomStatusCells({
+function RoomBottomCells({
   date,
   room,
   entry,
@@ -438,37 +470,31 @@ function RoomStatusCells({
   date: string
   room: string
   entry: DormEntry | undefined
-  onSave: (date: string, room: string, patch: Partial<DormEntryData> & { staff_id?: number | null }) => void
+  onSave: (date: string, room: string, patch: Partial<DormEntryData>) => void
 }) {
   return (
     <>
-      <td className={`border-r border-gray-200 px-1 py-1 ${entry?.staff_id ? 'bg-emerald-50' : ''}`}>
+      <td className={`border-r border-gray-200 px-1 py-1 ${entry?.checkinStaffId ? 'bg-emerald-50' : ''}`}>
         <select
-          value={entry?.status ?? ''}
-          onChange={e => onSave(date, room, { status: e.target.value as DormStatus })}
+          value={entry?.checkinStatus ?? ''}
+          onChange={e => onSave(date, room, { checkinStatus: e.target.value === '-' ? '' : e.target.value })}
           className="h-8 w-full min-w-32 border-0 bg-transparent px-1 text-xs text-gray-700 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
         >
-          {STATUS_OPTIONS.map(status => (
-            <option key={status.value} value={status.value}>{status.label}</option>
+          {DETAIL_OPTIONS.map(option => (
+            <option key={option} value={option === '-' ? '' : option}>{option}</option>
           ))}
         </select>
       </td>
       <td className="border-r border-gray-200 px-1 py-1">
-        <input
-          key={`${entry?.id ?? 'empty'}-${entry?.checkoutTime ?? ''}`}
-          defaultValue={entry?.checkoutTime ?? ''}
-          onBlur={e => onSave(date, room, { checkoutTime: e.target.value })}
-          placeholder="-"
-          className="h-8 w-full min-w-20 border-0 bg-transparent px-1 text-center text-xs text-gray-700 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
-        />
-      </td>
-      <td className="border-r border-gray-200 px-1 py-1 text-center">
-        <input
-          type="checkbox"
-          checked={entry?.cleaned ?? false}
-          onChange={e => onSave(date, room, { cleaned: e.target.checked })}
-          className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-        />
+        <select
+          value={entry?.checkoutStatus ?? ''}
+          onChange={e => onSave(date, room, { checkoutStatus: e.target.value === '-' ? '' : e.target.value })}
+          className="h-8 w-full min-w-32 border-0 bg-transparent px-1 text-xs text-gray-700 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
+        >
+          {DETAIL_OPTIONS.map(option => (
+            <option key={option} value={option === '-' ? '' : option}>{option}</option>
+          ))}
+        </select>
       </td>
     </>
   )
