@@ -64,7 +64,6 @@ create table reservations (
   total_amount integer default 0,
   checkout_time integer, -- HHMM
   notes text,
-  internal_memo text,
   media text,
   checked boolean default false,
   created_at timestamptz default now()
