@@ -65,6 +65,7 @@ export interface Reservation {
   checkout_time: number | null
   arrival_confirmed: boolean
   notes: string | null
+  internal_memo: string | null
   media: string | null
   checked: boolean
   created_at: string
