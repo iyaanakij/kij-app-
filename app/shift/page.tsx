@@ -131,7 +131,7 @@ export default function ShiftPage() {
     return Number.isInteger(hours) ? String(hours) : hours.toFixed(1)
   }
 
-  // 選択エリアに所属するスタッフを全員表示。未リンクでも当月データがあるスタッフは残す。
+  // 選択エリアに所属するスタッフだけを表示する。
   const sortedStaffList = useMemo(() => {
     const area = AREAS.find(a => a.id === selectedAreaId)!
     const areaStaffIds = new Set(
@@ -139,20 +139,14 @@ export default function ShiftPage() {
         .filter(link => area.storeIds.includes(link.store_id))
         .map(link => link.staff_id)
     )
-    const shiftedStaffIds = new Set(shifts.map(shift => shift.staff_id))
-    const markedStaffIds = new Set(shiftMarkers.map(m => m.staff_id))
-    const visibleStaff = staffList.filter(staff => (
-      areaStaffIds.has(staff.id) ||
-      shiftedStaffIds.has(staff.id) ||
-      markedStaffIds.has(staff.id)
-    ))
+    const visibleStaff = staffList.filter(staff => areaStaffIds.has(staff.id))
     return visibleStaff.sort((a, b) => {
       const aCount = shifts.filter(s => s.staff_id === a.id).length
       const bCount = shifts.filter(s => s.staff_id === b.id).length
       if (bCount !== aCount) return bCount - aCount
       return a.name.localeCompare(b.name, 'ja')
     })
-  }, [staffList, staffStores, shifts, shiftMarkers, selectedAreaId])
+  }, [staffList, staffStores, shifts, selectedAreaId])
 
   const fetchStaff = useCallback(async () => {
     const [{ data: staffData }, { data: storeLinks }] = await Promise.all([
