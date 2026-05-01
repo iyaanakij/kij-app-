@@ -214,7 +214,7 @@ export default function ReservationsPage() {
           <table className="w-full text-xs border-collapse min-w-[900px]">
             <thead className="sticky top-0 z-10">
               <tr className="bg-gray-700 text-white">
-                {['CS','番号','時間','お客様名','確電','伝達','電話番号','エリア','ホテル/部屋','区分','女性','指名','種別','コース','OP','加算','金額','到着','退出','メモ'].map(h => (
+                {['CS','番号','時間','お客様名','確電','伝達','電話番号','エリア','ホテル/部屋','女性','指名','コース','延長','OP','加算','金額','到着','退出','メモ'].map(h => (
                   <th key={h} className="px-1.5 py-1.5 border border-gray-600 whitespace-nowrap font-semibold">{h}</th>
                 ))}
               </tr>
@@ -222,7 +222,7 @@ export default function ReservationsPage() {
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={20} className={`text-center py-5 text-gray-400 ${bgRow}`}>予約なし</td>
+                  <td colSpan={19} className={`text-center py-5 text-gray-400 ${bgRow}`}>予約なし</td>
                 </tr>
               )}
               {rows.map((r) => (
@@ -245,11 +245,12 @@ export default function ReservationsPage() {
                   <td className="px-1 py-1 border border-gray-200 font-mono text-gray-700 whitespace-nowrap">{r.phone}</td>
                   <td className="px-1 py-1 border border-gray-200 text-gray-700 max-w-[90px] truncate whitespace-nowrap overflow-hidden" title={r.area ?? ''}>{r.area}</td>
                   <td className="px-1 py-1 border border-gray-200 text-gray-700 whitespace-nowrap">{[r.hotel, r.room_number].filter(Boolean).join(' ')}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-center font-semibold text-gray-700 whitespace-nowrap">{r.category}</td>
                   <td className="px-1 py-1 border border-gray-200 text-center text-purple-700 font-semibold whitespace-nowrap">{(r.staff as Staff)?.name ?? ''}</td>
                   <td className="px-1 py-1 border border-gray-200 text-center text-gray-700 whitespace-nowrap">{r.nomination_type}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-center font-medium text-gray-700 whitespace-nowrap">{r.course_type}</td>
                   <td className="px-1 py-1 border border-gray-200 text-center font-medium text-gray-700 whitespace-nowrap">{r.course_duration ? `${r.course_duration}分` : ''}</td>
+                  <td className="px-1 py-1 border border-gray-200 text-center font-mono text-gray-700 whitespace-nowrap">
+                    {r.extension > 0 ? `${Math.round((r.extension / 3000) * 10)}` : ''}
+                  </td>
                   <td className="px-1 py-1 border border-gray-200 text-gray-600 whitespace-nowrap">
                     {[r.option1, r.option2, r.option3, r.option4, r.option5, r.option6].filter(Boolean).join(', ')}
                   </td>
@@ -257,7 +258,6 @@ export default function ReservationsPage() {
                     {[
                       r.membership_fee > 0 ? `入${r.membership_fee.toLocaleString()}` : null,
                       r.transportation_fee > 0 ? `交${r.transportation_fee.toLocaleString()}` : null,
-                      r.extension > 0 ? `延${r.extension.toLocaleString()}` : null,
                       r.discount > 0 ? `-${r.discount.toLocaleString()}` : null,
                     ].filter(Boolean).join(' ')}
                   </td>
