@@ -38,6 +38,7 @@ const NARITA_AREA_ID = 1
 const DORM_TOTAL_ROOMS = 5
 const DORM_USAGE_MEMO = '__SHIFT_DORM_USAGE__'
 const DORM_ENTRY_MEMO_PREFIX = '__NARITA_DORM_ENTRY__'
+const SUMMARY_COLUMN_WIDTH = 72
 
 interface DormUsage {
   id: string
@@ -73,6 +74,59 @@ export default function ShiftPage() {
 
   const daysInMonth = getDaysInMonth(year, month)
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
+  const summaryColumnCount = selectedAreaId === NARITA_AREA_ID ? 4 : 3
+
+  const normalShifts = useMemo(() => shifts.filter(s => s.status !== 'x'), [shifts])
+
+  const dailyStaffCounts = useMemo(() => {
+    const byDate = new Map<string, Set<number>>()
+    normalShifts.forEach(shift => {
+      if (!byDate.has(shift.date)) byDate.set(shift.date, new Set())
+      byDate.get(shift.date)!.add(shift.staff_id)
+    })
+    return byDate
+  }, [normalShifts])
+
+  const staffMonthlyStats = useMemo(() => {
+    const stats = new Map<number, { days: number; hours: number }>()
+    const seenStaffDays = new Set<string>()
+    normalShifts.forEach(shift => {
+      const current = stats.get(shift.staff_id) ?? { days: 0, hours: 0 }
+      const staffDayKey = `${shift.staff_id}:${shift.date}`
+      if (!seenStaffDays.has(staffDayKey)) {
+        current.days += 1
+        seenStaffDays.add(staffDayKey)
+      }
+      current.hours += Math.max(0, shift.end_time - shift.start_time)
+      stats.set(shift.staff_id, current)
+    })
+    return stats
+  }, [normalShifts])
+
+  const monthlyTotalShiftDays = useMemo(() => {
+    return Array.from(dailyStaffCounts.values()).reduce((sum, ids) => sum + ids.size, 0)
+  }, [dailyStaffCounts])
+
+  const monthlyTotalHours = useMemo(() => {
+    return Array.from(staffMonthlyStats.values()).reduce((sum, stats) => sum + stats.hours, 0)
+  }, [staffMonthlyStats])
+
+  const monthlyAverageStaffCount = daysInMonth > 0 ? monthlyTotalShiftDays / daysInMonth : 0
+
+  const monthlyDormUsageRate = useMemo(() => {
+    if (selectedAreaId !== NARITA_AREA_ID) return 0
+    const usedDormDays = new Set(
+      dormUsage
+        .filter(d => normalShifts.some(s => s.staff_id === d.staff_id && s.date === d.date))
+        .map(d => `${d.staff_id}:${d.date}`)
+    ).size
+    const totalDormDays = DORM_TOTAL_ROOMS * getDaysInMonth(year, month)
+    return totalDormDays > 0 ? (usedDormDays / totalDormDays) * 100 : 0
+  }, [dormUsage, normalShifts, selectedAreaId, year, month])
+
+  function formatHours(hours: number): string {
+    return Number.isInteger(hours) ? String(hours) : hours.toFixed(1)
+  }
 
   // 当月エリアにシフトがあるスタッフのみ、件数多い順にソート
   const sortedStaffList = useMemo(() => {
@@ -98,7 +152,7 @@ export default function ShiftPage() {
     setLoading(true)
     const area = AREAS.find(a => a.id === selectedAreaId)!
     const startDate = formatDateStr(year, month, 1)
-    const endDate = formatDateStr(year, month, daysInMonth)
+    const endDate = formatDateStr(year, month, getDaysInMonth(year, month))
     const { data } = await supabase
       .from('shifts')
       .select('*')
@@ -107,7 +161,7 @@ export default function ShiftPage() {
       .lte('date', endDate)
     if (data) setShifts(data)
     setLoading(false)
-  }, [year, month, selectedAreaId, daysInMonth])
+  }, [year, month, selectedAreaId])
 
   const fetchDormUsage = useCallback(async () => {
     if (selectedAreaId !== NARITA_AREA_ID) {
@@ -116,7 +170,7 @@ export default function ShiftPage() {
     }
     const area = AREAS.find(a => a.id === selectedAreaId)!
     const startDate = formatDateStr(year, month, 1)
-    const endDate = formatDateStr(year, month, daysInMonth)
+    const endDate = formatDateStr(year, month, getDaysInMonth(year, month))
     const { data, error } = await supabase
       .from('board_annotations')
       .select('id, staff_id, date, store_id')
@@ -130,7 +184,7 @@ export default function ShiftPage() {
       return
     }
     setDormUsage((data ?? []) as DormUsage[])
-  }, [year, month, selectedAreaId, daysInMonth])
+  }, [year, month, selectedAreaId])
 
   const fetchRequests = useCallback(async () => {
     const { data } = await supabase
@@ -212,8 +266,7 @@ export default function ShiftPage() {
 
   function getStaffCountForDay(day: number): number {
     const dateStr = formatDateStr(year, month, day)
-    const ids = new Set(shifts.filter(s => s.date === dateStr && s.status !== 'x').map(s => s.staff_id))
-    return ids.size
+    return dailyStaffCounts.get(dateStr)?.size ?? 0
   }
 
   function getDormUsage(staffId: number, day: number): DormUsage | undefined {
@@ -565,7 +618,7 @@ export default function ShiftPage() {
       ) : (
         <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto" onClick={e => { if ((e.target as HTMLElement).tagName !== 'INPUT') { setEditingCell(null) } }}>
-            <table className="text-xs border-collapse" style={{ minWidth: `${120 + daysInMonth * 52}px` }}>
+            <table className="text-xs border-collapse" style={{ minWidth: `${120 + daysInMonth * 52 + summaryColumnCount * SUMMARY_COLUMN_WIDTH}px` }}>
               <thead>
                 <tr className="bg-gray-900 text-white">
                   <th className="sticky left-0 z-10 bg-gray-900 px-3 py-2.5 border-r border-gray-700 w-28 text-left font-semibold">スタッフ</th>
@@ -585,6 +638,12 @@ export default function ShiftPage() {
                       </th>
                     )
                   })}
+                  <th className="px-2 py-2 border-l-2 border-gray-500 text-center font-semibold" style={{ minWidth: SUMMARY_COLUMN_WIDTH }}>出勤日数</th>
+                  <th className="px-2 py-2 border-l border-gray-700 text-center font-semibold" style={{ minWidth: SUMMARY_COLUMN_WIDTH }}>出勤時間</th>
+                  <th className="px-2 py-2 border-l border-gray-700 text-center font-semibold" style={{ minWidth: SUMMARY_COLUMN_WIDTH }}>平均人数</th>
+                  {selectedAreaId === NARITA_AREA_ID && (
+                    <th className="px-2 py-2 border-l border-gray-700 text-center font-semibold" style={{ minWidth: SUMMARY_COLUMN_WIDTH }}>寮使用率</th>
+                  )}
                 </tr>
                 <tr className="bg-gray-800 text-white">
                   <td className="sticky left-0 z-10 bg-gray-800 px-3 py-1.5 border-r border-gray-600 text-xs text-gray-300">
@@ -599,13 +658,22 @@ export default function ShiftPage() {
                       )}
                     </td>
                   ))}
+                  <td className="px-1 py-1 border-l-2 border-gray-500 text-center font-bold text-yellow-300">{monthlyTotalShiftDays || ''}</td>
+                  <td className="px-1 py-1 border-l border-gray-600 text-center font-bold text-yellow-300">{monthlyTotalHours ? `${formatHours(monthlyTotalHours)}h` : ''}</td>
+                  <td className="px-1 py-1 border-l border-gray-600 text-center font-bold text-yellow-300">{monthlyAverageStaffCount ? monthlyAverageStaffCount.toFixed(1) : ''}</td>
+                  {selectedAreaId === NARITA_AREA_ID && (
+                    <td className="px-1 py-1 border-l border-gray-600 text-center font-bold text-emerald-200">{monthlyDormUsageRate ? `${monthlyDormUsageRate.toFixed(1)}%` : '0.0%'}</td>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {sortedStaffList.length === 0 && (
-                  <tr><td colSpan={daysInMonth + 1} className="text-center py-10 text-gray-400">スタッフなし</td></tr>
+                  <tr><td colSpan={daysInMonth + 1 + summaryColumnCount} className="text-center py-10 text-gray-400">スタッフなし</td></tr>
                 )}
-                {sortedStaffList.map((staff, staffIdx) => (
+                {sortedStaffList.map((staff, staffIdx) => {
+                  const monthlyStats = staffMonthlyStats.get(staff.id) ?? { days: 0, hours: 0 }
+
+                  return (
                   <tr key={staff.id} className={`border-b border-gray-100 ${staffIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
                     <td className="sticky left-0 z-10 bg-inherit border-r border-gray-200 px-3 py-1.5 font-semibold text-gray-800">{staff.name}</td>
                     {days.map((d, dayIdx) => {
@@ -673,8 +741,15 @@ export default function ShiftPage() {
                         </td>
                       )
                     })}
+                    <td className="border-l-2 border-gray-300 px-1.5 py-1 text-center font-bold text-gray-800 bg-gray-50">{monthlyStats.days || ''}</td>
+                    <td className="border-l border-gray-200 px-1.5 py-1 text-center font-bold text-gray-800 bg-gray-50">{monthlyStats.hours ? `${formatHours(monthlyStats.hours)}h` : ''}</td>
+                    <td className="border-l border-gray-200 px-1.5 py-1 text-center text-gray-300 bg-gray-50">-</td>
+                    {selectedAreaId === NARITA_AREA_ID && (
+                      <td className="border-l border-gray-200 px-1.5 py-1 text-center text-gray-300 bg-gray-50">-</td>
+                    )}
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
