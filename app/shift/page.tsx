@@ -766,8 +766,8 @@ export default function ShiftPage() {
                         <td
                           key={d}
                           onClick={e => { e.stopPropagation(); startEdit(staff.id, d) }}
-                          className={`group relative border-l border-gray-100 px-0.5 py-0 text-center cursor-pointer transition-colors ${isEditing ? 'bg-yellow-50 ring-2 ring-inset ring-yellow-400 z-10' : `${cellBg} ${textColor}`} ${today ? 'ring-1 ring-inset ring-blue-400' : ''}`}
-                          style={{ minWidth: 52, height: canUseMarkers ? 36 : 30 }}
+                          className={`group relative border-l border-gray-100 px-0.5 py-0 text-center cursor-pointer transition-colors overflow-visible ${isEditing ? 'bg-yellow-50 ring-2 ring-inset ring-yellow-400 z-10' : `${cellBg} ${textColor}`} ${today ? 'ring-1 ring-inset ring-blue-400' : ''}`}
+                          style={{ minWidth: 52, height: 30 }}
                         >
                           {isEditing ? (
                             <input
@@ -785,13 +785,18 @@ export default function ShiftPage() {
                             />
                           ) : (
                             <>
-                              <span className={`block truncate text-center ${canUseMarkers ? 'pt-3.5' : ''}`} style={{ fontSize: 10 }}>{cellText}</span>
+                              <span className="relative z-0 flex h-full items-center justify-center truncate text-center" style={{ fontSize: 10 }}>{cellText}</span>
+                              {markerLabels && shift && (
+                                <span className="absolute bottom-0.5 right-0.5 z-0 max-w-[42px] truncate rounded bg-white/70 px-0.5 text-[8px] font-bold leading-3 text-gray-700">
+                                  {markerLabels}
+                                </span>
+                              )}
                               {canUseMarkers && (
-                                <div className="absolute left-0.5 right-0.5 top-0.5 flex justify-center gap-0.5">
+                                <div className="absolute left-1/2 top-0.5 z-30 hidden -translate-x-1/2 justify-center gap-0.5 rounded bg-white/95 px-0.5 py-0.5 shadow-md ring-1 ring-gray-200 group-hover:flex">
                                   <button
                                     type="button"
                                     onClick={e => { e.stopPropagation(); toggleShooting(staff.id, d) }}
-                                    className={`rounded px-0.5 text-[9px] font-bold leading-3 transition-opacity ${isShooting ? 'bg-violet-700 text-white opacity-100' : 'bg-white/90 text-violet-700 border border-violet-300 opacity-0 shadow-sm group-hover:opacity-100'}`}
+                                    className={`rounded px-0.5 text-[9px] font-bold leading-3 ${isShooting ? 'bg-violet-700 text-white' : 'text-violet-700 hover:bg-violet-100'}`}
                                     title={isShooting ? '撮影を解除' : '撮影にする'}
                                   >
                                     撮影
@@ -801,7 +806,7 @@ export default function ShiftPage() {
                                       <button
                                         type="button"
                                         onClick={e => { e.stopPropagation(); toggleDormUsage(staff.id, d) }}
-                                        className={`rounded px-0.5 text-[9px] font-bold leading-3 transition-opacity ${isDorm ? 'bg-emerald-700 text-white opacity-100' : 'bg-white/90 text-emerald-700 border border-emerald-300 opacity-0 shadow-sm group-hover:opacity-100'}`}
+                                        className={`rounded px-0.5 text-[9px] font-bold leading-3 ${isDorm ? 'bg-emerald-700 text-white' : 'text-emerald-700 hover:bg-emerald-100'}`}
                                         title={isDorm ? '寮使用を解除' : '寮使用にする'}
                                       >
                                         寮
@@ -809,7 +814,7 @@ export default function ShiftPage() {
                                       <button
                                         type="button"
                                         onClick={e => { e.stopPropagation(); toggleReturnHome(staff.id, d) }}
-                                        className={`rounded px-0.5 text-[9px] font-bold leading-3 transition-opacity ${isReturnHome ? 'bg-amber-700 text-white opacity-100' : 'bg-white/90 text-amber-700 border border-amber-300 opacity-0 shadow-sm group-hover:opacity-100'}`}
+                                        className={`rounded px-0.5 text-[9px] font-bold leading-3 ${isReturnHome ? 'bg-amber-700 text-white' : 'text-amber-700 hover:bg-amber-100'}`}
                                         title={isReturnHome ? '帰を解除' : '帰にする'}
                                       >
                                         帰
