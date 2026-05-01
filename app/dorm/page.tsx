@@ -9,6 +9,8 @@ const NARITA_STORE_ID = 1
 const DORM_ROOMS = ['203', '303', '305', '306', '307', '308']
 const DORM_ENTRY_MEMO_PREFIX = '__NARITA_DORM_ENTRY__'
 const DORM_COMMENT_MEMO_PREFIX = '__NARITA_DORM_COMMENT__'
+const DORM_STAFF_MEMO = '__NARITA_DORM_STAFF__'
+const DORM_STAFF_CONFIG_DATE = '2000-01-01'
 
 interface StaffStore {
   staff_id: number
@@ -40,6 +42,11 @@ interface BoardAnnotationRow {
   staff_id: number | null
   date: string
   memo: string | null
+}
+
+interface DormStaffConfigRow {
+  id: string
+  staff_id: number | null
 }
 
 const DETAIL_OPTIONS = [
@@ -97,6 +104,8 @@ export default function DormPage() {
   const [shifts, setShifts] = useState<Shift[]>([])
   const [entries, setEntries] = useState<DormEntry[]>([])
   const [comments, setComments] = useState<Record<string, { id: string; text: string }>>({})
+  const [dormStaffIds, setDormStaffIds] = useState<Set<number>>(new Set())
+  const [dormStaffConfigRows, setDormStaffConfigRows] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(false)
 
   const daysInMonth = getDaysInMonth(year, month)
@@ -107,7 +116,7 @@ export default function DormPage() {
     setLoading(true)
     const startDate = formatDateStr(year, month, 1)
     const endDate = formatDateStr(year, month, daysInMonth)
-    const [staffRes, storeRes, shiftRes, dormRes] = await Promise.all([
+    const [staffRes, storeRes, shiftRes, dormRes, dormStaffRes] = await Promise.all([
       supabase.from('staff').select('*').order('name'),
       supabase.from('staff_stores').select('staff_id, store_id'),
       supabase
@@ -124,6 +133,12 @@ export default function DormPage() {
         .or(`memo.like.${DORM_ENTRY_MEMO_PREFIX}%,memo.like.${DORM_COMMENT_MEMO_PREFIX}%`)
         .gte('date', startDate)
         .lte('date', endDate),
+      supabase
+        .from('board_annotations')
+        .select('id, staff_id')
+        .eq('store_id', NARITA_STORE_ID)
+        .eq('date', DORM_STAFF_CONFIG_DATE)
+        .eq('memo', DORM_STAFF_MEMO),
     ])
 
     if (staffRes.data) setStaffList(staffRes.data as Staff[])
@@ -144,6 +159,16 @@ export default function DormPage() {
     })
     setEntries(nextEntries)
     setComments(nextComments)
+
+    const nextDormStaffIds = new Set<number>()
+    const nextDormStaffConfigRows: Record<number, string> = {}
+    ;((dormStaffRes.data ?? []) as DormStaffConfigRow[]).forEach(row => {
+      if (!row.staff_id) return
+      nextDormStaffIds.add(row.staff_id)
+      nextDormStaffConfigRows[row.staff_id] = row.id
+    })
+    setDormStaffIds(nextDormStaffIds)
+    setDormStaffConfigRows(nextDormStaffConfigRows)
     setLoading(false)
   }, [year, month, daysInMonth, naritaArea.storeIds])
 
@@ -156,6 +181,11 @@ export default function DormPage() {
   const naritaStaff = useMemo(() => {
     return staffList.filter(s => naritaStaffIds.has(s.id))
   }, [staffList, naritaStaffIds])
+
+  const dormStaff = useMemo(() => {
+    if (dormStaffIds.size === 0) return naritaStaff
+    return naritaStaff.filter(staff => dormStaffIds.has(staff.id))
+  }, [naritaStaff, dormStaffIds])
 
   function prevMonth() {
     if (month === 1) { setYear(y => y - 1); setMonth(12) }
@@ -172,10 +202,66 @@ export default function DormPage() {
   }
 
   function getStaffOptionsForDate(date: string): Staff[] {
+    const entryStaffIds = new Set<number>()
+    entries
+      .filter(entry => entry.date === date)
+      .forEach(entry => {
+        if (entry.checkinStaffId) entryStaffIds.add(entry.checkinStaffId)
+        if (entry.checkoutStaffId) entryStaffIds.add(entry.checkoutStaffId)
+      })
     const shiftStaffIds = new Set(shifts.filter(s => s.date === date).map(s => s.staff_id))
-    const shiftStaff = staffList.filter(s => shiftStaffIds.has(s.id) && naritaStaffIds.has(s.id))
-    const remaining = naritaStaff.filter(s => !shiftStaffIds.has(s.id))
+    const staffPool = staffList.filter(staff => dormStaffIds.size === 0
+      ? naritaStaffIds.has(staff.id)
+      : dormStaffIds.has(staff.id) || entryStaffIds.has(staff.id)
+    )
+    const shiftStaff = staffPool.filter(s => shiftStaffIds.has(s.id))
+    const remaining = staffPool.filter(s => !shiftStaffIds.has(s.id))
     return [...shiftStaff, ...remaining]
+  }
+
+  async function toggleDormStaff(staffId: number) {
+    const enabled = dormStaffIds.has(staffId)
+    if (enabled) {
+      setDormStaffIds(current => {
+        const next = new Set(current)
+        next.delete(staffId)
+        return next
+      })
+      const rowId = dormStaffConfigRows[staffId]
+      if (rowId) {
+        await supabase.from('board_annotations').delete().eq('id', rowId)
+      } else {
+        await supabase
+          .from('board_annotations')
+          .delete()
+          .eq('staff_id', staffId)
+          .eq('date', DORM_STAFF_CONFIG_DATE)
+          .eq('memo', DORM_STAFF_MEMO)
+      }
+      setDormStaffConfigRows(current => {
+        const next = { ...current }
+        delete next[staffId]
+        return next
+      })
+      return
+    }
+
+    setDormStaffIds(current => new Set(current).add(staffId))
+    const payload = {
+      staff_id: staffId,
+      date: DORM_STAFF_CONFIG_DATE,
+      start_time: 0,
+      end_time: 0,
+      color: 'gray',
+      memo: DORM_STAFF_MEMO,
+      store_id: NARITA_STORE_ID,
+    }
+    const { data, error } = await supabase.from('board_annotations').insert(payload).select('id').single()
+    if (error || !data) {
+      fetchData()
+      return
+    }
+    setDormStaffConfigRows(current => ({ ...current, [staffId]: data.id }))
   }
 
   function applyEntryToState(entry: DormEntry) {
@@ -289,9 +375,40 @@ export default function DormPage() {
           <div className="h-6 w-px bg-gray-200" />
           <div>
             <div className="text-sm font-bold text-gray-800">成田店 寮管理</div>
-            <div className="text-xs text-gray-500">部屋 {DORM_ROOMS.join('・')}</div>
+            <div className="text-xs text-gray-500">
+              部屋 {DORM_ROOMS.join('・')} / 寮プルダウン対象 {dormStaffIds.size === 0 ? '未設定' : `${dormStaff.length}名`}
+            </div>
           </div>
           <button onClick={fetchData} className="ml-auto px-3 py-1.5 rounded-full bg-gray-900 text-white text-xs font-bold hover:bg-gray-700 transition-colors">再読込</button>
+        </div>
+        <div className="mt-3 border-t border-gray-100 pt-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-gray-700">寮プルダウン対象</span>
+            {dormStaffIds.size === 0 && (
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                未設定のため現在は成田所属全員を表示中
+              </span>
+            )}
+          </div>
+          <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1">
+            {naritaStaff.map(staff => {
+              const checked = dormStaffIds.has(staff.id)
+              return (
+                <button
+                  key={staff.id}
+                  type="button"
+                  onClick={() => toggleDormStaff(staff.id)}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                    checked
+                      ? 'border-emerald-500 bg-emerald-600 text-white'
+                      : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {staff.name}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
 
