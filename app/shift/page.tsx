@@ -131,17 +131,28 @@ export default function ShiftPage() {
     return Number.isInteger(hours) ? String(hours) : hours.toFixed(1)
   }
 
-  // 当月エリアにシフトがあるスタッフのみ、件数多い順にソート
+  // 選択エリアに所属するスタッフを全員表示。未リンクでも当月データがあるスタッフは残す。
   const sortedStaffList = useMemo(() => {
+    const area = AREAS.find(a => a.id === selectedAreaId)!
+    const areaStaffIds = new Set(
+      staffStores
+        .filter(link => area.storeIds.includes(link.store_id))
+        .map(link => link.staff_id)
+    )
+    const shiftedStaffIds = new Set(shifts.map(shift => shift.staff_id))
     const markedStaffIds = new Set(shiftMarkers.map(m => m.staff_id))
-    const staffWithShifts = staffList.filter(s => shifts.some(sh => sh.staff_id === s.id) || markedStaffIds.has(s.id))
-    return staffWithShifts.sort((a, b) => {
+    const visibleStaff = staffList.filter(staff => (
+      areaStaffIds.has(staff.id) ||
+      shiftedStaffIds.has(staff.id) ||
+      markedStaffIds.has(staff.id)
+    ))
+    return visibleStaff.sort((a, b) => {
       const aCount = shifts.filter(s => s.staff_id === a.id).length
       const bCount = shifts.filter(s => s.staff_id === b.id).length
       if (bCount !== aCount) return bCount - aCount
       return a.name.localeCompare(b.name, 'ja')
     })
-  }, [staffList, shifts, shiftMarkers])
+  }, [staffList, staffStores, shifts, shiftMarkers, selectedAreaId])
 
   const fetchStaff = useCallback(async () => {
     const [{ data: staffData }, { data: storeLinks }] = await Promise.all([
@@ -493,24 +504,27 @@ export default function ShiftPage() {
   }
 
   function moveTo(staffIdx: number, dayIdx: number, direction: 'right' | 'left' | 'down' | 'up') {
+    if (sortedStaffList.length === 0) return
     let si = staffIdx
     let di = dayIdx
     if (direction === 'right') {
       di++
-      if (di >= days.length) { di = 0; si = (si + 1) % staffList.length }
+      if (di >= days.length) { di = 0; si = (si + 1) % sortedStaffList.length }
     } else if (direction === 'left') {
       di--
       if (di < 0) { di = days.length - 1; si = Math.max(0, si - 1) }
     } else if (direction === 'down') {
-      si = Math.min(staffList.length - 1, si + 1)
+      si = Math.min(sortedStaffList.length - 1, si + 1)
     } else if (direction === 'up') {
       si = Math.max(0, si - 1)
     }
-    startEdit(staffList[si].id, days[di])
+    startEdit(sortedStaffList[si].id, days[di])
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>, staffIdx: number, dayIdx: number) {
-    const staffId = staffList[staffIdx].id
+    const staff = sortedStaffList[staffIdx]
+    if (!staff) return
+    const staffId = staff.id
     const day = days[dayIdx]
 
     if (e.key === 'Enter' || (e.key === 'Tab' && !e.shiftKey)) {
