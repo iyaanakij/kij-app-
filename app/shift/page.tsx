@@ -38,13 +38,16 @@ const NARITA_AREA_ID = 1
 const DORM_TOTAL_ROOMS = 5
 const DORM_USAGE_MEMO = '__SHIFT_DORM_USAGE__'
 const DORM_ENTRY_MEMO_PREFIX = '__NARITA_DORM_ENTRY__'
+const SHOOTING_MEMO = '__SHIFT_SHOOTING__'
+const RETURN_HOME_MEMO = '__SHIFT_RETURN_HOME__'
 const SUMMARY_COLUMN_WIDTH = 72
 
-interface DormUsage {
+interface ShiftMarker {
   id: string
   staff_id: number
   date: string
   store_id: number
+  memo: string | null
 }
 
 export default function ShiftPage() {
@@ -56,7 +59,7 @@ export default function ShiftPage() {
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [staffStores, setStaffStores] = useState<{ staff_id: number; store_id: number }[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
-  const [dormUsage, setDormUsage] = useState<DormUsage[]>([])
+  const [shiftMarkers, setShiftMarkers] = useState<ShiftMarker[]>([])
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<'calendar' | 'requests'>('calendar')
   const [requests, setRequests] = useState<ShiftRequest[]>([])
@@ -116,13 +119,13 @@ export default function ShiftPage() {
   const monthlyDormUsageRate = useMemo(() => {
     if (selectedAreaId !== NARITA_AREA_ID) return 0
     const usedDormDays = new Set(
-      dormUsage
-        .filter(d => normalShifts.some(s => s.staff_id === d.staff_id && s.date === d.date))
+      shiftMarkers
+        .filter(isDormMarker)
         .map(d => `${d.staff_id}:${d.date}`)
     ).size
     const totalDormDays = DORM_TOTAL_ROOMS * getDaysInMonth(year, month)
     return totalDormDays > 0 ? (usedDormDays / totalDormDays) * 100 : 0
-  }, [dormUsage, normalShifts, selectedAreaId, year, month])
+  }, [shiftMarkers, selectedAreaId, year, month])
 
   function formatHours(hours: number): string {
     return Number.isInteger(hours) ? String(hours) : hours.toFixed(1)
@@ -130,14 +133,15 @@ export default function ShiftPage() {
 
   // 当月エリアにシフトがあるスタッフのみ、件数多い順にソート
   const sortedStaffList = useMemo(() => {
-    const staffWithShifts = staffList.filter(s => shifts.some(sh => sh.staff_id === s.id))
+    const markedStaffIds = new Set(shiftMarkers.map(m => m.staff_id))
+    const staffWithShifts = staffList.filter(s => shifts.some(sh => sh.staff_id === s.id) || markedStaffIds.has(s.id))
     return staffWithShifts.sort((a, b) => {
       const aCount = shifts.filter(s => s.staff_id === a.id).length
       const bCount = shifts.filter(s => s.staff_id === b.id).length
       if (bCount !== aCount) return bCount - aCount
       return a.name.localeCompare(b.name, 'ja')
     })
-  }, [staffList, shifts])
+  }, [staffList, shifts, shiftMarkers])
 
   const fetchStaff = useCallback(async () => {
     const [{ data: staffData }, { data: storeLinks }] = await Promise.all([
@@ -163,27 +167,26 @@ export default function ShiftPage() {
     setLoading(false)
   }, [year, month, selectedAreaId])
 
-  const fetchDormUsage = useCallback(async () => {
-    if (selectedAreaId !== NARITA_AREA_ID) {
-      setDormUsage([])
-      return
-    }
+  const fetchShiftMarkers = useCallback(async () => {
     const area = AREAS.find(a => a.id === selectedAreaId)!
     const startDate = formatDateStr(year, month, 1)
     const endDate = formatDateStr(year, month, getDaysInMonth(year, month))
+    const memoFilter = selectedAreaId === NARITA_AREA_ID
+      ? `memo.eq.${DORM_USAGE_MEMO},memo.like.${DORM_ENTRY_MEMO_PREFIX}%,memo.eq.${SHOOTING_MEMO},memo.eq.${RETURN_HOME_MEMO}`
+      : `memo.eq.${SHOOTING_MEMO}`
     const { data, error } = await supabase
       .from('board_annotations')
-      .select('id, staff_id, date, store_id')
-      .or(`memo.eq.${DORM_USAGE_MEMO},memo.like.${DORM_ENTRY_MEMO_PREFIX}%`)
+      .select('id, staff_id, date, store_id, memo')
+      .or(memoFilter)
       .in('store_id', area.storeIds)
       .gte('date', startDate)
       .lte('date', endDate)
     if (error) {
-      console.warn('failed to fetch dorm usage', error)
-      setDormUsage([])
+      console.warn('failed to fetch shift markers', error)
+      setShiftMarkers([])
       return
     }
-    setDormUsage((data ?? []) as DormUsage[])
+    setShiftMarkers(((data ?? []) as ShiftMarker[]).filter(marker => marker.staff_id !== null))
   }, [year, month, selectedAreaId])
 
   const fetchRequests = useCallback(async () => {
@@ -207,7 +210,7 @@ export default function ShiftPage() {
 
   useEffect(() => { fetchStaff() }, [fetchStaff])
   useEffect(() => { fetchShifts() }, [fetchShifts])
-  useEffect(() => { fetchDormUsage() }, [fetchDormUsage])
+  useEffect(() => { fetchShiftMarkers() }, [fetchShiftMarkers])
   useEffect(() => { fetchRequests() }, [fetchRequests])
   useEffect(() => { fetchLastSyncAt() }, [fetchLastSyncAt])
 
@@ -269,16 +272,32 @@ export default function ShiftPage() {
     return dailyStaffCounts.get(dateStr)?.size ?? 0
   }
 
-  function getDormUsage(staffId: number, day: number): DormUsage | undefined {
+  function isDormMarker(marker: ShiftMarker): boolean {
+    return marker.memo === DORM_USAGE_MEMO || marker.memo?.startsWith(DORM_ENTRY_MEMO_PREFIX) === true
+  }
+
+  function getMarker(staffId: number, day: number, predicate: (marker: ShiftMarker) => boolean): ShiftMarker | undefined {
     const dateStr = formatDateStr(year, month, day)
-    return dormUsage.find(d => d.staff_id === staffId && d.date === dateStr)
+    return shiftMarkers.find(marker => marker.staff_id === staffId && marker.date === dateStr && predicate(marker))
+  }
+
+  function getDormUsage(staffId: number, day: number): ShiftMarker | undefined {
+    return getMarker(staffId, day, isDormMarker)
+  }
+
+  function getShootingMarker(staffId: number, day: number): ShiftMarker | undefined {
+    return getMarker(staffId, day, marker => marker.memo === SHOOTING_MEMO)
+  }
+
+  function getReturnHomeMarker(staffId: number, day: number): ShiftMarker | undefined {
+    return getMarker(staffId, day, marker => marker.memo === RETURN_HOME_MEMO)
   }
 
   function getDormCountForDay(day: number): number {
     const dateStr = formatDateStr(year, month, day)
     const ids = new Set(
-      dormUsage
-        .filter(d => d.date === dateStr && shifts.some(s => s.staff_id === d.staff_id && s.date === dateStr && s.status !== 'x'))
+      shiftMarkers
+        .filter(d => isDormMarker(d) && d.date === dateStr)
         .map(d => d.staff_id)
     )
     return ids.size
@@ -303,36 +322,56 @@ export default function ShiftPage() {
       .eq('staff_id', staffId)
       .eq('date', dateStr)
       .like('memo', `${DORM_ENTRY_MEMO_PREFIX}%`)
-    setDormUsage(current => current.filter(d => !(d.staff_id === staffId && d.date === dateStr)))
+    setShiftMarkers(current => current.filter(d => !(d.staff_id === staffId && d.date === dateStr && isDormMarker(d))))
   }
 
-  async function toggleDormUsage(staffId: number, day: number) {
-    if (selectedAreaId !== NARITA_AREA_ID) return
-    const shift = getShift(staffId, day)
-    if (!shift || shift.status === 'x') return
+  async function toggleSimpleMarker(staffId: number, day: number, memo: string, color: string) {
     const dateStr = formatDateStr(year, month, day)
-    const existing = getDormUsage(staffId, day)
+    const existing = getMarker(staffId, day, marker => marker.memo === memo)
     if (existing) {
       await supabase.from('board_annotations').delete().eq('id', existing.id)
-      setDormUsage(current => current.filter(d => d.id !== existing.id))
+      setShiftMarkers(current => current.filter(d => d.id !== existing.id))
       return
     }
-    const area = AREAS.find(a => a.id === selectedAreaId)!
     const payload = {
       staff_id: staffId,
       date: dateStr,
       start_time: 0,
       end_time: 0,
-      color: 'green',
-      memo: DORM_USAGE_MEMO,
-      store_id: shift.store_id && area.storeIds.includes(shift.store_id) ? shift.store_id : area.storeIds[0],
+      color,
+      memo,
+      store_id: getShift(staffId, day)?.store_id ?? resolveStoreId(staffId),
     }
-    const { data, error } = await supabase.from('board_annotations').insert(payload).select('id, staff_id, date, store_id').single()
+    const { data, error } = await supabase.from('board_annotations').insert(payload).select('id, staff_id, date, store_id, memo').single()
     if (error) {
-      console.warn('failed to save dorm usage', error)
+      console.warn('failed to save shift marker', error)
       return
     }
-    if (data) setDormUsage(current => [...current, data as DormUsage])
+    if (data) setShiftMarkers(current => [...current, data as ShiftMarker])
+  }
+
+  async function toggleDormUsage(staffId: number, day: number) {
+    if (selectedAreaId !== NARITA_AREA_ID) return
+    const shift = getShift(staffId, day)
+    if (shift?.status === 'x') return
+    if (getDormUsage(staffId, day)) {
+      await clearDormUsage(staffId, day)
+      return
+    }
+    await toggleSimpleMarker(staffId, day, DORM_USAGE_MEMO, 'green')
+  }
+
+  async function toggleShooting(staffId: number, day: number) {
+    const shift = getShift(staffId, day)
+    if (shift?.status === 'x') return
+    await toggleSimpleMarker(staffId, day, SHOOTING_MEMO, 'purple')
+  }
+
+  async function toggleReturnHome(staffId: number, day: number) {
+    if (selectedAreaId !== NARITA_AREA_ID) return
+    const shift = getShift(staffId, day)
+    if (shift?.status === 'x') return
+    await toggleSimpleMarker(staffId, day, RETURN_HOME_MEMO, 'gray')
   }
 
   function getWeekday(day: number): number {
@@ -683,7 +722,15 @@ export default function ShiftPage() {
                       const isSat = wd === 6
                       const today = isToday(d)
                       const isEditing = editingCell?.staffId === staff.id && editingCell?.day === d
-                      const isDorm = selectedAreaId === NARITA_AREA_ID && !!shift && shift.status !== 'x' && !!getDormUsage(staff.id, d)
+                      const canUseMarkers = !shift || shift.status !== 'x'
+                      const isShooting = canUseMarkers && !!getShootingMarker(staff.id, d)
+                      const isDorm = selectedAreaId === NARITA_AREA_ID && canUseMarkers && !!getDormUsage(staff.id, d)
+                      const isReturnHome = selectedAreaId === NARITA_AREA_ID && canUseMarkers && !!getReturnHomeMarker(staff.id, d)
+                      const markerLabels = [
+                        isShooting ? '撮影' : null,
+                        isDorm ? '寮' : null,
+                        isReturnHome ? '帰' : null,
+                      ].filter(Boolean).join(' ')
 
                       let cellBg = 'hover:bg-blue-50'
                       let cellText = ''
@@ -697,17 +744,30 @@ export default function ShiftPage() {
                         cellText = '×'
                         textColor = 'text-red-700 font-bold'
                       } else {
-                        cellBg = isDorm ? 'bg-emerald-200 hover:bg-emerald-300' : 'bg-pink-200 hover:bg-pink-300'
                         cellText = displayShiftTime(shift)
-                        textColor = isDorm ? 'text-emerald-950 font-semibold' : 'text-pink-900 font-medium'
+                        textColor = 'text-pink-900 font-medium'
+                        cellBg = 'bg-pink-200 hover:bg-pink-300'
                       }
+                      if (canUseMarkers && isReturnHome) {
+                        cellBg = 'bg-amber-200 hover:bg-amber-300'
+                        textColor = 'text-amber-950 font-semibold'
+                      }
+                      if (canUseMarkers && isDorm) {
+                        cellBg = 'bg-emerald-200 hover:bg-emerald-300'
+                        textColor = 'text-emerald-950 font-semibold'
+                      }
+                      if (canUseMarkers && isShooting) {
+                        cellBg = 'bg-violet-200 hover:bg-violet-300'
+                        textColor = 'text-violet-950 font-semibold'
+                      }
+                      if (!shift && markerLabels) cellText = markerLabels
 
                       return (
                         <td
                           key={d}
                           onClick={e => { e.stopPropagation(); startEdit(staff.id, d) }}
                           className={`group relative border-l border-gray-100 px-0.5 py-0 text-center cursor-pointer transition-colors ${isEditing ? 'bg-yellow-50 ring-2 ring-inset ring-yellow-400 z-10' : `${cellBg} ${textColor}`} ${today ? 'ring-1 ring-inset ring-blue-400' : ''}`}
-                          style={{ minWidth: 52, height: selectedAreaId === NARITA_AREA_ID ? 34 : 30 }}
+                          style={{ minWidth: 52, height: canUseMarkers ? 36 : 30 }}
                         >
                           {isEditing ? (
                             <input
@@ -725,16 +785,38 @@ export default function ShiftPage() {
                             />
                           ) : (
                             <>
-                              <span className={`block truncate text-center ${isDorm ? 'pt-3' : ''}`} style={{ fontSize: 10 }}>{cellText}</span>
-                              {selectedAreaId === NARITA_AREA_ID && shift && shift.status !== 'x' && (
-                                <button
-                                  type="button"
-                                  onClick={e => { e.stopPropagation(); toggleDormUsage(staff.id, d) }}
-                                  className={`absolute right-0.5 top-0.5 rounded px-1 text-[9px] font-bold leading-3 transition-opacity ${isDorm ? 'bg-emerald-700 text-white opacity-100' : 'bg-white/90 text-emerald-700 border border-emerald-300 opacity-0 shadow-sm group-hover:opacity-100'}`}
-                                  title={isDorm ? '寮使用を解除' : '寮使用にする'}
-                                >
-                                  寮
-                                </button>
+                              <span className={`block truncate text-center ${canUseMarkers ? 'pt-3.5' : ''}`} style={{ fontSize: 10 }}>{cellText}</span>
+                              {canUseMarkers && (
+                                <div className="absolute left-0.5 right-0.5 top-0.5 flex justify-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={e => { e.stopPropagation(); toggleShooting(staff.id, d) }}
+                                    className={`rounded px-0.5 text-[9px] font-bold leading-3 transition-opacity ${isShooting ? 'bg-violet-700 text-white opacity-100' : 'bg-white/90 text-violet-700 border border-violet-300 opacity-0 shadow-sm group-hover:opacity-100'}`}
+                                    title={isShooting ? '撮影を解除' : '撮影にする'}
+                                  >
+                                    撮影
+                                  </button>
+                                  {selectedAreaId === NARITA_AREA_ID && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={e => { e.stopPropagation(); toggleDormUsage(staff.id, d) }}
+                                        className={`rounded px-0.5 text-[9px] font-bold leading-3 transition-opacity ${isDorm ? 'bg-emerald-700 text-white opacity-100' : 'bg-white/90 text-emerald-700 border border-emerald-300 opacity-0 shadow-sm group-hover:opacity-100'}`}
+                                        title={isDorm ? '寮使用を解除' : '寮使用にする'}
+                                      >
+                                        寮
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={e => { e.stopPropagation(); toggleReturnHome(staff.id, d) }}
+                                        className={`rounded px-0.5 text-[9px] font-bold leading-3 transition-opacity ${isReturnHome ? 'bg-amber-700 text-white opacity-100' : 'bg-white/90 text-amber-700 border border-amber-300 opacity-0 shadow-sm group-hover:opacity-100'}`}
+                                        title={isReturnHome ? '帰を解除' : '帰にする'}
+                                      >
+                                        帰
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
                               )}
                             </>
                           )}
@@ -759,8 +841,12 @@ export default function ShiftPage() {
       {/* Legend */}
       <div className="mt-3 flex gap-4 text-xs text-gray-500 flex-wrap">
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-pink-200 inline-block rounded border border-pink-300"></span> 出勤（例: <code className="bg-gray-100 px-1 rounded">14-22</code>）</span>
+        <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-violet-200 inline-block rounded border border-violet-300"></span> 撮影</span>
         {selectedAreaId === NARITA_AREA_ID && (
-          <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-emerald-200 inline-block rounded border border-emerald-300"></span> 寮使用</span>
+          <>
+            <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-emerald-200 inline-block rounded border border-emerald-300"></span> 寮使用</span>
+            <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-amber-200 inline-block rounded border border-amber-300"></span> 帰</span>
+          </>
         )}
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-red-200 inline-block rounded border border-red-300"></span> 休み（<code className="bg-gray-100 px-1 rounded">x</code>）</span>
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-white inline-block rounded border border-gray-200"></span> 未登録（空欄で削除）</span>
