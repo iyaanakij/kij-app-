@@ -38,7 +38,7 @@ const NARITA_AREA_ID = 1
 const DORM_TOTAL_ROOMS = 5
 const DORM_USAGE_MEMO = '__SHIFT_DORM_USAGE__'
 const DORM_ENTRY_MEMO_PREFIX = '__NARITA_DORM_ENTRY__'
-const SHOOTING_MEMO = '__SHIFT_SHOOTING__'
+const SHOOTING_MEMO_PREFIX = '__SHIFT_SHOOTING__'
 const RETURN_HOME_MEMO = '__SHIFT_RETURN_HOME__'
 const SUMMARY_COLUMN_WIDTH = 72
 
@@ -172,8 +172,8 @@ export default function ShiftPage() {
     const startDate = formatDateStr(year, month, 1)
     const endDate = formatDateStr(year, month, getDaysInMonth(year, month))
     const memoFilter = selectedAreaId === NARITA_AREA_ID
-      ? `memo.eq.${DORM_USAGE_MEMO},memo.like.${DORM_ENTRY_MEMO_PREFIX}%,memo.eq.${SHOOTING_MEMO},memo.eq.${RETURN_HOME_MEMO}`
-      : `memo.eq.${SHOOTING_MEMO}`
+      ? `memo.eq.${DORM_USAGE_MEMO},memo.like.${DORM_ENTRY_MEMO_PREFIX}%,memo.like.${SHOOTING_MEMO_PREFIX}%,memo.eq.${RETURN_HOME_MEMO}`
+      : `memo.like.${SHOOTING_MEMO_PREFIX}%`
     const { data, error } = await supabase
       .from('board_annotations')
       .select('id, staff_id, date, store_id, memo')
@@ -276,6 +276,15 @@ export default function ShiftPage() {
     return marker.memo === DORM_USAGE_MEMO || marker.memo?.startsWith(DORM_ENTRY_MEMO_PREFIX) === true
   }
 
+  function isShootingMarker(marker: ShiftMarker): boolean {
+    return marker.memo?.startsWith(SHOOTING_MEMO_PREFIX) === true
+  }
+
+  function getShootingText(marker: ShiftMarker | undefined): string {
+    if (!marker?.memo?.startsWith(SHOOTING_MEMO_PREFIX)) return ''
+    return marker.memo.slice(SHOOTING_MEMO_PREFIX.length)
+  }
+
   function getMarker(staffId: number, day: number, predicate: (marker: ShiftMarker) => boolean): ShiftMarker | undefined {
     const dateStr = formatDateStr(year, month, day)
     return shiftMarkers.find(marker => marker.staff_id === staffId && marker.date === dateStr && predicate(marker))
@@ -286,7 +295,7 @@ export default function ShiftPage() {
   }
 
   function getShootingMarker(staffId: number, day: number): ShiftMarker | undefined {
-    return getMarker(staffId, day, marker => marker.memo === SHOOTING_MEMO)
+    return getMarker(staffId, day, isShootingMarker)
   }
 
   function getReturnHomeMarker(staffId: number, day: number): ShiftMarker | undefined {
@@ -350,6 +359,36 @@ export default function ShiftPage() {
     if (data) setShiftMarkers(current => [...current, data as ShiftMarker])
   }
 
+  async function saveShootingMarker(staffId: number, day: number, text: string) {
+    const dateStr = formatDateStr(year, month, day)
+    const existing = getShootingMarker(staffId, day)
+    const memo = `${SHOOTING_MEMO_PREFIX}${text}`
+    const payload = {
+      staff_id: staffId,
+      date: dateStr,
+      start_time: 0,
+      end_time: 0,
+      color: 'purple',
+      memo,
+      store_id: getShift(staffId, day)?.store_id ?? resolveStoreId(staffId),
+    }
+    if (existing) {
+      const { error } = await supabase.from('board_annotations').update(payload).eq('id', existing.id)
+      if (error) {
+        console.warn('failed to save shooting marker', error)
+        return
+      }
+      setShiftMarkers(current => current.map(marker => marker.id === existing.id ? { ...marker, memo } : marker))
+      return
+    }
+    const { data, error } = await supabase.from('board_annotations').insert(payload).select('id, staff_id, date, store_id, memo').single()
+    if (error) {
+      console.warn('failed to save shooting marker', error)
+      return
+    }
+    if (data) setShiftMarkers(current => [...current, data as ShiftMarker])
+  }
+
   async function toggleDormUsage(staffId: number, day: number) {
     if (selectedAreaId !== NARITA_AREA_ID) return
     const shift = getShift(staffId, day)
@@ -364,7 +403,19 @@ export default function ShiftPage() {
   async function toggleShooting(staffId: number, day: number) {
     const shift = getShift(staffId, day)
     if (shift?.status === 'x') return
-    await toggleSimpleMarker(staffId, day, SHOOTING_MEMO, 'purple')
+    const existing = getShootingMarker(staffId, day)
+    const currentText = getShootingText(existing)
+    const input = window.prompt('撮影スケジュールのメモを入力してください。空欄で撮影マーカーを削除します。', currentText)
+    if (input === null) return
+    const nextText = input.trim()
+    if (!nextText) {
+      if (existing) {
+        await supabase.from('board_annotations').delete().eq('id', existing.id)
+        setShiftMarkers(current => current.filter(marker => marker.id !== existing.id))
+      }
+      return
+    }
+    await saveShootingMarker(staffId, day, nextText)
   }
 
   async function toggleReturnHome(staffId: number, day: number) {
@@ -723,7 +774,9 @@ export default function ShiftPage() {
                       const today = isToday(d)
                       const isEditing = editingCell?.staffId === staff.id && editingCell?.day === d
                       const canUseMarkers = !shift || shift.status !== 'x'
-                      const isShooting = canUseMarkers && !!getShootingMarker(staff.id, d)
+                      const shootingMarker = canUseMarkers ? getShootingMarker(staff.id, d) : undefined
+                      const shootingText = getShootingText(shootingMarker)
+                      const isShooting = !!shootingMarker
                       const isDorm = selectedAreaId === NARITA_AREA_ID && canUseMarkers && !!getDormUsage(staff.id, d)
                       const isReturnHome = selectedAreaId === NARITA_AREA_ID && canUseMarkers && !!getReturnHomeMarker(staff.id, d)
                       const markerLabels = [
@@ -765,6 +818,7 @@ export default function ShiftPage() {
                       return (
                         <td
                           key={d}
+                          title={shootingText || undefined}
                           onClick={e => { e.stopPropagation(); startEdit(staff.id, d) }}
                           className={`group relative border-l border-gray-100 px-0.5 py-0 text-center cursor-pointer transition-colors overflow-visible ${isEditing ? 'bg-yellow-50 ring-2 ring-inset ring-yellow-400 z-10' : `${cellBg} ${textColor}`} ${today ? 'ring-1 ring-inset ring-blue-400' : ''}`}
                           style={{ minWidth: 52, height: 30 }}
@@ -787,7 +841,10 @@ export default function ShiftPage() {
                             <>
                               <span className="relative z-0 flex h-full items-center justify-center truncate text-center" style={{ fontSize: 10 }}>{cellText}</span>
                               {markerLabels && shift && (
-                                <span className="absolute bottom-0.5 right-0.5 z-0 max-w-[42px] truncate rounded bg-white/70 px-0.5 text-[8px] font-bold leading-3 text-gray-700">
+                                <span
+                                  className="absolute bottom-0.5 right-0.5 z-0 max-w-[42px] truncate rounded bg-white/70 px-0.5 text-[8px] font-bold leading-3 text-gray-700"
+                                  title={shootingText || undefined}
+                                >
                                   {markerLabels}
                                 </span>
                               )}
@@ -797,7 +854,7 @@ export default function ShiftPage() {
                                     type="button"
                                     onClick={e => { e.stopPropagation(); toggleShooting(staff.id, d) }}
                                     className={`rounded px-0.5 text-[9px] font-bold leading-3 ${isShooting ? 'bg-violet-700 text-white' : 'text-violet-700 hover:bg-violet-100'}`}
-                                    title={isShooting ? '撮影を解除' : '撮影にする'}
+                                    title={isShooting ? (shootingText || '撮影メモを編集') : '撮影にする'}
                                   >
                                     撮影
                                   </button>
