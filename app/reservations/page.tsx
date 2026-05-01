@@ -51,6 +51,16 @@ function calculateCastPay(r: Reservation): number {
   return Math.max(0, pay)
 }
 
+const MEMO_PREFIX = 'MEMO:'
+
+function parseInternalMemo(value: string | null): string {
+  return value?.startsWith(MEMO_PREFIX) ? value.slice(MEMO_PREFIX.length) : ''
+}
+
+function serializeInternalMemo(value: string | null): string | null {
+  return value ? `${MEMO_PREFIX}${value}` : null
+}
+
 function MemoCell({
   reservation,
   onSaved,
@@ -58,20 +68,21 @@ function MemoCell({
   reservation: Reservation
   onSaved: (id: number, internalMemo: string) => void
 }) {
-  const [value, setValue] = useState(reservation.media ?? '')
+  const memo = parseInternalMemo(reservation.media)
+  const [value, setValue] = useState(memo)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    setValue(reservation.media ?? '')
-  }, [reservation.media])
+    setValue(memo)
+  }, [memo])
 
   async function saveMemo() {
     const next = value.trim() === '' ? null : value
-    if ((reservation.media ?? '') === (next ?? '')) return
+    if (memo === (next ?? '')) return
     setSaving(true)
     const { error } = await supabase
       .from('reservations')
-      .update({ media: next })
+      .update({ media: serializeInternalMemo(next) })
       .eq('id', reservation.id)
     if (!error) onSaved(reservation.id, next ?? '')
     setSaving(false)
@@ -180,7 +191,7 @@ export default function ReservationsPage() {
   }
 
   const updateReservationMemo = (id: number, internalMemo: string) => {
-    setReservations(prev => prev.map(r => r.id === id ? { ...r, media: internalMemo || null } : r))
+    setReservations(prev => prev.map(r => r.id === id ? { ...r, media: serializeInternalMemo(internalMemo || null) } : r))
   }
 
   const mCount = reservations.filter(r => M_STORE_IDS.includes(r.store_id)).length
