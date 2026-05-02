@@ -253,7 +253,11 @@ export default function RankingPage() {
   return (
     <div className="min-h-screen bg-gray-950 text-white pt-14">
       <div className="max-w-7xl mx-auto px-4 py-6">
-        <h1 className="text-xl font-bold text-gray-100 mb-6">キャストランキング</h1>
+        <h1 className="text-xl font-bold text-gray-100 mb-1">キャストランキング</h1>
+        <p className="text-xs text-gray-500 mb-6">
+          本指名数・写メ指名数・本指名率は CS3 成績データ（取得済み月のみ）を出典とします。
+          稼働率・コース総時間は予約/シフト表データが出典です。
+        </p>
 
         <div className="flex flex-wrap gap-3 mb-6">
           <select
@@ -299,9 +303,10 @@ export default function RankingPage() {
           </div>
         </div>
 
-        {month === '2026-04' && !cs3Available && (
+        {month === '2026-04' && (
           <div className="bg-yellow-900/40 border border-yellow-700/50 text-yellow-300 text-xs rounded px-3 py-2 mb-4">
-            ⚠ 2026年4月のデータは予約同期の不具合により欠損があります。実数より少なく表示される場合があります。
+            ⚠ 2026年4月は予約同期の不具合により稼働率・コース時間に欠損があります。総合ランキングは参考値です。
+            {!cs3Available && ' CS3 成績データ未取得のため本指名数・写メ指名数も実数より少ない可能性があります。'}
           </div>
         )}
 
@@ -339,7 +344,10 @@ export default function RankingPage() {
             </div>
 
             <div className="bg-gray-900 rounded-lg p-4">
-              <h2 className="text-sm font-semibold text-gray-300 mb-3 border-b border-gray-700 pb-2">総合ランキング</h2>
+              <h2 className="text-sm font-semibold text-gray-300 mb-3 border-b border-gray-700 pb-2">
+                総合ランキング
+                <span className="ml-2 text-xs font-normal text-gray-500">（指名数: CS3成績 / 稼働率・コース時間: 予約・シフト）</span>
+              </h2>
               {sogoRanked.length === 0 ? (
                 <div className="text-gray-600 text-xs text-center py-4">データなし</div>
               ) : (
