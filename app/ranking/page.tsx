@@ -299,14 +299,6 @@ export default function RankingPage() {
           </div>
         </div>
 
-        {/* データソース表示 */}
-        <div className="text-xs text-gray-600 mb-3">
-          指名数: {cs3Available
-            ? <span className="text-green-600">CS3成績（正確）</span>
-            : <span className="text-yellow-600">予約テーブル（未取得）</span>
-          }
-        </div>
-
         {month === '2026-04' && !cs3Available && (
           <div className="bg-yellow-900/40 border border-yellow-700/50 text-yellow-300 text-xs rounded px-3 py-2 mb-4">
             ⚠ 2026年4月のデータは予約同期の不具合により欠損があります。実数より少なく表示される場合があります。
