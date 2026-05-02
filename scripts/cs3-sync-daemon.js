@@ -25,15 +25,21 @@ if (fs.existsSync(envPath)) {
 const { createClient } = require('@supabase/supabase-js')
 const { request: httpsReq } = require('https')
 
+function requiredEnv(name) {
+  const value = process.env[name]
+  if (!value) throw new Error(`${name} is required`)
+  return value
+}
+
 // ───────── 設定 ─────────
 const CONFIG = {
-  loginId:    process.env.CS3_LOGIN_ID    || 'kto',
-  password:   process.env.CS3_PASSWORD    || '0519',
+  loginId:    requiredEnv('CS3_LOGIN_ID'),
+  password:   requiredEnv('CS3_PASSWORD'),
   apiUrl:     process.env.KIJ_API_URL     || 'https://kij-app.vercel.app/api/cs3-reservation-sync',
   shiftApiUrl: (process.env.KIJ_API_URL || 'https://kij-app.vercel.app').replace('/api/cs3-reservation-sync','') + '/api/shift-sync',
-  syncSecret: process.env.SYNC_SECRET     || 'ca4b78eb-ceee-4d8d-a626-de224da569af',
-  supabaseUrl:    process.env.NEXT_PUBLIC_SUPABASE_URL    || 'https://tiwxvbbevzsmaxbarpwc.supabase.co',
-  supabaseKey:    process.env.SUPABASE_SERVICE_ROLE_KEY,
+  syncSecret: requiredEnv('SYNC_SECRET'),
+  supabaseUrl:    requiredEnv('NEXT_PUBLIC_SUPABASE_URL'),
+  supabaseKey:    requiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
   cs3IntervalMs:   3 * 60 * 1000,  // 予約: 3分
   shiftIntervalMs: 30 * 60 * 1000, // シフト: 30分
 }
@@ -129,7 +135,16 @@ async function upsertReservationsToSupabase(entries) {
       staff_id: staffId, nomination_type: entry.nominationType,
       course_duration: entry.courseDuration, media: entry.media,
       total_amount: entry.totalAmount,
-      confirmed: true, communicated: false, nude: false,
+      nude: entry.nude ?? false,
+      option1: entry.playOptions?.[0] ?? null,
+      option2: entry.playOptions?.[1] ?? null,
+      option3: entry.playOptions?.[2] ?? null,
+      option4: entry.playOptions?.[3] ?? null,
+      option5: entry.playOptions?.[4] ?? null,
+      option6: entry.playOptions?.[5] ?? null,
+      extension: entry.extensionFee ?? 0,
+      discount: entry.discountAmount ?? 0,
+      confirmed: true, communicated: false,
       arrival_confirmed: false, checked: false, notes: notesKey,
     }
 
@@ -170,6 +185,28 @@ async function loginForShop(shopCode) {
   return res.cookies.join('; ')
 }
 
+// CS3 play フィールド → nude / option[] に変換
+const OP_KEYWORD_MAP = [
+  { keyword: '聖',          value: '聖水' },
+  { keyword: 'ロープ',      value: 'ロープ' },
+  { keyword: 'パンティ',    value: '私物パンティ' },
+  { keyword: 'ストッキング', value: 'ストッキング' },
+  { keyword: '浣腸',        value: 'プラスチック浣腸' },
+  { keyword: 'コスプレ',    value: 'コスプレ' },
+]
+function parsePlay(playText) {
+  const nude = /Ｎ/.test(playText) // 全角Ｎ = ヌード
+  const options = OP_KEYWORD_MAP.filter(m => playText.includes(m.keyword)).map(m => m.value)
+  return { nude, options }
+}
+
+// CS3 discount フィールド → 割引金額（整数）に変換
+function parseDiscountAmount(discountText) {
+  if (!discountText) return 0
+  const m = discountText.match(/(\d[\d,]*)/)
+  return m ? parseInt(m[1].replace(/,/g, '')) : 0
+}
+
 function extractTdText(html, cls) {
   const re = new RegExp(`<td[^>]*class="[^"]*\\b${cls}\\b[^"]*"[^>]*>([\\s\\S]*?)<\\/td>`)
   const m = html.match(re)
@@ -208,10 +245,16 @@ function parseReservations(html) {
     const salesRaw = extractTdText(rowHtml, 'reservation_list_value_sales')
     const phoneRaw = extractTdText(rowHtml, 'reservation_list_value_phone')
     const phoneMatch = phoneRaw.match(/[\d-]{7,}/)
+    const playRaw = extractTdText(rowHtml, 'reservation_list_value_play')
+    const discountRaw = extractTdText(rowHtml, 'reservation_list_value_discount')
+    const { nude, options: playOptions } = parsePlay(playRaw)
+    const baseCourse = parseInt(courseStr)
+    const extMin = baseCourse > 0 ? Math.max(0, times.courseDuration - baseCourse) : 0
+    const extensionFee = (extMin > 0 && extMin % 10 === 0) ? (extMin / 10) * 3000 : 0
     entries.push({
       cs3Id, storeId, date,
       time: times.time, checkoutTime: times.checkoutTime,
-      courseDuration: parseInt(courseStr) || times.courseDuration,
+      courseDuration: baseCourse || times.courseDuration,
       castName,
       customerName: extractTdText(rowHtml, 'reservation_list_value_customersname') || null,
       phone: phoneMatch ? phoneMatch[0] : null,
@@ -221,6 +264,10 @@ function parseReservations(html) {
       nominationType: extractTdText(rowHtml, 'reservation_list_value_nominate') || null,
       media: extractTdText(rowHtml, 'reservation_list_value_media') || null,
       totalAmount: parseInt(salesRaw.replace(/[^\d]/g, '')) || 0,
+      nude,
+      playOptions,
+      extensionFee,
+      discountAmount: parseDiscountAmount(discountRaw),
     })
   }
   return entries
@@ -433,7 +480,7 @@ async function runShiftSync(trigger = 'auto') {
 
 let syncing = false
 
-const SYNC_TIMEOUT_MS = 90000
+const SYNC_TIMEOUT_MS = 180000 // 4店舗×(login+GET)×20s = max 160s
 
 async function runSync(trigger = 'auto') {
   if (syncing) {
@@ -444,7 +491,7 @@ async function runSync(trigger = 'auto') {
   console.log(`[${ts()}] 🔄 同期開始 (${trigger})`)
 
   const timeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('同期タイムアウト（90秒）')), SYNC_TIMEOUT_MS)
+    setTimeout(() => reject(new Error('同期タイムアウト（180秒）')), SYNC_TIMEOUT_MS)
   )
 
   try {
@@ -464,15 +511,22 @@ async function runSync(trigger = 'auto') {
 
 async function syncWork() {
   const allEntries = []
+  let anySuccess = false
   for (const shopCode of Object.keys(SHOP_TO_STORE)) {
     process.stdout.write(`  ${SHOP_NAMES[shopCode]} ... `)
-    const cookie = await loginForShop(shopCode)
-    const { status, body: html } = await httpsGet(CS3_HOST, '/group/7175_iyashi/schedule.reservation.php', cookie)
-    if (status !== 200) throw new Error(`取得失敗 shop=${shopCode} (${status})`)
-    const entries = parseReservations(html)
-    process.stdout.write(`${entries.length}件\n`)
-    allEntries.push(...entries)
+    try {
+      const cookie = await loginForShop(shopCode)
+      const { status, body: html } = await httpsGet(CS3_HOST, '/group/7175_iyashi/schedule.reservation.php', cookie)
+      if (status !== 200) throw new Error(`取得失敗 shop=${shopCode} (${status})`)
+      const entries = parseReservations(html)
+      process.stdout.write(`${entries.length}件\n`)
+      allEntries.push(...entries)
+      anySuccess = true
+    } catch (err) {
+      process.stdout.write(`❌ ${err.message}\n`)
+    }
   }
+  if (!anySuccess) throw new Error('全店舗でCS3取得失敗')
 
   const seen = new Set()
   const entries = allEntries.filter(e => { if (seen.has(e.cs3Id)) return false; seen.add(e.cs3Id); return true })

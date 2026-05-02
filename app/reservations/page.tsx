@@ -251,9 +251,14 @@ export default function ReservationsPage() {
                     {r.extension > 0 ? `${Math.round((r.extension / 3000) * 10)}` : ''}
                   </td>
                   <td className="px-1 py-1 border border-gray-200 text-gray-600 leading-snug">
-                    {[r.option1, r.option2, r.option3, r.option4, r.option5, r.option6].filter(Boolean).map((op, i) => (
-                      <div key={i}>{op}</div>
-                    ))}
+                    {(() => {
+                      const serviceType = (r.nude || r.course_type === 'ヌード') ? 'ヌード'
+                        : r.course_type === 'トップレス' ? 'トップレス'
+                        : null
+                      return [serviceType, r.option1, r.option2, r.option3, r.option4, r.option5, r.option6]
+                        .filter(Boolean)
+                        .map((op, i) => <div key={i}>{op}</div>)
+                    })()}
                   </td>
                   <td className="px-1 py-1 border border-gray-200 text-gray-600 text-right whitespace-nowrap">
                     {[
