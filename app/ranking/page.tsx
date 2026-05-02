@@ -94,25 +94,16 @@ export default function RankingPage() {
           return `${month}-${String(last).padStart(2, '0')}`
         })()
 
-        const [reservations, shifts] = await Promise.all([
-          fetchAllPaginated<any>((from, to) =>
-            supabase.from('reservations')
-              .select('staff_id, nomination_type, course_duration, staff(name)')
-              .eq('store_id', storeId)
-              .gte('date', dateFrom)
-              .lte('date', dateTo)
-              .not('staff_id', 'is', null)
-              .range(from, to)
-          ),
-          fetchAllPaginated<any>((from, to) =>
-            supabase.from('shifts')
-              .select('staff_id, start_time, end_time, staff(name)')
-              .eq('store_id', storeId)
-              .gte('date', dateFrom)
-              .lte('date', dateTo)
-              .range(from, to)
-          ),
-        ])
+        // 予約は選択ブランド（M or E）の store_id で絞る
+        const reservations = await fetchAllPaginated<any>((from, to) =>
+          supabase.from('reservations')
+            .select('staff_id, nomination_type, course_duration, staff(name)')
+            .eq('store_id', storeId)
+            .gte('date', dateFrom)
+            .lte('date', dateTo)
+            .not('staff_id', 'is', null)
+            .range(from, to)
+        )
 
         if (cancelled) return
 
@@ -139,9 +130,23 @@ export default function RankingPage() {
           if (r.nomination_type?.includes('写')) { s.shashinShimei++; s.shashinCourseMin += dur }
         }
 
-        for (const sh of shifts) {
-          const s = getOrCreate(sh.staff_id, sh.staff?.name ?? `#${sh.staff_id}`)
-          s.shiftMin += (sh.end_time - sh.start_time) * 60
+        // シフトはエリアの M+E 両 store_id から、予約に出てきた staff_id のみ対象
+        // （M女性のシフトが E側 store_id で登録されているケースに対応）
+        const staffIds = [...staffMap.keys()]
+        if (staffIds.length > 0) {
+          const shifts = await fetchAllPaginated<any>((from, to) =>
+            supabase.from('shifts')
+              .select('staff_id, start_time, end_time')
+              .in('store_id', area.storeIds)
+              .in('staff_id', staffIds)
+              .gte('date', dateFrom)
+              .lte('date', dateTo)
+              .range(from, to)
+          )
+          for (const sh of shifts) {
+            const s = staffMap.get(sh.staff_id)
+            if (s) s.shiftMin += (sh.end_time - sh.start_time) * 60
+          }
         }
 
         const computed: StaffStats[] = Array.from(staffMap.values())
