@@ -219,10 +219,14 @@ export default function ShiftPage() {
   useEffect(() => { fetchRequests() }, [fetchRequests])
   useEffect(() => { fetchLastSyncAt() }, [fetchLastSyncAt])
 
-  const notifyLine = (staff_id: number, message: string) => {
+  const notifyLine = async (staff_id: number, message: string) => {
+    const { data: { session } } = await supabase.auth.getSession()
     fetch('/api/line/notify', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token ?? ''}`,
+      },
       body: JSON.stringify({ staff_id, message }),
     }).catch(() => {})
   }

@@ -101,9 +101,13 @@ export default function PhotoDiaryNewPage() {
       // 即時投稿の場合のみ配信
       if (publishNow) {
         try {
+          const { data: { session } } = await supabase.auth.getSession()
           const deliverRes = await fetch('/api/photodiary/deliver', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token ?? ''}`,
+            },
             body: JSON.stringify({ diary_id: diary.id }),
             keepalive: true,
           })

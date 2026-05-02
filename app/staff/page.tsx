@@ -278,7 +278,11 @@ export default function StaffPage() {
       }
       setSyncResult(data.perStore)
       // 同期後に自動で重複解消
-      await fetch('/api/staff-dedup', { method: 'POST' })
+      const { data: { session } } = await supabase.auth.getSession()
+      await fetch('/api/staff-dedup', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+      })
       fetchStaff()
     } catch {
       alert('同期に失敗しました')

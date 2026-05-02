@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { supabase } from '@/lib/supabase'
 
 const SHOPS = [
   { id: '111701', label: '西船橋' },
@@ -84,6 +85,7 @@ function CastMatrix({
 
   const handleSave = async () => {
     setSaving(true)
+    const { data: { session } } = await supabase.auth.getSession()
     const updates = SHOPS.flatMap(shop =>
       SITES.map(site => ({
         cs3_cast_id: castId,
@@ -94,7 +96,10 @@ function CastMatrix({
     )
     const res = await fetch('/api/admin/publish-rules', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token ?? ''}`,
+      },
       body: JSON.stringify({ updates }),
     })
     setSaving(false)
@@ -234,9 +239,13 @@ export default function PublishRulesPage() {
   const [page, setPage] = useState(0)
 
   useEffect(() => {
-    fetch('/api/admin/publish-rules')
-      .then(r => r.json())
-      .then(json => { setRules(json.rules ?? []); setLoading(false) })
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      fetch('/api/admin/publish-rules', {
+        headers: { 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+      })
+        .then(r => r.json())
+        .then(json => { setRules(json.rules ?? []); setLoading(false) })
+    })
   }, [])
 
   const handleSaved = useCallback((

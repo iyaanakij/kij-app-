@@ -43,7 +43,10 @@ export async function GET(req: NextRequest) {
         try {
           const res = await fetch(`${baseUrl}/api/photodiary/deliver`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${process.env.CRON_SECRET}`,
+            },
             body: JSON.stringify({ diary_id: item.id }),
           })
           const body = await res.json()
