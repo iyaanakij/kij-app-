@@ -98,9 +98,9 @@ export default function ShiftPage() {
       const staffDayKey = `${shift.staff_id}:${shift.date}`
       if (!seenStaffDays.has(staffDayKey)) {
         current.days += 1
+        current.hours += Math.max(0, shift.end_time - shift.start_time)
         seenStaffDays.add(staffDayKey)
       }
-      current.hours += Math.max(0, shift.end_time - shift.start_time)
       stats.set(shift.staff_id, current)
     })
     return stats
