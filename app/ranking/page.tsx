@@ -73,7 +73,6 @@ export default function RankingPage() {
   const monthOptions = getMonthOptions()
   const [month, setMonth] = useState(monthOptions[0].value)
   const [areaId, setAreaId] = useState(1)
-  const [section, setSection] = useState<'M' | 'E'>('M')
   const [stats, setStats] = useState<StaffStats[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -84,13 +83,13 @@ export default function RankingPage() {
       setError(null)
       try {
         const area = AREAS.find(a => a.id === areaId)!
-        const storeId = section === 'M' ? area.storeIds[0] : area.storeIds[1]
+        const storeIds = area.storeIds // [M店, E店] 両方まとめて取得
 
         const [reservations, shifts] = await Promise.all([
           fetchAllPaginated<any>((from, to) =>
             supabase.from('reservations')
               .select('staff_id, nomination_type, course_duration, staff(name)')
-              .eq('store_id', storeId)
+              .in('store_id', storeIds)
               .gte('date', `${month}-01`)
               .lte('date', `${month}-31`)
               .not('staff_id', 'is', null)
@@ -99,7 +98,7 @@ export default function RankingPage() {
           fetchAllPaginated<any>((from, to) =>
             supabase.from('shifts')
               .select('staff_id, start_time, end_time, staff(name)')
-              .eq('store_id', storeId)
+              .in('store_id', storeIds)
               .gte('date', `${month}-01`)
               .lte('date', `${month}-31`)
               .range(from, to)
@@ -150,7 +149,7 @@ export default function RankingPage() {
       }
     }
     load()
-  }, [month, areaId, section])
+  }, [month, areaId])
 
   const rankMaps = RANKINGS.map(def => {
     const values = stats.map(s => s[def.key])
@@ -194,21 +193,6 @@ export default function RankingPage() {
             ))}
           </div>
 
-          <div className="flex gap-1">
-            {(['M', 'E'] as const).map(s => (
-              <button
-                key={s}
-                onClick={() => setSection(s)}
-                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                  section === s
-                    ? 'bg-pink-600 text-white'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                }`}
-              >
-                {s === 'M' ? 'M性感' : 'エステ'}
-              </button>
-            ))}
-          </div>
         </div>
 
         {error && <div className="text-red-400 text-sm mb-4">エラー: {error}</div>}
