@@ -37,18 +37,31 @@ function standardRank(values: number[], idx: number, higherIsBetter: boolean): n
   return values.filter(o => (higherIsBetter ? o > v : o < v)).length + 1
 }
 
+// area → CS3 shop_id
+const AREA_TO_SHOP: Record<number, string> = {
+  1: '111702', // 成田
+  2: '111703', // 千葉
+  3: '111701', // 西船橋
+  4: '111704', // 錦糸町
+}
+
 interface StaffStats {
   staffId: number
   name: string
+  // CS3成績（正確な値）
   honShimei: number
   shashinShimei: number
   totalRes: number
   honRate: number
-  shiftMin: number
+  // 予約テーブル由来（コース時間）
   courseMin: number
-  kadoritsu: number
   honCourseMin: number
   shashinCourseMin: number
+  // シフト由来
+  shiftMin: number
+  kadoritsu: number
+  // CS3データの有無
+  hasCs3: boolean
 }
 
 type RankingKey = keyof Pick<StaffStats, 'honShimei' | 'shashinShimei' | 'honRate' | 'kadoritsu' | 'shashinCourseMin' | 'honCourseMin'>
@@ -61,12 +74,12 @@ interface RankingDef {
 }
 
 const RANKINGS: RankingDef[] = [
-  { key: 'honShimei',       label: '本指名数',            higherIsBetter: true, format: v => `${v}件` },
-  { key: 'shashinShimei',   label: '写メ指名数',           higherIsBetter: true, format: v => `${v}件` },
-  { key: 'honRate',         label: '本指名率',             higherIsBetter: true, format: v => `${(v * 100).toFixed(1)}%` },
-  { key: 'kadoritsu',       label: '稼働率',               higherIsBetter: true, format: v => `${(v * 100).toFixed(1)}%` },
+  { key: 'honShimei',        label: '本指名数',            higherIsBetter: true, format: v => `${v}件` },
+  { key: 'shashinShimei',    label: '写メ指名数',           higherIsBetter: true, format: v => `${v}件` },
+  { key: 'honRate',          label: '本指名率',             higherIsBetter: true, format: v => `${(v * 100).toFixed(1)}%` },
+  { key: 'kadoritsu',        label: '稼働率',               higherIsBetter: true, format: v => `${(v * 100).toFixed(1)}%` },
   { key: 'shashinCourseMin', label: '写メ指名コース総時間', higherIsBetter: true, format: v => `${v}分` },
-  { key: 'honCourseMin',    label: '本指名コース総時間',    higherIsBetter: true, format: v => `${v}分` },
+  { key: 'honCourseMin',     label: '本指名コース総時間',    higherIsBetter: true, format: v => `${v}分` },
 ]
 
 export default function RankingPage() {
@@ -77,6 +90,7 @@ export default function RankingPage() {
   const [stats, setStats] = useState<StaffStats[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cs3Available, setCs3Available] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -87,14 +101,29 @@ export default function RankingPage() {
       try {
         const area = AREAS.find(a => a.id === areaId)!
         const storeId = section === 'M' ? area.storeIds[0] : area.storeIds[1]
+        const [y, m] = month.split('-').map(Number)
         const dateFrom = `${month}-01`
         const dateTo = (() => {
-          const [y, m] = month.split('-').map(Number)
           const last = new Date(y, m, 0).getDate()
           return `${month}-${String(last).padStart(2, '0')}`
         })()
 
-        // 予約は選択ブランド（M or E）の store_id で絞る
+        // ── CS3成績データ（本指名・写メ指名の正確なソース）──
+        const shopCode = AREA_TO_SHOP[areaId]
+        const { data: cs3Rows } = await supabase
+          .from('cs3_cast_performance')
+          .select('staff_id, cast_name, m_shashin, m_free, m_hon_total, m_total, e_shashin, e_free, e_hon_total, e_total')
+          .eq('shop_id', shopCode)
+          .eq('year', y)
+          .eq('month', m)
+
+        if (cancelled) return
+
+        const cs3Data = cs3Rows ?? []
+        const hasCs3 = cs3Data.length > 0
+
+
+        // ── 予約テーブル（コース時間・稼働率計算用）──
         const reservations = await fetchAllPaginated<any>((from, to) =>
           supabase.from('reservations')
             .select('staff_id, nomination_type, course_duration, notes, staff(name)')
@@ -107,9 +136,9 @@ export default function RankingPage() {
 
         if (cancelled) return
 
-        // CS3予約ID（notes=CS3:xxx）で重複排除
+        // CS3予約IDで重複排除
         const seenNotes = new Set<string>()
-        const dedupedReservations = reservations.filter((r: any) => {
+        const dedupedRes = reservations.filter((r: any) => {
           if (!r.notes?.startsWith('CS3:')) return true
           if (seenNotes.has(r.notes)) return false
           seenNotes.add(r.notes)
@@ -118,30 +147,57 @@ export default function RankingPage() {
 
         const staffMap = new Map<number, StaffStats>()
 
-        const getOrCreate = (id: number, name: string) => {
+        function getOrCreate(id: number, name: string): StaffStats {
           if (!staffMap.has(id)) {
             staffMap.set(id, {
               staffId: id, name,
               honShimei: 0, shashinShimei: 0, totalRes: 0, honRate: 0,
               shiftMin: 0, courseMin: 0, kadoritsu: 0,
               honCourseMin: 0, shashinCourseMin: 0,
+              hasCs3: false,
             })
           }
           return staffMap.get(id)!
         }
 
-        for (const r of dedupedReservations) {
+        // 予約からコース時間を集計（nomiation_typeは参照用；指名数はCS3優先）
+        for (const r of dedupedRes) {
           const s = getOrCreate(r.staff_id, r.staff?.name ?? `#${r.staff_id}`)
-          s.totalRes++
           const dur = r.course_duration ?? 0
           s.courseMin += dur
-          if (r.nomination_type?.includes('本')) { s.honShimei++; s.honCourseMin += dur }
-          if (r.nomination_type?.includes('写')) { s.shashinShimei++; s.shashinCourseMin += dur }
+          if (r.nomination_type?.includes('本')) s.honCourseMin += dur
+          if (r.nomination_type?.includes('写')) s.shashinCourseMin += dur
         }
 
-        // シフトはエリアの M+E 両 store_id から、予約に出てきた staff_id のみ対象
-        // （M女性のシフトが E側 store_id で登録されているケースに対応）
-        const staffIds = [...staffMap.keys()]
+        // CS3が取得済みなら全CS3キャストをstaffMapに追加・指名数を上書き
+        if (hasCs3) {
+          let tempIdCounter = -1
+          for (const r of cs3Data) {
+            const honCount     = section === 'M' ? r.m_hon_total : r.e_hon_total
+            const shashinCount = section === 'M' ? r.m_shashin   : r.e_shashin
+            const total        = section === 'M' ? r.m_total      : r.e_total
+            if (total === 0) continue  // このsectionで活動なし
+
+            const sid  = r.staff_id ?? tempIdCounter--
+            const name = (r.staff_id ? staffMap.get(r.staff_id)?.name : undefined) ?? r.cast_name
+            const s    = getOrCreate(sid, name)
+            s.honShimei     = honCount
+            s.shashinShimei = shashinCount
+            s.totalRes      = total
+            s.hasCs3        = true
+          }
+        } else {
+          // CS3未取得フォールバック: 予約テーブルの指名カウントを使用
+          for (const r of dedupedRes) {
+            const s = staffMap.get(r.staff_id)!
+            s.totalRes++
+            if (r.nomination_type?.includes('本')) s.honShimei++
+            if (r.nomination_type?.includes('写')) s.shashinShimei++
+          }
+        }
+
+        // ── シフトデータ（稼働率計算用）──
+        const staffIds = [...staffMap.keys()].filter(id => id > 0)
         if (staffIds.length > 0) {
           const shifts = await fetchAllPaginated<any>((from, to) =>
             supabase.from('shifts')
@@ -152,8 +208,6 @@ export default function RankingPage() {
               .lte('date', dateTo)
               .range(from, to)
           )
-          // HP同期とVPS CS3同期で同日シフトが両方のstore_idに入るケースがあるため
-          // (staff_id, date) 単位で重複排除してからshiftMinを集計
           const seenShiftDays = new Set<string>()
           for (const sh of shifts) {
             const key = `${sh.staff_id}:${sh.date}`
@@ -168,11 +222,14 @@ export default function RankingPage() {
           .filter(s => !(s.shiftMin === 0 && s.totalRes === 0))
           .map(s => ({
             ...s,
-            honRate: s.totalRes > 0 ? s.honShimei / s.totalRes : 0,
+            honRate:   s.totalRes > 0 ? s.honShimei / s.totalRes : 0,
             kadoritsu: s.shiftMin > 0 ? s.courseMin / s.shiftMin : 0,
           }))
 
-        setStats(computed)
+        if (!cancelled) {
+          setStats(computed)
+          setCs3Available(hasCs3)
+        }
       } catch (e: unknown) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e))
       } finally {
@@ -242,7 +299,15 @@ export default function RankingPage() {
           </div>
         </div>
 
-        {month === '2026-04' && (
+        {/* データソース表示 */}
+        <div className="text-xs text-gray-600 mb-3">
+          指名数: {cs3Available
+            ? <span className="text-green-600">CS3成績（正確）</span>
+            : <span className="text-yellow-600">予約テーブル（未取得）</span>
+          }
+        </div>
+
+        {month === '2026-04' && !cs3Available && (
           <div className="bg-yellow-900/40 border border-yellow-700/50 text-yellow-300 text-xs rounded px-3 py-2 mb-4">
             ⚠ 2026年4月のデータは予約同期の不具合により欠損があります。実数より少なく表示される場合があります。
           </div>
