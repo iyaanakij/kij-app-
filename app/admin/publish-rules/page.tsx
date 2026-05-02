@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 const SHOPS = [
@@ -232,21 +233,58 @@ const FILTERS: { key: FilterType; label: string; activeClass: string }[] = [
 ]
 
 export default function PublishRulesPage() {
+  const router = useRouter()
   const [rules, setRules] = useState<RuleRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterType>('all')
   const [page, setPage] = useState(0)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      fetch('/api/admin/publish-rules', {
-        headers: { 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+    let cancelled = false
+
+    async function loadRules() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.replace('/admin/login')
+        return
+      }
+
+      const res = await fetch('/api/admin/publish-rules', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
       })
-        .then(r => r.json())
-        .then(json => { setRules(json.rules ?? []); setLoading(false) })
+
+      if (res.status === 401 || res.status === 403) {
+        await supabase.auth.signOut()
+        router.replace('/admin/login')
+        return
+      }
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        if (!cancelled) {
+          setLoadError(json.error ?? '配信ルールを取得できませんでした')
+          setLoading(false)
+        }
+        return
+      }
+
+      if (!cancelled) {
+        setRules(json.rules ?? [])
+        setLoading(false)
+      }
+    }
+
+    loadRules().catch(() => {
+      if (!cancelled) {
+        setLoadError('配信ルールを取得できませんでした')
+        setLoading(false)
+      }
     })
-  }, [])
+
+    return () => { cancelled = true }
+  }, [router])
 
   const handleSaved = useCallback((
     castId: string,
@@ -312,6 +350,23 @@ export default function PublishRulesPage() {
     return (
       <div className="min-h-screen flex items-center justify-center text-gray-400 text-sm">
         読み込み中...
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="bg-white border border-red-100 rounded-xl shadow-sm p-6 max-w-sm w-full text-center">
+          <div className="text-sm font-bold text-red-600 mb-2">読み込みに失敗しました</div>
+          <p className="text-xs text-gray-500 mb-4">{loadError}</p>
+          <button
+            onClick={() => router.replace('/admin/login')}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
+          >
+            ログイン画面へ
+          </button>
+        </div>
       </div>
     )
   }
