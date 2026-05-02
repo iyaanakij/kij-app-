@@ -14,6 +14,7 @@
 
 // .env.local を自動ロード
 const fs = require('fs'), path = require('path')
+const { spawn } = require('child_process')
 const envPath = path.resolve(__dirname, '../.env.local')
 if (fs.existsSync(envPath)) {
   fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
@@ -359,6 +360,55 @@ function ts() {
 
 // ─── メイン ────────────────────────────────────────────────────
 
+// ─── 月次 CS3 成績バッチ ───────────────────────────────────────────
+const PERF_BATCH   = path.resolve(__dirname, '../../shift-sync/scripts/95-cs3-cast-performance-batch.js')
+const PERF_CWD     = path.resolve(__dirname, '../../shift-sync')
+const PERF_STATE   = path.resolve(__dirname, '../data/perf-last-month.txt')
+
+function loadLastPerfMonth() {
+  try { return fs.readFileSync(PERF_STATE, 'utf8').trim() } catch { return '' }
+}
+function saveLastPerfMonth(key) {
+  fs.mkdirSync(path.dirname(PERF_STATE), { recursive: true })
+  fs.writeFileSync(PERF_STATE, key)
+}
+
+let perfRunning = false
+
+function maybeRunMonthlyPerf() {
+  if (perfRunning) return
+  if (!fs.existsSync(PERF_BATCH)) return  // shift-sync が存在しない環境では skip
+
+  const now  = new Date()
+  const day  = now.getDate()
+  if (day < 2 || day > 7) return  // 毎月2〜7日のみ実行
+
+  const prev   = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const target = `${prev.getFullYear()}-${prev.getMonth() + 1}`
+  if (loadLastPerfMonth() === target) return  // 既に完了
+
+  perfRunning = true
+  console.log(`[${ts()}] 📊 月次CS3成績バッチ起動: ${target}`)
+
+  const child = spawn('node', [PERF_BATCH, '--year', String(prev.getFullYear()), '--month', String(prev.getMonth() + 1)], {
+    cwd: PERF_CWD,
+    env: process.env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  child.stdout.on('data', d => process.stdout.write(`[perf] ${d}`))
+  child.stderr.on('data', d => process.stderr.write(`[perf] ${d}`))
+  child.on('exit', code => {
+    perfRunning = false
+    if (code === 0) {
+      saveLastPerfMonth(target)
+      console.log(`[${ts()}] ✅ 月次CS3成績バッチ完了: ${target}`)
+    } else {
+      console.error(`[${ts()}] ❌ 月次CS3成績バッチ失敗 (code=${code})`)
+    }
+  })
+}
+// ─────────────────────────────────────────────────────────────────────
+
 async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log(' KIJ 同期デーモン 起動')
@@ -378,8 +428,11 @@ async function main() {
   // 起動時に即時実行
   await runSync('startup')
 
-  // 定期自動同期
-  setInterval(() => runSync('auto'), CONFIG.cs3IntervalMs)
+  // 定期自動同期 + 月次成績バッチチェック
+  setInterval(() => {
+    runSync('auto')
+    maybeRunMonthlyPerf()
+  }, CONFIG.cs3IntervalMs)
 }
 
 main().catch(err => {
