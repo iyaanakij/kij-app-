@@ -11,12 +11,18 @@
 'use strict'
 const { request: httpsReq } = require('https')
 
+function requiredEnv(name) {
+  const value = process.env[name]
+  if (!value) throw new Error(`${name} is required`)
+  return value
+}
+
 // ───────── 設定 ─────────
 const CONFIG = {
-  loginId:    process.env.CS3_LOGIN_ID    || 'kto',
-  password:   process.env.CS3_PASSWORD    || '0519',
+  loginId:    requiredEnv('CS3_LOGIN_ID'),
+  password:   requiredEnv('CS3_PASSWORD'),
   apiUrl:     process.env.KIJ_API_URL     || 'https://kij-app.vercel.app/api/cs3-reservation-sync',
-  syncSecret: process.env.SYNC_SECRET     || 'ca4b78eb-ceee-4d8d-a626-de224da569af',
+  syncSecret: requiredEnv('SYNC_SECRET'),
 }
 // ─────────────────────────
 

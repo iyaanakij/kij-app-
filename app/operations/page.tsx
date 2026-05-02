@@ -186,7 +186,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
   }
 
   const deleteShift = async (staffId: number) => {
-    if (!confirm('このシフトをDBから削除しますか？（HP同期で再登録される場合があります）')) return
+    if (!confirm('このシフトをDBから削除しますか？')) return
     const area = AREAS.find(a => a.id === selectedAreaId)!
     await supabase.from('shifts')
       .delete()
