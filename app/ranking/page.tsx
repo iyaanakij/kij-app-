@@ -79,20 +79,28 @@ export default function RankingPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    let cancelled = false
+
     async function load() {
       setLoading(true)
       setError(null)
       try {
         const area = AREAS.find(a => a.id === areaId)!
         const storeId = section === 'M' ? area.storeIds[0] : area.storeIds[1]
+        const dateFrom = `${month}-01`
+        const dateTo = (() => {
+          const [y, m] = month.split('-').map(Number)
+          const last = new Date(y, m, 0).getDate()
+          return `${month}-${String(last).padStart(2, '0')}`
+        })()
 
         const [reservations, shifts] = await Promise.all([
           fetchAllPaginated<any>((from, to) =>
             supabase.from('reservations')
               .select('staff_id, nomination_type, course_duration, staff(name)')
               .eq('store_id', storeId)
-              .gte('date', `${month}-01`)
-              .lte('date', `${month}-31`)
+              .gte('date', dateFrom)
+              .lte('date', dateTo)
               .not('staff_id', 'is', null)
               .range(from, to)
           ),
@@ -100,11 +108,13 @@ export default function RankingPage() {
             supabase.from('shifts')
               .select('staff_id, start_time, end_time, staff(name)')
               .eq('store_id', storeId)
-              .gte('date', `${month}-01`)
-              .lte('date', `${month}-31`)
+              .gte('date', dateFrom)
+              .lte('date', dateTo)
               .range(from, to)
           ),
         ])
+
+        if (cancelled) return
 
         const staffMap = new Map<number, StaffStats>()
 
@@ -144,12 +154,13 @@ export default function RankingPage() {
 
         setStats(computed)
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e))
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
     load()
+    return () => { cancelled = true }
   }, [month, areaId, section])
 
   const rankMaps = RANKINGS.map(def => {
