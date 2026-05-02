@@ -1,13 +1,9 @@
 import { NextResponse } from 'next/server'
-import { requireStaffUser } from '@/lib/server-auth'
 
 const GH_PAT  = process.env.GH_PAT   // GitHub Personal Access Token (repo scope)
 const GH_REPO = process.env.GH_REPO  // e.g. "iyaanakij/kij-app-"
 
-export async function POST(request: Request) {
-  const user = await requireStaffUser(request)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
+export async function POST() {
   if (!GH_PAT || !GH_REPO) {
     return NextResponse.json(
       { error: 'GH_PAT / GH_REPO が未設定です（Vercel環境変数を確認）' },

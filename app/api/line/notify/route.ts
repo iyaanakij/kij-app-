@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { sendLineMessage } from '@/lib/line'
-import { createAdminClient, requireStaffUser } from '@/lib/server-auth'
 
 export async function POST(req: NextRequest) {
-  const adminSupabase = createAdminClient()
-  const user = await requireStaffUser(req, adminSupabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
   const { staff_id, message } = await req.json()
   if (!staff_id || !message) {
     return NextResponse.json({ success: false, reason: 'missing_params' }, { status: 400 })
   }
+
+  const adminSupabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
 
   const { data } = await adminSupabase
     .from('user_roles')

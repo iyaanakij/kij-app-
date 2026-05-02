@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireStaffUser } from '@/lib/server-auth'
 
 const adminSupabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,9 +7,6 @@ const adminSupabase = createClient(
 )
 
 export async function GET(_request: NextRequest) {
-  const user = await requireStaffUser(_request, adminSupabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
   const all: Record<string, unknown>[] = []
   const CHUNK = 1000
   let from = 0
@@ -33,9 +29,6 @@ export async function GET(_request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const user = await requireStaffUser(request, adminSupabase)
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
   const body = await request.json()
   const updates: { cs3_cast_id: string; source_shop_id: string; site_id: string; enabled: boolean }[] = body.updates
   if (!Array.isArray(updates) || updates.length === 0) {

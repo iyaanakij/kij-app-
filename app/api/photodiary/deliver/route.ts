@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/emailProvider'
-import { getServerUser, hasCronSecret } from '@/lib/server-auth'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -35,12 +34,6 @@ export async function POST(request: Request) {
     if (diaryError || !diary) {
       console.error(`[deliver] diary取得失敗 diary_id=${diary_id}:`, diaryError?.message)
       return NextResponse.json({ error: `日記が見つかりません: ${diaryError?.message}` }, { status: 404 })
-    }
-
-    if (!hasCronSecret(request)) {
-      const user = await getServerUser(request, supabase)
-      const allowed = user?.role === 'staff' || (user?.role === 'cast' && user.staff_id === diary.staff_id)
-      if (!allowed) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     if (!diary.published) {

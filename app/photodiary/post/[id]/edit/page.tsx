@@ -136,13 +136,9 @@ export default function PhotoDiaryEditPage() {
 
       // 未公開→即時公開への変更時のみ配信
       if (publishNow && !wasPublished) {
-        const { data: { session } } = await supabase.auth.getSession()
         await fetch('/api/photodiary/deliver', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token ?? ''}`,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ diary_id: diary.id }),
           keepalive: true,
         }).catch(err => console.error('配信エラー:', err))
