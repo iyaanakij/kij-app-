@@ -214,7 +214,7 @@ export default function ReservationsPage() {
           <table className="w-full text-xs border-collapse min-w-[900px]">
             <thead className="sticky top-0 z-10">
               <tr className="bg-gray-700 text-white">
-                {['CS','番号','時間','お客様名','確電','伝達','電話番号','エリア','ホテル/部屋','女性','指名','コース','延長','OP','加算','金額','到着','退出','メモ'].map(h => (
+                {['CS','時間','お客様名','確電','伝達','電話番号','エリア','ホテル/部屋','女性','指名','コース','延長','OP','加算','金額','退出','メモ'].map(h => (
                   <th key={h} className="px-1.5 py-1.5 border border-gray-600 whitespace-nowrap font-semibold">{h}</th>
                 ))}
               </tr>
@@ -222,7 +222,7 @@ export default function ReservationsPage() {
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={19} className={`text-center py-5 text-gray-400 ${bgRow}`}>予約なし</td>
+                  <td colSpan={17} className={`text-center py-5 text-gray-400 ${bgRow}`}>予約なし</td>
                 </tr>
               )}
               {rows.map((r) => (
@@ -233,7 +233,6 @@ export default function ReservationsPage() {
                   <td className="px-1 py-1 border border-gray-200 text-center" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" checked={r.checked} onChange={() => toggleField(r.id, 'checked', r.checked)} className="cursor-pointer accent-blue-600 w-3.5 h-3.5" />
                   </td>
-                  <td className="px-1 py-1 border border-gray-200 text-center text-gray-600 font-mono">{r.row_number}</td>
                   <td className="px-1 py-1 border border-gray-200 text-center font-mono font-bold text-gray-800">{formatTime(r.time)}</td>
                   <td className="px-1.5 py-1 border border-gray-200 font-semibold text-gray-800">{r.customer_name}</td>
                   <td className="px-1 py-1 border border-gray-200 text-center" onClick={e => e.stopPropagation()}>
@@ -251,8 +250,10 @@ export default function ReservationsPage() {
                   <td className="px-1 py-1 border border-gray-200 text-center font-mono text-gray-700 whitespace-nowrap">
                     {r.extension > 0 ? `${Math.round((r.extension / 3000) * 10)}` : ''}
                   </td>
-                  <td className="px-1 py-1 border border-gray-200 text-gray-600 whitespace-nowrap">
-                    {[r.option1, r.option2, r.option3, r.option4, r.option5, r.option6].filter(Boolean).join(', ')}
+                  <td className="px-1 py-1 border border-gray-200 text-gray-600 leading-snug">
+                    {[r.option1, r.option2, r.option3, r.option4, r.option5, r.option6].filter(Boolean).map((op, i) => (
+                      <div key={i}>{op}</div>
+                    ))}
                   </td>
                   <td className="px-1 py-1 border border-gray-200 text-gray-600 text-right whitespace-nowrap">
                     {[
@@ -262,9 +263,6 @@ export default function ReservationsPage() {
                     ].filter(Boolean).join(' ')}
                   </td>
                   <td className="px-1.5 py-1 border border-gray-200 text-right font-bold text-yellow-600 whitespace-nowrap">{r.total_amount > 0 ? `¥${r.total_amount.toLocaleString()}` : ''}</td>
-                  <td className="px-1 py-1 border border-gray-200 text-center" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => toggleArrival(r)} className={`px-2 h-5 rounded-full text-xs font-bold transition-colors ${r.arrival_confirmed ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-400 hover:bg-gray-300'}`}>着</button>
-                  </td>
                   <td className="px-1 py-1 border border-gray-200 text-center font-mono font-bold text-emerald-600 whitespace-nowrap">{formatTime(r.checkout_time)}</td>
                   <td className="px-1 py-1 border border-gray-200 text-gray-600" onClick={e => e.stopPropagation()}>
                     <MemoCell reservation={r} onSaved={updateReservationMemo} />
