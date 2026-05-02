@@ -17,6 +17,7 @@
     "@supabase/supabase-js": "^2.99.1",
     "ai": "^6.0.153",
     "next": "16.1.6",
+    "next-themes": "^0.4.6",
     "nodemailer": "^8.0.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
