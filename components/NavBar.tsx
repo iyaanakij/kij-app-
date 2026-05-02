@@ -47,7 +47,6 @@ function ThemeToggle() {
 
 export default function NavBar() {
   const pathname = usePathname()
-  if (pathname.startsWith('/cast') || pathname.startsWith('/photodiary') || pathname.startsWith('/chat')) return null
   const [storeName, setStoreName] = useState<string>('')
 
   useEffect(() => {
@@ -64,6 +63,8 @@ export default function NavBar() {
     window.addEventListener('kij_store_changed', update)
     return () => window.removeEventListener('kij_store_changed', update)
   }, [pathname])
+
+  if (pathname.startsWith('/cast') || pathname.startsWith('/photodiary') || pathname.startsWith('/chat')) return null
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm dark:bg-gray-950 dark:border-gray-700 dark:shadow-lg text-gray-900 dark:text-white">
