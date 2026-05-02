@@ -136,14 +136,20 @@ export default function RankingPage() {
         if (staffIds.length > 0) {
           const shifts = await fetchAllPaginated<any>((from, to) =>
             supabase.from('shifts')
-              .select('staff_id, start_time, end_time')
+              .select('staff_id, date, start_time, end_time')
               .in('store_id', area.storeIds)
               .in('staff_id', staffIds)
               .gte('date', dateFrom)
               .lte('date', dateTo)
               .range(from, to)
           )
+          // HP同期とVPS CS3同期で同日シフトが両方のstore_idに入るケースがあるため
+          // (staff_id, date) 単位で重複排除してからshiftMinを集計
+          const seenShiftDays = new Set<string>()
           for (const sh of shifts) {
+            const key = `${sh.staff_id}:${sh.date}`
+            if (seenShiftDays.has(key)) continue
+            seenShiftDays.add(key)
             const s = staffMap.get(sh.staff_id)
             if (s) s.shiftMin += (sh.end_time - sh.start_time) * 60
           }
