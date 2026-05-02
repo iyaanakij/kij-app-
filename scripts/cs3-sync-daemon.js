@@ -36,12 +36,10 @@ const CONFIG = {
   loginId:    requiredEnv('CS3_LOGIN_ID'),
   password:   requiredEnv('CS3_PASSWORD'),
   apiUrl:     process.env.KIJ_API_URL     || 'https://kij-app.vercel.app/api/cs3-reservation-sync',
-  shiftApiUrl: (process.env.KIJ_API_URL || 'https://kij-app.vercel.app').replace('/api/cs3-reservation-sync','') + '/api/shift-sync',
   syncSecret: requiredEnv('SYNC_SECRET'),
   supabaseUrl:    requiredEnv('NEXT_PUBLIC_SUPABASE_URL'),
   supabaseKey:    requiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
   cs3IntervalMs:   3 * 60 * 1000,  // 予約: 3分
-  shiftIntervalMs: 30 * 60 * 1000, // シフト: 30分
 }
 // ─────────────────────────
 
@@ -49,6 +47,13 @@ const CS3_HOST = '2nd.cs3-alice7.com'
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 const SHOP_TO_STORE = {
   '111701': 7, '111702': 5, '111703': 6, '111704': 8,
+}
+// 各shop code から書き込まれうる store_id（M: storeId-4, E: storeId）
+const SHOP_TO_STORE_IDS = {
+  '111701': [3, 7],
+  '111702': [1, 5],
+  '111703': [2, 6],
+  '111704': [4, 8],
 }
 const SHOP_NAMES = {
   '111701': '西船橋', '111702': '成田', '111703': '千葉', '111704': '錦糸町',
@@ -103,16 +108,21 @@ function httpsGet(hostname, path, cookieStr) {
 }
 
 // Vercel経由を廃止し、Supabaseに直接書き込む（Vercel 10秒タイムアウト回避）
-async function upsertReservationsToSupabase(entries) {
+async function upsertReservationsToSupabase(entries, successfulShops) {
   const { data: allStaff } = await supabase.from('staff').select('id, name')
   const nameToId = new Map((allStaff ?? []).map(s => [s.name, s.id]))
 
-  // 既存CS3予約を一括取得（今日以降）
+  // 既存CS3予約を一括取得（今日以降）。store_id も取得して削除を店舗単位に限定する
   const today = new Date().toISOString().split('T')[0]
   const { data: existingRows } = await supabase
-    .from('reservations').select('id, notes')
+    .from('reservations').select('id, notes, store_id')
     .like('notes', 'CS3:%').gte('date', today)
   const existingMap = new Map((existingRows ?? []).map(r => [r.notes, r.id]))
+
+  // 成功した店舗の store_id のみ削除候補にする（失敗店舗の予約は絶対に消さない）
+  const safeStoreIds = new Set(
+    [...successfulShops].flatMap(code => SHOP_TO_STORE_IDS[code] ?? [])
+  )
 
   const toInsert = [], toUpdate = []
   let skipped = 0
@@ -163,9 +173,10 @@ async function upsertReservationsToSupabase(entries) {
       : Promise.resolve(),
   ])
 
-  // CS3Aliceから消えたレコードを削除
+  // CS3Aliceから消えたレコードを削除（成功した店舗の store_id に限定）
   const toDelete = (existingRows ?? [])
-    .filter(r => !syncedKeys.includes(r.notes ?? '')).map(r => r.id)
+    .filter(r => safeStoreIds.has(r.store_id) && !syncedKeys.includes(r.notes ?? ''))
+    .map(r => r.id)
   if (toDelete.length > 0) {
     await supabase.from('reservations').delete().in('id', toDelete)
   }
@@ -191,19 +202,24 @@ const OP_KEYWORD_MAP = [
   { keyword: 'ロープ',      value: 'ロープ' },
   { keyword: 'パンティ',    value: '私物パンティ' },
   { keyword: 'ストッキング', value: 'ストッキング' },
+  { keyword: 'Ｐ浣',        value: 'プラスチック浣腸' }, // 略称を先に判定
   { keyword: '浣腸',        value: 'プラスチック浣腸' },
   { keyword: 'コスプレ',    value: 'コスプレ' },
 ]
 function parsePlay(playText) {
   const nude = /Ｎ/.test(playText) // 全角Ｎ = ヌード
-  const options = OP_KEYWORD_MAP.filter(m => playText.includes(m.keyword)).map(m => m.value)
+  const seen = new Set()
+  const options = OP_KEYWORD_MAP
+    .filter(m => playText.includes(m.keyword) && !seen.has(m.value) && seen.add(m.value))
+    .map(m => m.value)
   return { nude, options }
 }
 
 // CS3 discount フィールド → 割引金額（整数）に変換
+// 「-数字」形式のみ有効（「激割80以上」等のキャンペーン名は0扱い）
 function parseDiscountAmount(discountText) {
   if (!discountText) return 0
-  const m = discountText.match(/(\d[\d,]*)/)
+  const m = discountText.match(/[-－](\d[\d,]*)/)
   return m ? parseInt(m[1].replace(/,/g, '')) : 0
 }
 
@@ -273,209 +289,6 @@ function parseReservations(html) {
   return entries
 }
 
-// ─── シフト同期（公式HP） ──────────────────────────────────────
-
-const STORE_SCHEDULE_URLS = [
-  { storeId: 1, url: 'https://www.m-kairaku.com/narita/schedule/' },
-  { storeId: 2, url: 'https://www.m-kairaku.com/chiba/schedule/' },
-  { storeId: 3, url: 'https://www.m-kairaku.com/schedule/' },
-  { storeId: 4, url: 'https://www.m-kairaku.com/kinshicho/schedule/' },
-  { storeId: 5, url: 'https://www.iyashitakute.com/narita/schedule/' },
-  { storeId: 6, url: 'https://www.iyashitakute.com/chiba/schedule/' },
-  { storeId: 7, url: 'https://www.iyashitakute.com/funabashi/schedule/' },
-  { storeId: 8, url: 'https://www.iyashitakute.com/kinshicho/schedule/' },
-]
-
-function httpsGetUrl(urlStr, redirectCount = 0) {
-  return new Promise((resolve, reject) => {
-    if (redirectCount > 5) return reject(new Error('リダイレクト過多'))
-    const u = new URL(urlStr)
-    const req = httpsReq({
-      hostname: u.hostname, path: u.pathname + u.search, method: 'GET',
-      headers: { Cookie: 'nenrei=y', 'User-Agent': USER_AGENT },
-    }, res => {
-      if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
-        res.resume()
-        const next = res.headers.location.startsWith('http')
-          ? res.headers.location
-          : new URL(res.headers.location, urlStr).href
-        resolve(httpsGetUrl(next, redirectCount + 1))
-        return
-      }
-      let data = ''
-      res.on('data', c => data += c)
-      res.on('end', () => resolve({ status: res.statusCode, body: data }))
-    })
-    req.on('error', reject)
-    req.end()
-  })
-}
-
-function parseDisplayDate(month, day) {
-  const now = new Date()
-  const m = parseInt(month), d = parseInt(day)
-  let year = now.getFullYear()
-  if (m < now.getMonth() + 1) year++
-  return `${year}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`
-}
-
-async function fetchShiftStore(storeId, baseUrl) {
-  // 公式HP /schedule/ ページからキャスト×日付×時間を取得
-  const { status, body: html } = await httpsGetUrl(baseUrl)
-  if (status !== 200) throw new Error(`HP取得失敗 storeId=${storeId} (${status})`)
-
-  // 7日分の dt= タイムスタンプと日付テキストを抽出
-  const calRe = /<li[^>]*>\s*<a[^>]*[?&]dt=(\d+)[^>]*>(\d+)\/(\d+)\(/g
-  const dateDts = []
-  let cm
-  while ((cm = calRe.exec(html)) !== null) {
-    dateDts.push({ dt: cm[1], month: cm[2], day: cm[3] })
-  }
-  if (dateDts.length === 0) throw new Error(`カレンダー取得失敗 storeId=${storeId}`)
-
-  const round30 = t => Math.round(t * 2) / 2
-  const entries = []
-
-  for (const { dt, month, day } of dateDts) {
-    const dateStr = parseDisplayDate(month, day)
-    const { status: s, body: dayHtml } = await httpsGetUrl(`${baseUrl}?page=1&dt=${dt}`)
-    if (s !== 200) continue
-
-    // cast_name ブロックで分割してキャストごとに処理
-    const castBlocks = dayHtml.split(/<div[^>]*class="cast_name"/)
-    castBlocks.shift()
-
-    for (const block of castBlocks) {
-      // 名前: div開始タグの直後（>NAME<!--...）
-      const nameMatch = block.match(/^>([^<]+)/)
-      if (!nameMatch) continue
-      const name = nameMatch[1].trim()
-      if (!name) continue
-
-      // 時間: cast_time内の <p>HH:MM～(翌 )?HH:MM</p>
-      const timeMatch = block.match(/<div[^>]*class="cast_time"[\s\S]*?<p>\s*(\d{1,2}):(\d{2})～(翌\s*)?(\d{1,2}):(\d{2})\s*<\/p>/)
-      if (!timeMatch) continue
-
-      const start = round30(parseInt(timeMatch[1]) + parseInt(timeMatch[2]) / 60)
-      let end = round30(parseInt(timeMatch[4]) + parseInt(timeMatch[5]) / 60)
-      if (timeMatch[3]) end += 24  // 翌〇時
-      else if (end < start) end += 24  // 念のため
-
-      entries.push({ name, storeId, date: dateStr, start, end })
-    }
-  }
-
-  return entries
-}
-
-function uploadShiftEntries(entries) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(CONFIG.shiftApiUrl)
-    const payload = Buffer.from(JSON.stringify({ entries }))
-    const req = httpsReq({
-      hostname: url.hostname, path: url.pathname, method: 'POST',
-      headers: {
-        'Content-Type': 'application/json', 'Content-Length': payload.length,
-        'Authorization': `Bearer ${CONFIG.syncSecret}`,
-      },
-    }, res => {
-      let data = ''
-      res.on('data', c => data += c)
-      res.on('end', () => {
-        try { resolve({ status: res.statusCode, body: JSON.parse(data) }) }
-        catch { resolve({ status: res.statusCode, body: data }) }
-      })
-    })
-    req.setTimeout(30000, () => { req.destroy(new Error('uploadShiftEntries タイムアウト（30秒）')) })
-    req.on('error', reject)
-    req.write(payload)
-    req.end()
-  })
-}
-
-let shiftSyncing = false
-
-// Supabaseに直接書き込む（Vercel経由を廃止してタイムアウト問題を解消）
-async function upsertShiftsToSupabase(allEntries) {
-  const { data: allStaff } = await supabase.from('staff').select('id, name')
-  const nameToId = new Map((allStaff ?? []).map(s => [s.name, s.id]))
-
-  const payloads = []
-  let skipped = 0
-  for (const e of allEntries) {
-    const staffId = nameToId.get(e.name)
-    if (!staffId) { skipped++; continue }
-    payloads.push({
-      staff_id: staffId, store_id: e.storeId, date: e.date,
-      start_time: e.start, end_time: e.end, status: 'normal', notes: 'HP同期',
-    })
-  }
-
-  if (payloads.length === 0) return { synced: 0, skipped, deleted: 0 }
-
-  // store_id ごとに対象日付をまとめて既存HP同期を削除→一括INSERT
-  const datesByStore = new Map()
-  for (const p of payloads) {
-    if (!datesByStore.has(p.store_id)) datesByStore.set(p.store_id, new Set())
-    datesByStore.get(p.store_id).add(p.date)
-  }
-
-  // 既存件数カウント（削除数算出用）
-  let existingTotal = 0
-  await Promise.all([...datesByStore.entries()].map(async ([storeId, dates]) => {
-    const { count } = await supabase.from('shifts')
-      .select('id', { count: 'exact', head: true })
-      .eq('store_id', storeId).in('date', [...dates]).eq('notes', 'HP同期')
-    existingTotal += count ?? 0
-  }))
-
-  // 既存HP同期を削除（並列）
-  await Promise.all([...datesByStore.entries()].map(([storeId, dates]) =>
-    supabase.from('shifts').delete()
-      .eq('store_id', storeId).in('date', [...dates]).eq('notes', 'HP同期')
-  ))
-
-  // (staff_id, store_id, date) 単位で重複排除（DB制約に合わせる）
-  const deduped = new Map()
-  for (const p of payloads) deduped.set(`${p.staff_id}:${p.store_id}:${p.date}`, p)
-  const uniquePayloads = [...deduped.values()]
-
-  // 一括INSERT
-  const { error } = await supabase.from('shifts').insert(uniquePayloads)
-  if (error) throw new Error(`DB insert失敗: ${error.message}`)
-
-  const deleted = Math.max(0, existingTotal - uniquePayloads.length)
-  return { synced: uniquePayloads.length, skipped, deleted }
-}
-
-async function runShiftSync(trigger = 'auto') {
-  if (shiftSyncing) return
-  shiftSyncing = true
-  console.log(`[${ts()}] 📅 シフト同期開始 (${trigger})`)
-  try {
-    const allEntries = []
-    for (const { storeId, url } of STORE_SCHEDULE_URLS) {
-      process.stdout.write(`  store${storeId} ... `)
-      const entries = await fetchShiftStore(storeId, url)
-      process.stdout.write(`${entries.length}件\n`)
-      allEntries.push(...entries)
-    }
-    const r = await upsertShiftsToSupabase(allEntries)
-    console.log(`[${ts()}] ✅ シフト完了 — 登録:${r.synced} スキップ:${r.skipped} 削除:${r.deleted}`)
-    await supabase.channel('shift-sync').send({
-      type: 'broadcast', event: 'shift-sync-done',
-      payload: { synced: r.synced, skipped: r.skipped, deleted: r.deleted },
-    })
-  } catch (err) {
-    console.error(`[${ts()}] ❌ シフトエラー:`, err.message)
-    await supabase.channel('shift-sync').send({
-      type: 'broadcast', event: 'shift-sync-error', payload: { error: err.message },
-    })
-  } finally {
-    shiftSyncing = false
-  }
-}
-
 // ─── 同期メイン処理 ────────────────────────────────────────────
 
 let syncing = false
@@ -511,7 +324,7 @@ async function runSync(trigger = 'auto') {
 
 async function syncWork() {
   const allEntries = []
-  let anySuccess = false
+  const successfulShops = new Set()
   for (const shopCode of Object.keys(SHOP_TO_STORE)) {
     process.stdout.write(`  ${SHOP_NAMES[shopCode]} ... `)
     try {
@@ -521,17 +334,17 @@ async function syncWork() {
       const entries = parseReservations(html)
       process.stdout.write(`${entries.length}件\n`)
       allEntries.push(...entries)
-      anySuccess = true
+      successfulShops.add(shopCode)
     } catch (err) {
       process.stdout.write(`❌ ${err.message}\n`)
     }
   }
-  if (!anySuccess) throw new Error('全店舗でCS3取得失敗')
+  if (successfulShops.size === 0) throw new Error('全店舗でCS3取得失敗')
 
   const seen = new Set()
   const entries = allEntries.filter(e => { if (seen.has(e.cs3Id)) return false; seen.add(e.cs3Id); return true })
 
-  const r = await upsertReservationsToSupabase(entries)
+  const r = await upsertReservationsToSupabase(entries, successfulShops)
   console.log(`[${ts()}] ✅ 完了 — 登録:${r.synced} スキップ:${r.skipped} 削除:${r.deleted}`)
 
   await supabase.channel('cs3-sync').send({
@@ -549,7 +362,7 @@ function ts() {
 async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   console.log(' KIJ 同期デーモン 起動')
-  console.log(` 予約: ${CONFIG.cs3IntervalMs / 60000}分ごと / シフト: ${CONFIG.shiftIntervalMs / 60000}分ごと`)
+  console.log(` 予約: ${CONFIG.cs3IntervalMs / 60000}分ごと`)
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
   // 予約同期トリガー
@@ -562,21 +375,11 @@ async function main() {
       if (status === 'SUBSCRIBED') console.log(`[${ts()}] 🟢 Realtime接続完了`)
     })
 
-  // シフト同期トリガー
-  supabase.channel('shift-sync')
-    .on('broadcast', { event: 'shift-sync-request' }, () => {
-      console.log(`[${ts()}] 📲 HP同期ボタン受信`)
-      runShiftSync('manual')
-    })
-    .subscribe()
-
   // 起動時に即時実行
   await runSync('startup')
-  await runShiftSync('startup')
 
   // 定期自動同期
   setInterval(() => runSync('auto'), CONFIG.cs3IntervalMs)
-  setInterval(() => runShiftSync('auto'), CONFIG.shiftIntervalMs)
 }
 
 main().catch(err => {

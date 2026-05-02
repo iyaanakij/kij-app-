@@ -97,7 +97,7 @@ export default function RankingPage() {
         // 予約は選択ブランド（M or E）の store_id で絞る
         const reservations = await fetchAllPaginated<any>((from, to) =>
           supabase.from('reservations')
-            .select('staff_id, nomination_type, course_duration, staff(name)')
+            .select('staff_id, nomination_type, course_duration, notes, staff(name)')
             .eq('store_id', storeId)
             .gte('date', dateFrom)
             .lte('date', dateTo)
@@ -106,6 +106,15 @@ export default function RankingPage() {
         )
 
         if (cancelled) return
+
+        // CS3予約ID（notes=CS3:xxx）で重複排除
+        const seenNotes = new Set<string>()
+        const dedupedReservations = reservations.filter((r: any) => {
+          if (!r.notes?.startsWith('CS3:')) return true
+          if (seenNotes.has(r.notes)) return false
+          seenNotes.add(r.notes)
+          return true
+        })
 
         const staffMap = new Map<number, StaffStats>()
 
@@ -121,7 +130,7 @@ export default function RankingPage() {
           return staffMap.get(id)!
         }
 
-        for (const r of reservations) {
+        for (const r of dedupedReservations) {
           const s = getOrCreate(r.staff_id, r.staff?.name ?? `#${r.staff_id}`)
           s.totalRes++
           const dur = r.course_duration ?? 0
@@ -232,6 +241,12 @@ export default function RankingPage() {
             ))}
           </div>
         </div>
+
+        {month === '2026-04' && (
+          <div className="bg-yellow-900/40 border border-yellow-700/50 text-yellow-300 text-xs rounded px-3 py-2 mb-4">
+            ⚠ 2026年4月のデータは予約同期の不具合により欠損があります。実数より少なく表示される場合があります。
+          </div>
+        )}
 
         {error && <div className="text-red-400 text-sm mb-4">エラー: {error}</div>}
 
