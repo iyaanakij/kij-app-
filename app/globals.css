@@ -81,10 +81,17 @@ html.dark .bg-sky-100        { background-color: rgba(12, 74, 110, .40); }
 html.dark .bg-indigo-100     { background-color: rgba(49, 46, 129, .40); }
 html.dark .bg-purple-100     { background-color: rgba(88, 28, 135, .40); }
 html.dark .bg-red-200        { background-color: rgba(153, 27, 27, .55); }
+html.dark .bg-pink-200       { background-color: rgba(157, 23, 77, .58); }
+html.dark .bg-pink-300       { background-color: rgba(190, 24, 93, .68); }
 html.dark .bg-blue-200,
 html.dark .bg-sky-200        { background-color: rgba(3, 105, 161, .55); }
 html.dark .bg-yellow-200,
 html.dark .bg-amber-200      { background-color: rgba(161, 98, 7, .55); }
+html.dark .bg-amber-300      { background-color: rgba(180, 83, 9, .68); }
+html.dark .bg-emerald-200    { background-color: rgba(4, 120, 87, .55); }
+html.dark .bg-emerald-300    { background-color: rgba(5, 150, 105, .68); }
+html.dark .bg-violet-200     { background-color: rgba(109, 40, 217, .55); }
+html.dark .bg-violet-300     { background-color: rgba(124, 58, 237, .68); }
 
 /* Borders */
 html.dark .border-gray-100,
@@ -226,15 +233,19 @@ html.dark .hover\:bg-slate-100:hover,
 html.dark .hover\:bg-slate-200:hover { background-color: #374151; }
 html.dark .hover\:bg-red-100:hover      { background-color: rgba(153, 27, 27, .45); }
 html.dark .hover\:bg-pink-100:hover     { background-color: rgba(157, 23, 77, .45); }
+html.dark .hover\:bg-pink-300:hover     { background-color: rgba(190, 24, 93, .76); }
 html.dark .hover\:bg-orange-100:hover   { background-color: rgba(154, 52, 18, .45); }
 html.dark .hover\:bg-yellow-100:hover,
 html.dark .hover\:bg-amber-100:hover    { background-color: rgba(161, 98, 7, .45); }
+html.dark .hover\:bg-amber-300:hover    { background-color: rgba(180, 83, 9, .76); }
 html.dark .hover\:bg-green-100:hover,
 html.dark .hover\:bg-emerald-100:hover  { background-color: rgba(4, 120, 87, .45); }
+html.dark .hover\:bg-emerald-300:hover  { background-color: rgba(5, 150, 105, .76); }
 html.dark .hover\:bg-blue-100:hover,
 html.dark .hover\:bg-sky-100:hover      { background-color: rgba(3, 105, 161, .45); }
 html.dark .hover\:bg-indigo-100:hover   { background-color: rgba(67, 56, 202, .45); }
 html.dark .hover\:bg-purple-100:hover   { background-color: rgba(107, 33, 168, .45); }
+html.dark .hover\:bg-violet-300:hover   { background-color: rgba(124, 58, 237, .76); }
 
 /* Inline white focus backgrounds appear in a few dense editor grids. */
 html.dark .focus\:bg-white:focus { background-color: #111827; }
