@@ -6,7 +6,20 @@ const adminSupabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+async function requireStaffAuth(request: NextRequest): Promise<boolean> {
+  const token = request.headers.get('authorization')?.replace('Bearer ', '')
+  if (!token) return false
+  const { data: { user }, error } = await adminSupabase.auth.getUser(token)
+  if (error || !user) return false
+  const { data } = await adminSupabase
+    .from('user_roles').select('role').eq('id', user.id).maybeSingle()
+  return data?.role === 'staff'
+}
+
 export async function POST(request: NextRequest) {
+  if (!await requireStaffAuth(request))
+    return NextResponse.json({ error: '認証が必要です' }, { status: 401 })
+
   const body = await request.json()
   const year  = Number(body.year)
   const month = Number(body.month)

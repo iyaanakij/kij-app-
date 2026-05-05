@@ -12,16 +12,23 @@
 
 'use strict'
 
-// .env.local を自動ロード
+// .env 自動ロード（Mac: app/.env.local、VPS: shift-sync/.env）
 const fs = require('fs'), path = require('path')
 const { spawn } = require('child_process')
-const envPath = path.resolve(__dirname, '../.env.local')
-if (fs.existsSync(envPath)) {
-  fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
-    const m = line.match(/^([^#=]+)=(.*)$/)
-    if (m && !process.env[m[1].trim()]) process.env[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, '')
-  })
+const ENV_PATHS = [
+  path.resolve(__dirname, '../.env.local'), // Mac: app/.env.local
+  path.resolve(__dirname, '../.env'),        // VPS: shift-sync/.env
+]
+function loadEnvLine(line) {
+  const m = line.match(/^([^#=]+)=(.*)$/)
+  if (m && !process.env[m[1].trim()]) process.env[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, '')
 }
+for (const p of ENV_PATHS) {
+  if (fs.existsSync(p)) fs.readFileSync(p, 'utf8').split('\n').forEach(loadEnvLine)
+}
+// VPS env var aliases (CS3_ID/CS3_PASS → CS3_LOGIN_ID/CS3_PASSWORD)
+if (!process.env.CS3_LOGIN_ID && process.env.CS3_ID) process.env.CS3_LOGIN_ID = process.env.CS3_ID
+if (!process.env.CS3_PASSWORD && process.env.CS3_PASS) process.env.CS3_PASSWORD = process.env.CS3_PASS
 
 const { createClient } = require('@supabase/supabase-js')
 const { request: httpsReq } = require('https')
@@ -34,13 +41,11 @@ function requiredEnv(name) {
 
 // ───────── 設定 ─────────
 const CONFIG = {
-  loginId:    requiredEnv('CS3_LOGIN_ID'),
-  password:   requiredEnv('CS3_PASSWORD'),
-  apiUrl:     process.env.KIJ_API_URL     || 'https://kij-app.vercel.app/api/cs3-reservation-sync',
-  syncSecret: requiredEnv('SYNC_SECRET'),
-  supabaseUrl:    requiredEnv('NEXT_PUBLIC_SUPABASE_URL'),
-  supabaseKey:    requiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
-  cs3IntervalMs:   3 * 60 * 1000,  // 予約: 3分
+  loginId:      requiredEnv('CS3_LOGIN_ID'),
+  password:     requiredEnv('CS3_PASSWORD'),
+  supabaseUrl:  requiredEnv('NEXT_PUBLIC_SUPABASE_URL'),
+  supabaseKey:  requiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
+  cs3IntervalMs: 3 * 60 * 1000,  // 予約: 3分
 }
 // ─────────────────────────
 
@@ -360,54 +365,8 @@ function ts() {
 
 // ─── メイン ────────────────────────────────────────────────────
 
-// ─── 月次 CS3 成績バッチ ───────────────────────────────────────────
-const PERF_BATCH   = path.resolve(__dirname, '../../shift-sync/scripts/95-cs3-cast-performance-batch.js')
-const PERF_CWD     = path.resolve(__dirname, '../../shift-sync')
-const PERF_STATE   = path.resolve(__dirname, '../data/perf-last-month.txt')
-
-function loadLastPerfMonth() {
-  try { return fs.readFileSync(PERF_STATE, 'utf8').trim() } catch { return '' }
-}
-function saveLastPerfMonth(key) {
-  fs.mkdirSync(path.dirname(PERF_STATE), { recursive: true })
-  fs.writeFileSync(PERF_STATE, key)
-}
-
-let perfRunning = false
-
-function maybeRunMonthlyPerf() {
-  if (perfRunning) return
-  if (!fs.existsSync(PERF_BATCH)) return  // shift-sync が存在しない環境では skip
-
-  const now  = new Date()
-  const day  = now.getDate()
-  if (day < 2 || day > 7) return  // 毎月2〜7日のみ実行
-
-  const prev   = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const target = `${prev.getFullYear()}-${prev.getMonth() + 1}`
-  if (loadLastPerfMonth() === target) return  // 既に完了
-
-  perfRunning = true
-  console.log(`[${ts()}] 📊 月次CS3成績バッチ起動: ${target}`)
-
-  const child = spawn('node', [PERF_BATCH, '--year', String(prev.getFullYear()), '--month', String(prev.getMonth() + 1)], {
-    cwd: PERF_CWD,
-    env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', d => process.stdout.write(`[perf] ${d}`))
-  child.stderr.on('data', d => process.stderr.write(`[perf] ${d}`))
-  child.on('exit', code => {
-    perfRunning = false
-    if (code === 0) {
-      saveLastPerfMonth(target)
-      console.log(`[${ts()}] ✅ 月次CS3成績バッチ完了: ${target}`)
-    } else {
-      console.error(`[${ts()}] ❌ 月次CS3成績バッチ失敗 (code=${code})`)
-    }
-  })
-}
-// ─────────────────────────────────────────────────────────────────────
+// 月次CS3成績バッチは /ranking 集計ボタン（手動）に移行済み（2026-05-05）
+// 自動実行は廃止。performance_batch_jobs テーブル + VPS script 96 で管理する。
 
 async function main() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
@@ -428,10 +387,9 @@ async function main() {
   // 起動時に即時実行
   await runSync('startup')
 
-  // 定期自動同期 + 月次成績バッチチェック
+  // 定期自動同期
   setInterval(() => {
     runSync('auto')
-    maybeRunMonthlyPerf()
   }, CONFIG.cs3IntervalMs)
 }
 
