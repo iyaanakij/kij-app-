@@ -53,10 +53,10 @@ interface StaffStats {
   shashinShimei: number
   totalRes: number
   honRate: number
-  // 予約テーブル由来（コース時間）
+  // コース時間
   courseMin: number
   honCourseMin: number
-  shashinCourseMin: number
+  nonHonCourseMin: number
   // シフト由来
   shiftMin: number
   kadoritsu: number
@@ -64,7 +64,7 @@ interface StaffStats {
   hasCs3: boolean
 }
 
-type RankingKey = keyof Pick<StaffStats, 'honShimei' | 'shashinShimei' | 'honRate' | 'kadoritsu' | 'shashinCourseMin' | 'honCourseMin'>
+type RankingKey = keyof Pick<StaffStats, 'honShimei' | 'shashinShimei' | 'honRate' | 'kadoritsu' | 'nonHonCourseMin' | 'honCourseMin'>
 
 interface RankingDef {
   key: RankingKey
@@ -78,7 +78,7 @@ const RANKINGS: RankingDef[] = [
   { key: 'shashinShimei',    label: '写メ指名数',           higherIsBetter: true, format: v => `${v}件` },
   { key: 'honRate',          label: '本指名率',             higherIsBetter: true, format: v => `${(v * 100).toFixed(1)}%` },
   { key: 'kadoritsu',        label: '稼働率',               higherIsBetter: true, format: v => `${(v * 100).toFixed(1)}%` },
-  { key: 'shashinCourseMin', label: '写メ指名コース総時間', higherIsBetter: true, format: v => `${v}分` },
+  { key: 'nonHonCourseMin',  label: '写メ＋フリーコース総時間', higherIsBetter: true, format: v => `${v}分` },
   { key: 'honCourseMin',     label: '本指名コース総時間',    higherIsBetter: true, format: v => `${v}分` },
 ]
 
@@ -163,7 +163,7 @@ export default function RankingPage() {
               staffId: id, name,
               honShimei: 0, shashinShimei: 0, totalRes: 0, honRate: 0,
               shiftMin: 0, courseMin: 0, kadoritsu: 0,
-              honCourseMin: 0, shashinCourseMin: 0,
+              honCourseMin: 0, nonHonCourseMin: 0,
               hasCs3: false,
             })
           }
@@ -175,10 +175,8 @@ export default function RankingPage() {
           const s = getOrCreate(r.staff_id, r.staff?.name ?? `#${r.staff_id}`)
           const dur = r.course_duration ?? 0
           s.courseMin += dur
-          const isShashin = r.nomination_type?.includes('写') ?? false
           const isFree    = r.nomination_type?.includes('フリー') ?? false
-          if (isShashin) s.shashinCourseMin += dur
-          if (!isShashin && !isFree && r.nomination_type) s.honCourseMin += dur
+          if (!isFree && r.nomination_type && !r.nomination_type.includes('写')) s.honCourseMin += dur
         }
 
         // CS3が取得済みなら全CS3キャストをstaffMapに追加・指名数を上書き
@@ -237,6 +235,7 @@ export default function RankingPage() {
           .filter(s => !(s.shiftMin === 0 && s.totalRes === 0))
           .map(s => ({
             ...s,
+            nonHonCourseMin: Math.max(0, s.courseMin - s.honCourseMin),
             honRate:   s.totalRes > 0 ? s.honShimei / s.totalRes : 0,
             kadoritsu: s.shiftMin > 0 ? s.courseMin / s.shiftMin : 0,
           }))
