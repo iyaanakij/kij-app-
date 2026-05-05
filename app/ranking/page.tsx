@@ -169,13 +169,15 @@ export default function RankingPage() {
           return staffMap.get(id)!
         }
 
-        // 予約からコース時間を集計（nomiation_typeは参照用；指名数はCS3優先）
+        // nomination_typeは"Ｍ指名"/"Ｍ写"/"Ｍフリー"形式で、本指名に'本'は含まれない
         for (const r of dedupedRes) {
           const s = getOrCreate(r.staff_id, r.staff?.name ?? `#${r.staff_id}`)
           const dur = r.course_duration ?? 0
           s.courseMin += dur
-          if (r.nomination_type?.includes('本')) s.honCourseMin += dur
-          if (r.nomination_type?.includes('写')) s.shashinCourseMin += dur
+          const isShashin = r.nomination_type?.includes('写') ?? false
+          const isFree    = r.nomination_type?.includes('フリー') ?? false
+          if (isShashin) s.shashinCourseMin += dur
+          if (!isShashin && !isFree && r.nomination_type) s.honCourseMin += dur
         }
 
         // CS3が取得済みなら全CS3キャストをstaffMapに追加・指名数を上書き
