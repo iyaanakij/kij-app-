@@ -217,7 +217,7 @@ export default function RankingPage() {
           const shifts = await fetchAllPaginated<any>((from, to) =>
             supabase.from('shifts')
               .select('staff_id, date, start_time, end_time')
-              .in('store_id', area.storeIds)
+              .eq('store_id', storeId)
               .in('staff_id', staffIds)
               .gte('date', dateFrom)
               .lte('date', dateTo)
