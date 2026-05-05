@@ -278,23 +278,40 @@ export default function RankingPage() {
 
     // pending / running → ポーリング開始（最大5分）
     const deadline = Date.now() + 5 * 60 * 1000
+    let consecutiveFails = 0
     pollRef.current = setInterval(async () => {
       if (Date.now() > deadline) {
         stopPoll()
-        setBatchError('集計タイムアウト（5分）。VPSのログを確認してください')
+        setBatchError('集計タイムアウト（5分）。VPSのログを確認: tail -20 /var/log/shift-sync/performance-trigger.log')
         setBatchJob(null)
         return
       }
-      const r = await fetch(`/api/admin/performance-batch-job?id=${data.job.id}`)
-      const d = await r.json()
-      if (!d.job) return
-      setBatchJob(d.job)
-      if (d.job.status === 'done') {
-        stopPoll()
-        reloadRef.current?.()
-      } else if (d.job.status === 'error') {
-        stopPoll()
-        setBatchError(d.job.message ?? '集計エラー')
+      try {
+        const r = await fetch(`/api/admin/performance-batch-job?id=${data.job.id}`)
+        const d = await r.json()
+        if (!r.ok || !d.job) {
+          consecutiveFails++
+          if (consecutiveFails >= 3) {
+            stopPoll()
+            setBatchError(`APIエラー: ${d.error ?? r.status}`)
+          }
+          return
+        }
+        consecutiveFails = 0
+        setBatchJob(d.job)
+        if (d.job.status === 'done') {
+          stopPoll()
+          reloadRef.current?.()
+        } else if (d.job.status === 'error') {
+          stopPoll()
+          setBatchError(d.job.message ?? '集計エラー')
+        }
+      } catch {
+        consecutiveFails++
+        if (consecutiveFails >= 3) {
+          stopPoll()
+          setBatchError('ネットワークエラー。再度お試しください')
+        }
       }
     }, 5000)
   }
