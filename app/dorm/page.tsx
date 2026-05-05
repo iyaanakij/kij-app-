@@ -417,8 +417,8 @@ export default function DormPage() {
           <div className="text-gray-500 animate-pulse">読み込み中...</div>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="bg-white rounded-xl shadow-md border border-gray-100">
+          <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
             <table className="w-full min-w-[1680px] text-xs border-collapse table-fixed">
               <colgroup>
                 <col className="w-9" />
@@ -432,7 +432,7 @@ export default function DormPage() {
                 ))}
                 <col className="w-40" />
               </colgroup>
-              <thead>
+              <thead className="sticky top-0 z-20">
                 <tr className="bg-gray-900 text-white">
                   <th className="sticky left-0 z-30 bg-gray-900 px-1 py-2 text-center border-r border-gray-700">日</th>
                   <th className="sticky left-9 z-30 bg-gray-900 px-1 py-2 text-center border-r border-gray-700">曜</th>
