@@ -94,6 +94,7 @@ export default function RankingPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [cs3Available, setCs3Available] = useState(false)
+  const [cs3CourseAvailable, setCs3CourseAvailable] = useState(false)
 
   const [batchJob, setBatchJob] = useState<BatchJob | null>(null)
   const [batchError, setBatchError] = useState<string | null>(null)
@@ -117,23 +118,38 @@ export default function RankingPage() {
           return `${month}-${String(last).padStart(2, '0')}`
         })()
 
-        // ── CS3成績データ（本指名・写メ指名の正確なソース）──
+        // ── CS3成績データ（ランキング集計の正ソース）──
         const shopCode = AREA_TO_SHOP[areaId]
-        const { data: cs3Rows, error: cs3Error } = await supabase
+        let hasCs3CourseColumns = true
+        const initialCs3 = await supabase
           .from('cs3_cast_performance')
-          .select('staff_id, cast_name, m_shashin, m_free, m_hon_total, m_total, m_hon_course_min, e_shashin, e_free, e_hon_total, e_total, e_hon_course_min')
+          .select('staff_id, cast_name, m_shashin, m_free, m_hon_total, m_total, m_hon_course_min, m_shashin_course_min, e_shashin, e_free, e_hon_total, e_total, e_hon_course_min, e_shashin_course_min')
           .eq('shop_id', shopCode)
           .eq('year', y)
           .eq('month', m)
+        let cs3Rows: any[] | null = initialCs3.data
+        let cs3Error = initialCs3.error
+        if (cs3Error && /shashin_course_min/i.test(cs3Error.message)) {
+          hasCs3CourseColumns = false
+          const retry = await supabase
+            .from('cs3_cast_performance')
+            .select('staff_id, cast_name, m_shashin, m_free, m_hon_total, m_total, m_hon_course_min, e_shashin, e_free, e_hon_total, e_total, e_hon_course_min')
+            .eq('shop_id', shopCode)
+            .eq('year', y)
+            .eq('month', m)
+          cs3Rows = retry.data
+          cs3Error = retry.error
+        }
         if (cs3Error) throw new Error(`CS3成績データ取得失敗: ${cs3Error.message}`)
 
         if (cancelled) return
 
         const cs3Data = cs3Rows ?? []
         const hasCs3 = cs3Data.length > 0
+        const useCs3Course = hasCs3 && hasCs3CourseColumns
 
 
-        // ── 予約テーブル（コース時間・稼働率計算用）──
+        // ── CS3未取得時のフォールバック用予約テーブル ──
         const reservations = await fetchAllPaginated<any>((from, to) =>
           supabase.from('reservations')
             .select('staff_id, nomination_type, course_duration, notes, staff(name)')
@@ -170,16 +186,18 @@ export default function RankingPage() {
           return staffMap.get(id)!
         }
 
-        // nomination_typeは"Ｍ指名"/"Ｍ写"/"Ｍフリー"形式で、本指名に'本'は含まれない
-        for (const r of dedupedRes) {
-          const s = getOrCreate(r.staff_id, r.staff?.name ?? `#${r.staff_id}`)
-          const dur = r.course_duration ?? 0
-          s.courseMin += dur
-          const isFree    = r.nomination_type?.includes('フリー') ?? false
-          if (!isFree && r.nomination_type && !r.nomination_type.includes('写')) s.honCourseMin += dur
+        if (!useCs3Course) {
+          // nomination_typeは"Ｍ指名"/"Ｍ写"/"Ｍフリー"形式で、本指名に'本'は含まれない
+          for (const r of dedupedRes) {
+            const s = getOrCreate(r.staff_id, r.staff?.name ?? `#${r.staff_id}`)
+            const dur = r.course_duration ?? 0
+            s.courseMin += dur
+            const isFree    = r.nomination_type?.includes('フリー') ?? false
+            if (!isFree && r.nomination_type && !r.nomination_type.includes('写')) s.honCourseMin += dur
+          }
         }
 
-        // CS3が取得済みなら全CS3キャストをstaffMapに追加・指名数を上書き
+        // CS3が取得済みなら全CS3キャストをstaffMapに追加し、ランキング集計値をCS3値で統一
         if (hasCs3) {
           let tempIdCounter = -1
           for (const r of cs3Data) {
@@ -195,9 +213,15 @@ export default function RankingPage() {
             s.shashinShimei = shashinCount
             s.totalRes      = total
             s.hasCs3        = true
-            // CS3データに本指名コース時間があれば reservations テーブル由来の値を上書き
-            const honCourseMin    = section === 'M' ? (r.m_hon_course_min    ?? 0) : (r.e_hon_course_min    ?? 0)
-            if (honCourseMin    > 0) s.honCourseMin    = honCourseMin
+            const honCourseMin = section === 'M' ? (r.m_hon_course_min ?? 0) : (r.e_hon_course_min ?? 0)
+            const nonHonCourseMin = useCs3Course
+              ? (section === 'M' ? (r.m_shashin_course_min ?? 0) : (r.e_shashin_course_min ?? 0))
+              : 0
+            s.honCourseMin = honCourseMin
+            if (useCs3Course) {
+              s.nonHonCourseMin = nonHonCourseMin
+              s.courseMin = honCourseMin + nonHonCourseMin
+            }
           }
         } else {
           // CS3未取得フォールバック: 予約テーブルの指名カウントを使用
@@ -235,7 +259,7 @@ export default function RankingPage() {
           .filter(s => !(s.shiftMin === 0 && s.totalRes === 0))
           .map(s => ({
             ...s,
-            nonHonCourseMin: Math.max(0, s.courseMin - s.honCourseMin),
+            nonHonCourseMin: useCs3Course ? s.nonHonCourseMin : Math.max(0, s.courseMin - s.honCourseMin),
             honRate:   s.totalRes > 0 ? s.honShimei / s.totalRes : 0,
             kadoritsu: s.shiftMin > 0 ? s.courseMin / s.shiftMin : 0,
           }))
@@ -243,6 +267,7 @@ export default function RankingPage() {
         if (!cancelled) {
           setStats(computed)
           setCs3Available(hasCs3)
+          setCs3CourseAvailable(useCs3Course)
         }
       } catch (e: unknown) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e))
@@ -341,8 +366,9 @@ export default function RankingPage() {
       <div className="max-w-7xl mx-auto px-4 py-6">
         <h1 className="text-xl font-bold text-gray-100 mb-1">キャストランキング</h1>
         <p className="text-xs text-gray-500 mb-6">
-          本指名数・写メ指名数・本指名率は CS3 成績データ（取得済み月のみ）を出典とします。
-          稼働率・コース総時間は予約/シフト表データが出典です。
+          指名数・本指名率{cs3CourseAvailable ? '・コース総時間' : ''}は CS3 成績データ（取得済み月のみ）を出典とします。
+          {!cs3CourseAvailable && ' コース総時間はCS3コース時間列の反映待ちです。'}
+          稼働率の分母はシフト表データです。
         </p>
 
         <div className="flex flex-wrap items-center gap-3 mb-6">
@@ -452,7 +478,7 @@ export default function RankingPage() {
             <div className="bg-gray-900 rounded-lg p-4">
               <h2 className="text-sm font-semibold text-gray-300 mb-3 border-b border-gray-700 pb-2">
                 総合ランキング
-                <span className="ml-2 text-xs font-normal text-gray-500">（指名数: CS3成績 / 稼働率・コース時間: 予約・シフト）</span>
+                <span className="ml-2 text-xs font-normal text-gray-500">（指名数・コース時間: CS3成績 / 稼働率分母: シフト）</span>
               </h2>
               {sogoRanked.length === 0 ? (
                 <div className="text-gray-600 text-xs text-center py-4">データなし</div>
