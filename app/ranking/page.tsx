@@ -267,13 +267,9 @@ export default function RankingPage() {
     setBatchJob(null)
     stopPoll()
 
-    const { data: { session } } = await supabase.auth.getSession()
-    const token = session?.access_token ?? ''
-    const authHeader: Record<string, string> = token ? { 'Authorization': `Bearer ${token}` } : {}
-
     const res = await fetch('/api/admin/trigger-performance-batch', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeader },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ year: y, month: m }),
     })
     const data = await res.json()
@@ -294,9 +290,7 @@ export default function RankingPage() {
         return
       }
       try {
-        const r = await fetch(`/api/admin/performance-batch-job?id=${data.job.id}`, {
-          headers: authHeader,
-        })
+        const r = await fetch(`/api/admin/performance-batch-job?id=${data.job.id}`)
         const d = await r.json()
         if (!r.ok || !d.job) {
           consecutiveFails++
