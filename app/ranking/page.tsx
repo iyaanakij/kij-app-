@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { AREAS } from '@/lib/types'
 
@@ -82,6 +82,9 @@ const RANKINGS: RankingDef[] = [
   { key: 'honCourseMin',     label: '本指名コース総時間',    higherIsBetter: true, format: v => `${v}分` },
 ]
 
+type BatchJobStatus = 'pending' | 'running' | 'done' | 'error'
+interface BatchJob { id: number; year: number; month: number; status: BatchJobStatus; message?: string }
+
 export default function RankingPage() {
   const monthOptions = getMonthOptions()
   const [month, setMonth] = useState(monthOptions[0].value)
@@ -92,10 +95,16 @@ export default function RankingPage() {
   const [error, setError] = useState<string | null>(null)
   const [cs3Available, setCs3Available] = useState(false)
 
+  const [batchJob, setBatchJob] = useState<BatchJob | null>(null)
+  const [batchError, setBatchError] = useState<string | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const reloadRef = useRef<(() => void) | null>(null)
+
   useEffect(() => {
     let cancelled = false
 
     async function load() {
+      reloadRef.current = () => { if (!cancelled) load() }
       setLoading(true)
       setError(null)
       try {
@@ -237,8 +246,60 @@ export default function RankingPage() {
       }
     }
     load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      reloadRef.current = null
+    }
   }, [month, areaId, section])
+
+  // ポーリング停止
+  function stopPoll() {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+  }
+
+  // 集計ボタン
+  async function handleBatchTrigger() {
+    const [y, m] = month.split('-').map(Number)
+    setBatchError(null)
+    setBatchJob(null)
+    stopPoll()
+
+    const res = await fetch('/api/admin/trigger-performance-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ year: y, month: m }),
+    })
+    const data = await res.json()
+    if (!res.ok || !data.job) { setBatchError(data.error ?? '集計開始に失敗しました'); return }
+
+    setBatchJob(data.job)
+    if (data.job.status === 'done') { reloadRef.current?.(); return }
+    if (data.job.status === 'error') { setBatchError(data.job.message ?? '集計エラー'); return }
+
+    // pending / running → ポーリング開始（最大5分）
+    const deadline = Date.now() + 5 * 60 * 1000
+    pollRef.current = setInterval(async () => {
+      if (Date.now() > deadline) {
+        stopPoll()
+        setBatchError('集計タイムアウト（5分）。VPSのログを確認してください')
+        setBatchJob(null)
+        return
+      }
+      const r = await fetch(`/api/admin/performance-batch-job?id=${data.job.id}`)
+      const d = await r.json()
+      if (!d.job) return
+      setBatchJob(d.job)
+      if (d.job.status === 'done') {
+        stopPoll()
+        reloadRef.current?.()
+      } else if (d.job.status === 'error') {
+        stopPoll()
+        setBatchError(d.job.message ?? '集計エラー')
+      }
+    }, 5000)
+  }
+
+  const batchRunning = batchJob?.status === 'pending' || batchJob?.status === 'running'
 
   const rankMaps = RANKINGS.map(def => {
     const values = stats.map(s => s[def.key])
@@ -259,7 +320,7 @@ export default function RankingPage() {
           稼働率・コース総時間は予約/シフト表データが出典です。
         </p>
 
-        <div className="flex flex-wrap gap-3 mb-6">
+        <div className="flex flex-wrap items-center gap-3 mb-6">
           <select
             value={month}
             onChange={e => setMonth(e.target.value)}
@@ -301,7 +362,27 @@ export default function RankingPage() {
               </button>
             ))}
           </div>
+
+          <button
+            onClick={handleBatchTrigger}
+            disabled={batchRunning}
+            className="ml-auto px-4 py-1.5 rounded text-sm font-medium bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {batchRunning ? '集計中...' : '集計'}
+          </button>
         </div>
+
+        {batchRunning && (
+          <div className="text-emerald-400 text-xs mb-4 flex items-center gap-2">
+            <span className="animate-spin inline-block w-3 h-3 border border-emerald-400 border-t-transparent rounded-full" />
+            CS3から{month.replace('-', '年')}月の成績を取得中（最大数分かかります）
+          </div>
+        )}
+        {batchError && (
+          <div className="bg-red-900/40 border border-red-700/50 text-red-300 text-xs rounded px-3 py-2 mb-4">
+            集計エラー: {batchError}
+          </div>
+        )}
 
         {month === '2026-04' && (
           <div className="bg-yellow-900/40 border border-yellow-700/50 text-yellow-300 text-xs rounded px-3 py-2 mb-4">
