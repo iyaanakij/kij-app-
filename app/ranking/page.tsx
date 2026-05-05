@@ -121,7 +121,7 @@ export default function RankingPage() {
         const shopCode = AREA_TO_SHOP[areaId]
         const { data: cs3Rows } = await supabase
           .from('cs3_cast_performance')
-          .select('staff_id, cast_name, m_shashin, m_free, m_hon_total, m_total, m_hon_course_min, e_shashin, e_free, e_hon_total, e_total, e_hon_course_min')
+          .select('staff_id, cast_name, m_shashin, m_free, m_hon_total, m_total, m_hon_course_min, m_shashin_course_min, e_shashin, e_free, e_hon_total, e_total, e_hon_course_min, e_shashin_course_min')
           .eq('shop_id', shopCode)
           .eq('year', y)
           .eq('month', m)
@@ -197,8 +197,10 @@ export default function RankingPage() {
             s.totalRes      = total
             s.hasCs3        = true
             // CS3データにコース時間があれば reservations テーブル由来の値を上書き
-            const honCourseMin = section === 'M' ? (r.m_hon_course_min ?? 0) : (r.e_hon_course_min ?? 0)
-            if (honCourseMin > 0) s.honCourseMin = honCourseMin
+            const honCourseMin    = section === 'M' ? (r.m_hon_course_min    ?? 0) : (r.e_hon_course_min    ?? 0)
+            const shashinCourseMin = section === 'M' ? (r.m_shashin_course_min ?? 0) : (r.e_shashin_course_min ?? 0)
+            if (honCourseMin    > 0) s.honCourseMin    = honCourseMin
+            if (shashinCourseMin > 0) s.shashinCourseMin = shashinCourseMin
           }
         } else {
           // CS3未取得フォールバック: 予約テーブルの指名カウントを使用
