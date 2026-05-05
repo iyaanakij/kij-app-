@@ -418,7 +418,7 @@ export default function DormPage() {
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-md border border-gray-100">
-          <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+          <div className="overflow-x-auto" style={{ overflowY: 'clip' }}>
             <table className="w-full min-w-[1680px] text-xs border-collapse table-fixed">
               <colgroup>
                 <col className="w-9" />
@@ -432,7 +432,7 @@ export default function DormPage() {
                 ))}
                 <col className="w-40" />
               </colgroup>
-              <thead className="sticky top-0 z-20">
+              <thead className="sticky top-14 z-20">
                 <tr className="bg-gray-900 text-white">
                   <th className="sticky left-0 z-30 bg-gray-900 px-1 py-2 text-center border-r border-gray-700">日</th>
                   <th className="sticky left-9 z-30 bg-gray-900 px-1 py-2 text-center border-r border-gray-700">曜</th>
@@ -458,8 +458,8 @@ export default function DormPage() {
                   return (
                     <Fragment key={date}>
                       <tr className={`${rowBg} border-t border-gray-200`}>
-                        <td rowSpan={2} className="sticky left-0 z-20 bg-inherit border-r border-gray-200 px-1 py-2 text-center text-sm font-bold text-gray-800">{day}</td>
-                        <td rowSpan={2} className={`sticky left-9 z-20 bg-inherit border-r border-gray-200 px-1 py-2 text-center font-bold ${wd === 0 ? 'text-red-500' : wd === 6 ? 'text-sky-500' : 'text-gray-500'}`}>{WEEKDAY_LABELS[wd]}</td>
+                        <td rowSpan={2} className="sticky left-0 z-10 bg-inherit border-r border-gray-200 px-1 py-2 text-center text-sm font-bold text-gray-800">{day}</td>
+                        <td rowSpan={2} className={`sticky left-9 z-10 bg-inherit border-r border-gray-200 px-1 py-2 text-center font-bold ${wd === 0 ? 'text-red-500' : wd === 6 ? 'text-sky-500' : 'text-gray-500'}`}>{WEEKDAY_LABELS[wd]}</td>
                         {DORM_ROOMS.map(room => {
                           const entry = getEntry(date, room)
                           return (
