@@ -64,6 +64,39 @@ interface StaffStats {
   hasCs3: boolean
 }
 
+interface Cs3PerformanceRow {
+  staff_id: number | null
+  cast_name: string
+  m_shashin: number
+  m_free: number
+  m_hon_total: number
+  m_total: number
+  m_hon_course_min?: number | null
+  m_shashin_course_min?: number | null
+  e_shashin: number
+  e_free: number
+  e_hon_total: number
+  e_total: number
+  e_hon_course_min?: number | null
+  e_shashin_course_min?: number | null
+}
+
+interface Cs3ReservationRow {
+  staff_id: number
+  store_id: number
+  nomination_type: string | null
+  course_duration: number | null
+  notes: string | null
+  staff?: { name: string } | null
+}
+
+interface ShiftRow {
+  staff_id: number
+  date: string
+  start_time: number
+  end_time: number
+}
+
 type RankingKey = keyof Pick<StaffStats, 'honShimei' | 'shashinShimei' | 'honRate' | 'kadoritsu' | 'nonHonCourseMin' | 'honCourseMin'>
 
 interface RankingDef {
@@ -75,10 +108,10 @@ interface RankingDef {
 
 const RANKINGS: RankingDef[] = [
   { key: 'honShimei',        label: '本指名数',            higherIsBetter: true, format: v => `${v}件` },
-  { key: 'shashinShimei',    label: '写メ指名数',           higherIsBetter: true, format: v => `${v}件` },
+  { key: 'shashinShimei',    label: '写真指名数',           higherIsBetter: true, format: v => `${v}件` },
   { key: 'honRate',          label: '本指名率',             higherIsBetter: true, format: v => `${(v * 100).toFixed(1)}%` },
   { key: 'kadoritsu',        label: '稼働率',               higherIsBetter: true, format: v => `${(v * 100).toFixed(1)}%` },
-  { key: 'nonHonCourseMin',  label: '写メ＋フリーコース総時間', higherIsBetter: true, format: v => `${v}分` },
+  { key: 'nonHonCourseMin',  label: '写真指名＋フリーコース総時間', higherIsBetter: true, format: v => `${v}分` },
   { key: 'honCourseMin',     label: '本指名コース総時間',    higherIsBetter: true, format: v => `${v}分` },
 ]
 
@@ -127,7 +160,7 @@ export default function RankingPage() {
           .eq('shop_id', shopCode)
           .eq('year', y)
           .eq('month', m)
-        let cs3Rows: any[] | null = initialCs3.data
+        let cs3Rows: Cs3PerformanceRow[] | null = initialCs3.data
         let cs3Error = initialCs3.error
         if (cs3Error && /shashin_course_min/i.test(cs3Error.message)) {
           hasCs3CourseColumns = false
@@ -149,14 +182,15 @@ export default function RankingPage() {
         const useCs3Course = hasCs3 && hasCs3CourseColumns
 
 
-        // ── CS3未取得時のフォールバック用予約テーブル ──
-        const reservations = await fetchAllPaginated<any>((from, to) =>
+        // ── 予約管理フォールバック（CS3成績未取得月・旧DB用）──
+        const reservations = await fetchAllPaginated<Cs3ReservationRow>((from, to) =>
           supabase.from('reservations')
-            .select('staff_id, nomination_type, course_duration, notes, staff(name)')
+            .select('staff_id, store_id, nomination_type, course_duration, notes, staff(name)')
             .eq('store_id', storeId)
             .gte('date', dateFrom)
             .lte('date', dateTo)
             .not('staff_id', 'is', null)
+            .like('notes', 'CS3:%')
             .range(from, to)
         )
 
@@ -164,7 +198,7 @@ export default function RankingPage() {
 
         // CS3予約IDで重複排除
         const seenNotes = new Set<string>()
-        const dedupedRes = reservations.filter((r: any) => {
+        const dedupedRes = reservations.filter((r) => {
           if (!r.notes?.startsWith('CS3:')) return true
           if (seenNotes.has(r.notes)) return false
           seenNotes.add(r.notes)
@@ -220,7 +254,7 @@ export default function RankingPage() {
             s.honCourseMin = honCourseMin
             if (useCs3Course) {
               s.nonHonCourseMin = nonHonCourseMin
-              s.courseMin = honCourseMin + nonHonCourseMin
+              s.courseMin = s.honCourseMin + s.nonHonCourseMin
             }
           }
         } else {
@@ -236,7 +270,7 @@ export default function RankingPage() {
         // ── シフトデータ（稼働率計算用）──
         const staffIds = [...staffMap.keys()].filter(id => id > 0)
         if (staffIds.length > 0) {
-          const shifts = await fetchAllPaginated<any>((from, to) =>
+          const shifts = await fetchAllPaginated<ShiftRow>((from, to) =>
             supabase.from('shifts')
               .select('staff_id, date, start_time, end_time')
               .eq('store_id', storeId)
@@ -438,7 +472,7 @@ export default function RankingPage() {
         {month === '2026-04' && (
           <div className="bg-yellow-900/40 border border-yellow-700/50 text-yellow-300 text-xs rounded px-3 py-2 mb-4">
             ⚠ 2026年4月は予約同期の不具合により稼働率・コース時間に欠損があります。総合ランキングは参考値です。
-            {!cs3Available && ' CS3 成績データ未取得のため本指名数・写メ指名数も実数より少ない可能性があります。'}
+            {!cs3Available && ' CS3 成績データ未取得のため本指名数・写真指名数も実数より少ない可能性があります。'}
           </div>
         )}
 
