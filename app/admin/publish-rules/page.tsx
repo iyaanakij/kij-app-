@@ -314,6 +314,35 @@ export default function PublishRulesPage() {
         <p className="text-xs text-gray-400 mt-0.5">CS3の承認元店舗ごとに、どのサイト（HP / Venrey）に反映するかを設定します</p>
       </div>
 
+      {/* 同期ルール */}
+      <section className="mb-5 rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs text-gray-700">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-blue-900">新規キャスト登録後の反映目安</h2>
+            <p className="mt-1 leading-relaxed text-gray-600">
+              CS3に登録すると、毎時00分の確認後にこの画面へ追加されます。HPとVenreyにも登録済みなら、ID取得後にチェックをONにして保存してください。
+            </p>
+          </div>
+          <div className="shrink-0 rounded-md bg-white px-3 py-2 text-[11px] text-gray-600 shadow-sm ring-1 ring-blue-100">
+            保存後の自動同期: 通常10分前後、最大約70分
+          </div>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-3">
+          <div className="rounded-md bg-white px-3 py-2 ring-1 ring-blue-100">
+            <div className="font-semibold text-gray-800">配信ルール画面に表示</div>
+            <div className="mt-0.5 text-gray-500">毎時00分 / 最大約1時間</div>
+          </div>
+          <div className="rounded-md bg-white px-3 py-2 ring-1 ring-blue-100">
+            <div className="font-semibold text-gray-800">HP ID取得</div>
+            <div className="mt-0.5 text-gray-500">毎日03:00 / 最大約24時間</div>
+          </div>
+          <div className="rounded-md bg-white px-3 py-2 ring-1 ring-blue-100">
+            <div className="font-semibold text-gray-800">Venrey ID取得</div>
+            <div className="mt-0.5 text-gray-500">毎日04:00 / 最大約24時間</div>
+          </div>
+        </div>
+      </section>
+
       {/* 凡例 */}
       <div className="flex flex-wrap gap-x-5 gap-y-1.5 mb-5 px-3 py-2.5 bg-gray-50 rounded-lg text-xs text-gray-500">
         <span className="font-medium text-gray-600 shrink-0">チェックの色：</span>
