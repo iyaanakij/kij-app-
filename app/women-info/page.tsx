@@ -9,6 +9,9 @@ const CONFIG_MEMO_PREFIX = '__KIJ_WOMEN_INFO_CONFIG__'
 const WOMEN_INFO_DATE = '2000-01-02'
 const DEFAULT_AREA_ID = 1
 const AREA_STORAGE_KEY = 'kij_women_info_area'
+const WOMEN_INFO_AREA_IDS = [1, 2, 3, 4]
+const COLUMN_WIDTH_MIN = 80
+const COLUMN_WIDTH_MAX = 420
 
 const COLOR_CHOICES = [
   '#ffffff', '#f8fafc', '#fef3c7', '#fee2e2', '#dcfce7', '#dbeafe', '#f3e8ff', '#ffedd5',
@@ -24,10 +27,8 @@ const DEFAULT_COLUMN_LABELS = [
   'その他', '私物コスプレ名称', '私物おもちゃ名称',
 ]
 
-const DEFAULT_COLUMN_IDS = DEFAULT_COLUMN_LABELS.map((_, index) => `field_${index + 1}`)
-
 const DEFAULT_COLUMNS = DEFAULT_COLUMN_LABELS.map((label, index) => ({
-  id: DEFAULT_COLUMN_IDS[index],
+  id: `field_${index + 1}`,
   label,
   width: label.length >= 8 ? 160 : 120,
   multiline: ['NGエリア', 'その他', '私物コスプレ名称', '私物おもちゃ名称'].includes(label),
@@ -50,6 +51,7 @@ type SheetColumn = {
 
 type WomenInfoRow = {
   id: string
+  storeId: number
   sortOrder: number
   values: Record<string, string>
 }
@@ -60,7 +62,9 @@ type SheetConfig = {
 
 type BoardAnnotationRow = {
   id: string
+  store_id: number
   memo: string | null
+  created_at?: string | null
 }
 
 type ConfigState = {
@@ -74,13 +78,17 @@ function normalizeColumn(raw: Partial<SheetColumn>, index: number): SheetColumn 
   return {
     id: raw.id || `col_${Date.now()}_${index}`,
     label: raw.label || fallback.label,
-    width: Number(raw.width) || fallback.width,
+    width: clampColumnWidth(Number(raw.width) || fallback.width),
     multiline: Boolean(raw.multiline),
     headerBg: raw.headerBg || fallback.headerBg,
     headerText: raw.headerText || fallback.headerText,
     cellBg: raw.cellBg || fallback.cellBg,
     cellText: raw.cellText || fallback.cellText,
   }
+}
+
+function clampColumnWidth(width: number): number {
+  return Math.min(COLUMN_WIDTH_MAX, Math.max(COLUMN_WIDTH_MIN, Math.round(width)))
 }
 
 function defaultValues(columns: SheetColumn[]): Record<string, string> {
@@ -95,14 +103,17 @@ function parseRow(row: BoardAnnotationRow, columns: SheetColumn[]): WomenInfoRow
       values?: Record<string, string>
       [key: string]: unknown
     }
-    const base = defaultValues(columns)
     const source = parsed.values && typeof parsed.values === 'object' ? parsed.values : parsed
+    const base: Record<string, string> = {}
+    for (const [key, value] of Object.entries(source)) {
+      base[key] = typeof value === 'string' ? value : ''
+    }
     for (const column of columns) {
-      const value = source[column.id]
-      base[column.id] = typeof value === 'string' ? value : ''
+      if (!(column.id in base)) base[column.id] = ''
     }
     return {
       id: row.id,
+      storeId: row.store_id,
       sortOrder: typeof parsed.sortOrder === 'number' ? parsed.sortOrder : 0,
       values: base,
     }
@@ -121,11 +132,10 @@ function parseConfig(row: BoardAnnotationRow | undefined): ConfigState {
     const columns = parsedColumns.length
       ? parsedColumns.map(normalizeColumn)
       : DEFAULT_COLUMNS.map((column, index) => normalizeColumn(column, index))
-    const needsDefaultReset = !DEFAULT_COLUMN_IDS.every((id, index) => columns[index]?.id === id)
     return {
       id: row.id,
-      columns: needsDefaultReset ? DEFAULT_COLUMNS.map((column, index) => normalizeColumn(column, index)) : columns,
-      needsDefaultReset,
+      columns,
+      needsDefaultReset: false,
     }
   } catch {
     return { id: row.id, columns: DEFAULT_COLUMNS.map((column, index) => normalizeColumn(column, index)), needsDefaultReset: true }
@@ -140,8 +150,8 @@ function encodeConfig(columns: SheetColumn[]): string {
   return `${CONFIG_MEMO_PREFIX}${JSON.stringify({ columns })}`
 }
 
-function hasContent(row: WomenInfoRow, columns: SheetColumn[]): boolean {
-  return columns.some(column => (row.values[column.id] ?? '').trim())
+function hasContent(row: WomenInfoRow): boolean {
+  return Object.values(row.values).some(value => value.trim())
 }
 
 function ColorPicker({
@@ -175,17 +185,25 @@ export default function WomenInfoPage() {
   const [loading, setLoading] = useState(true)
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
   const [savingConfig, setSavingConfig] = useState(false)
+  const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
   const [query, setQuery] = useState('')
   const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null)
+  const womenInfoStores = useMemo(() => STORES.filter(store => WOMEN_INFO_AREA_IDS.includes(store.id)), [])
 
   const fetchRows = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('board_annotations')
-      .select('id, memo')
+      .select('id, store_id, memo, created_at')
       .eq('store_id', selectedAreaId)
       .eq('date', WOMEN_INFO_DATE)
       .or(`memo.like.${ROW_MEMO_PREFIX}%,memo.like.${CONFIG_MEMO_PREFIX}%`)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      setLoading(false)
+      return
+    }
 
     const rawRows = (data ?? []) as BoardAnnotationRow[]
     const config = parseConfig(rawRows.find(row => row.memo?.startsWith(CONFIG_MEMO_PREFIX)))
@@ -194,16 +212,10 @@ export default function WomenInfoPage() {
       .filter((row): row is WomenInfoRow => Boolean(row))
       .sort((a, b) => a.sortOrder - b.sortOrder)
 
-    if (config.id && config.needsDefaultReset) {
-      await supabase
-        .from('board_annotations')
-        .update({ memo: encodeConfig(config.columns) })
-        .eq('id', config.id)
-    }
-
     setConfigId(config.id)
     setColumns(config.columns)
     setRows(parsedRows)
+    setDirtyIds(new Set())
     setLoading(false)
   }, [selectedAreaId])
 
@@ -215,7 +227,7 @@ export default function WomenInfoPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const saved = window.localStorage.getItem(AREA_STORAGE_KEY)
-      if (saved && STORES.some(store => store.id === Number(saved))) {
+      if (saved && WOMEN_INFO_AREA_IDS.includes(Number(saved))) {
         setSelectedAreaId(Number(saved))
       }
     }, 0)
@@ -228,7 +240,18 @@ export default function WomenInfoPage() {
     setConfigId(null)
     setColumns(DEFAULT_COLUMNS.map((column, index) => normalizeColumn(column, index)))
     setRows([])
+    setDirtyIds(new Set())
   }
+
+  useEffect(() => {
+    if (dirtyIds.size === 0) return
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [dirtyIds])
 
   const filteredRows = useMemo(() => {
     const q = query.trim()
@@ -291,11 +314,11 @@ export default function WomenInfoPage() {
       end_time: 0,
       color: 'gray',
       memo: encodeRow(row),
-      store_id: selectedAreaId,
+      store_id: row.storeId,
     }
 
     if (row.id.startsWith('pending-')) {
-      if (!hasContent(row, columns)) {
+      if (!hasContent(row)) {
         setSaving(row.id, false)
         return
       }
@@ -306,23 +329,34 @@ export default function WomenInfoPage() {
         return
       }
       setRows(current => current.map(item => item.id === row.id ? { ...row, id: data.id } : item))
+      setDirtyIds(current => {
+        const next = new Set(current)
+        next.delete(row.id)
+        return next
+      })
       return
     }
 
-    if (!hasContent(row, columns)) {
-      const { error } = await supabase.from('board_annotations').delete().eq('id', row.id)
+    if (!hasContent(row)) {
+      const { error } = await supabase.from('board_annotations').update(payload).eq('id', row.id)
       setSaving(row.id, false)
-      if (error) {
-        fetchRows()
-        return
-      }
-      setRows(current => current.filter(item => item.id !== row.id))
+      if (error) fetchRows()
+      else setDirtyIds(current => {
+        const next = new Set(current)
+        next.delete(row.id)
+        return next
+      })
       return
     }
 
     const { error } = await supabase.from('board_annotations').update(payload).eq('id', row.id)
     setSaving(row.id, false)
     if (error) fetchRows()
+    else setDirtyIds(current => {
+      const next = new Set(current)
+      next.delete(row.id)
+      return next
+    })
   }
 
   function updateCell(rowId: string, columnId: string, value: string) {
@@ -330,6 +364,7 @@ export default function WomenInfoPage() {
       ? { ...row, values: { ...row.values, [columnId]: value } }
       : row
     ))
+    setDirtyIds(current => new Set(current).add(rowId))
   }
 
   async function saveCell(rowId: string) {
@@ -339,7 +374,7 @@ export default function WomenInfoPage() {
 
   function addRow() {
     const sortOrder = rows.length ? Math.max(...rows.map(row => row.sortOrder)) + 1 : 1
-    setRows(current => [...current, { id: `pending-${Date.now()}`, sortOrder, values: defaultValues(columns) }])
+    setRows(current => [...current, { id: `pending-${Date.now()}`, storeId: selectedAreaId, sortOrder, values: defaultValues(columns) }])
   }
 
   async function deleteRow(rowId: string) {
@@ -376,6 +411,10 @@ export default function WomenInfoPage() {
     const next = columns.map(column => column.id === columnId ? { ...column, ...patch } : column)
     setColumns(next)
     await persistConfig(next)
+  }
+
+  async function saveColumnWidth(columnId: string, width: number) {
+    await updateColumn(columnId, { width: clampColumnWidth(width) })
   }
 
   async function addColumn() {
@@ -434,7 +473,7 @@ export default function WomenInfoPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {STORES.map(store => (
+            {womenInfoStores.map(store => (
               <button
                 key={store.id}
                 type="button"
@@ -460,14 +499,16 @@ export default function WomenInfoPage() {
             <button
               type="button"
               onClick={fetchRows}
-              className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-xs font-bold text-gray-700 hover:bg-gray-50"
+              disabled={savingConfig}
+              className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
               再読込
             </button>
             <button
               type="button"
               onClick={addColumn}
-              className="h-9 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 hover:bg-blue-100"
+              disabled={savingConfig}
+              className="h-9 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
             >
               列を追加
             </button>
@@ -517,11 +558,14 @@ export default function WomenInfoPage() {
               幅
               <input
                 type="number"
-                min={80}
-                max={420}
+                min={COLUMN_WIDTH_MIN}
+                max={COLUMN_WIDTH_MAX}
                 value={selectedColumn.width}
-                onChange={e => editColumn(selectedColumn.id, { width: Number(e.target.value) || 120 })}
-                onBlur={() => saveColumns()}
+                onChange={e => editColumn(selectedColumn.id, { width: clampColumnWidth(Number(e.target.value) || selectedColumn.width) })}
+                onBlur={e => saveColumnWidth(selectedColumn.id, Number(e.currentTarget.value) || selectedColumn.width)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') e.currentTarget.blur()
+                }}
                 className="w-16 border-0 bg-transparent text-xs font-bold outline-none"
               />
             </label>
@@ -582,7 +626,7 @@ export default function WomenInfoPage() {
                       />
                     </th>
                   ))}
-                  <th className="w-16 bg-gray-900 px-2 py-2 text-center text-white">状態</th>
+                  <th className="sticky right-0 z-30 w-24 border-l border-gray-700 bg-gray-900 px-2 py-2 text-center text-white">状態</th>
                 </tr>
               </thead>
               <tbody>
@@ -615,14 +659,6 @@ export default function WomenInfoPage() {
                           >
                             ↓
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteRow(row.id)}
-                            className="h-6 w-6 rounded border border-red-100 bg-red-50 text-[10px] font-bold text-red-600 hover:bg-red-100"
-                            title="削除"
-                          >
-                            ×
-                          </button>
                         </div>
                       </td>
                       <td className="sticky left-14 z-10 border-r border-gray-200 bg-inherit px-2 py-2 text-center font-semibold text-gray-500">
@@ -651,8 +687,20 @@ export default function WomenInfoPage() {
                           )}
                         </td>
                       ))}
-                      <td className="px-2 py-2 text-center text-[11px] text-gray-400">
-                        {savingIds.has(row.id) ? '保存中' : '保存済'}
+                      <td className="sticky right-0 z-10 border-l border-gray-200 bg-inherit px-2 py-1 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="min-w-10 text-[11px] text-gray-400">
+                            {savingIds.has(row.id) ? '保存中' : dirtyIds.has(row.id) ? '未保存' : '保存済'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => deleteRow(row.id)}
+                            className="h-7 w-7 rounded border border-red-100 bg-red-50 text-xs font-bold text-red-600 hover:bg-red-100"
+                            title="削除"
+                          >
+                            ×
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
