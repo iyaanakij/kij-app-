@@ -15,20 +15,27 @@ const COLOR_CHOICES = [
   '#111827', '#1d4ed8', '#047857', '#b45309', '#be123c', '#6d28d9',
 ]
 
-const DEFAULT_COLUMNS = [
-  { id: 'castName', label: '女性名', width: 128, multiline: false, headerBg: '#111827', headerText: '#ffffff', cellBg: '#ffffff', cellText: '#1f2937' },
-  { id: 'realName', label: '本名', width: 128, multiline: false, headerBg: '#111827', headerText: '#ffffff', cellBg: '#ffffff', cellText: '#1f2937' },
-  { id: 'area', label: '所属/エリア', width: 112, multiline: false, headerBg: '#111827', headerText: '#ffffff', cellBg: '#ffffff', cellText: '#1f2937' },
-  { id: 'phone', label: '電話番号', width: 144, multiline: false, headerBg: '#111827', headerText: '#ffffff', cellBg: '#ffffff', cellText: '#1f2937' },
-  { id: 'lineName', label: 'LINE名/ID', width: 144, multiline: false, headerBg: '#111827', headerText: '#ffffff', cellBg: '#ffffff', cellText: '#1f2937' },
-  { id: 'birthday', label: '生年月日', width: 112, multiline: false, headerBg: '#111827', headerText: '#ffffff', cellBg: '#ffffff', cellText: '#1f2937' },
-  { id: 'joinDate', label: '入店日', width: 112, multiline: false, headerBg: '#111827', headerText: '#ffffff', cellBg: '#ffffff', cellText: '#1f2937' },
-  { id: 'nearestStation', label: '最寄り', width: 128, multiline: false, headerBg: '#111827', headerText: '#ffffff', cellBg: '#ffffff', cellText: '#1f2937' },
-  { id: 'address', label: '住所', width: 224, multiline: true, headerBg: '#111827', headerText: '#ffffff', cellBg: '#ffffff', cellText: '#1f2937' },
-  { id: 'dorm', label: '寮/送迎', width: 144, multiline: true, headerBg: '#111827', headerText: '#ffffff', cellBg: '#ffffff', cellText: '#1f2937' },
-  { id: 'ngNotes', label: 'NG・注意事項', width: 224, multiline: true, headerBg: '#111827', headerText: '#ffffff', cellBg: '#fff7ed', cellText: '#7c2d12' },
-  { id: 'memo', label: 'メモ', width: 256, multiline: true, headerBg: '#111827', headerText: '#ffffff', cellBg: '#ffffff', cellText: '#1f2937' },
+const DEFAULT_COLUMN_LABELS = [
+  '名前', '入店日', '退店日', '連絡方法', '交通手段', '社内ポータル', '出勤リクエスト', 'オキニトーク',
+  'タトゥー', '聖水', '私物P', 'ロープ', '店舗コスプレ', '私物コスプレ',
+  '3P講師', '3P',
+  'NGエリア', '自宅', 'ビジホ', 'レンタルルーム', '外国人対応', 'リラックス',
+  '交通費', '請求書', '送迎費',
+  'その他', '私物コスプレ名称', '私物おもちゃ名称',
 ]
+
+const DEFAULT_COLUMN_IDS = DEFAULT_COLUMN_LABELS.map((_, index) => `field_${index + 1}`)
+
+const DEFAULT_COLUMNS = DEFAULT_COLUMN_LABELS.map((label, index) => ({
+  id: DEFAULT_COLUMN_IDS[index],
+  label,
+  width: label.length >= 8 ? 160 : 120,
+  multiline: ['NGエリア', 'その他', '私物コスプレ名称', '私物おもちゃ名称'].includes(label),
+  headerBg: '#111827',
+  headerText: '#ffffff',
+  cellBg: '#ffffff',
+  cellText: '#1f2937',
+}))
 
 type SheetColumn = {
   id: string
@@ -59,6 +66,7 @@ type BoardAnnotationRow = {
 type ConfigState = {
   id: string | null
   columns: SheetColumn[]
+  needsDefaultReset: boolean
 }
 
 function normalizeColumn(raw: Partial<SheetColumn>, index: number): SheetColumn {
@@ -105,16 +113,22 @@ function parseRow(row: BoardAnnotationRow, columns: SheetColumn[]): WomenInfoRow
 
 function parseConfig(row: BoardAnnotationRow | undefined): ConfigState {
   if (!row?.memo?.startsWith(CONFIG_MEMO_PREFIX)) {
-    return { id: null, columns: DEFAULT_COLUMNS.map((column, index) => normalizeColumn(column, index)) }
+    return { id: null, columns: DEFAULT_COLUMNS.map((column, index) => normalizeColumn(column, index)), needsDefaultReset: false }
   }
   try {
     const parsed = JSON.parse(row.memo.slice(CONFIG_MEMO_PREFIX.length)) as Partial<SheetConfig>
-    const columns = Array.isArray(parsed.columns) && parsed.columns.length
-      ? parsed.columns.map(normalizeColumn)
+    const parsedColumns = Array.isArray(parsed.columns) ? parsed.columns : []
+    const columns = parsedColumns.length
+      ? parsedColumns.map(normalizeColumn)
       : DEFAULT_COLUMNS.map((column, index) => normalizeColumn(column, index))
-    return { id: row.id, columns }
+    const needsDefaultReset = !DEFAULT_COLUMN_IDS.every((id, index) => columns[index]?.id === id)
+    return {
+      id: row.id,
+      columns: needsDefaultReset ? DEFAULT_COLUMNS.map((column, index) => normalizeColumn(column, index)) : columns,
+      needsDefaultReset,
+    }
   } catch {
-    return { id: row.id, columns: DEFAULT_COLUMNS.map((column, index) => normalizeColumn(column, index)) }
+    return { id: row.id, columns: DEFAULT_COLUMNS.map((column, index) => normalizeColumn(column, index)), needsDefaultReset: true }
   }
 }
 
@@ -179,6 +193,13 @@ export default function WomenInfoPage() {
       .map(row => parseRow(row, config.columns))
       .filter((row): row is WomenInfoRow => Boolean(row))
       .sort((a, b) => a.sortOrder - b.sortOrder)
+
+    if (config.id && config.needsDefaultReset) {
+      await supabase
+        .from('board_annotations')
+        .update({ memo: encodeConfig(config.columns) })
+        .eq('id', config.id)
+    }
 
     setConfigId(config.id)
     setColumns(config.columns)
