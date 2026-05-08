@@ -162,6 +162,7 @@ export default function WomenInfoPage() {
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
   const [savingConfig, setSavingConfig] = useState(false)
   const [query, setQuery] = useState('')
+  const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null)
 
   const fetchRows = useCallback(async () => {
     setLoading(true)
@@ -218,6 +219,10 @@ export default function WomenInfoPage() {
     const columnWidth = columns.reduce((sum, column) => sum + column.width, 0)
     return Math.max(720, columnWidth + 160)
   }, [columns])
+
+  const selectedColumn = useMemo(() => {
+    return columns.find(column => column.id === selectedColumnId) ?? columns[0] ?? null
+  }, [columns, selectedColumnId])
 
   const setSaving = (rowId: string, saving: boolean) => {
     setSavingIds(current => {
@@ -338,6 +343,14 @@ export default function WomenInfoPage() {
     await Promise.all([persistRow(next[index]), persistRow(next[targetIndex])])
   }
 
+  function editColumn(columnId: string, patch: Partial<SheetColumn>) {
+    setColumns(current => current.map(column => column.id === columnId ? { ...column, ...patch } : column))
+  }
+
+  async function saveColumns(nextColumns = columns) {
+    await persistConfig(nextColumns)
+  }
+
   async function updateColumn(columnId: string, patch: Partial<SheetColumn>) {
     const next = columns.map(column => column.id === columnId ? { ...column, ...patch } : column)
     setColumns(next)
@@ -357,6 +370,7 @@ export default function WomenInfoPage() {
     }
     const nextColumns = [...columns, newColumn]
     setColumns(nextColumns)
+    setSelectedColumnId(newColumn.id)
     setRows(current => current.map(row => ({ ...row, values: { ...row.values, [newColumn.id]: '' } })))
     await persistConfig(nextColumns)
   }
@@ -370,6 +384,7 @@ export default function WomenInfoPage() {
       return { ...row, values: nextValues }
     })
     setColumns(nextColumns)
+    setSelectedColumnId(current => current === columnId ? nextColumns[0]?.id ?? null : current)
     setRows(nextRows)
     await persistConfig(nextColumns)
     await Promise.all(nextRows.filter(row => !row.id.startsWith('pending-')).map(persistRow))
@@ -394,7 +409,7 @@ export default function WomenInfoPage() {
           <div>
             <h1 className="text-lg font-bold text-gray-900">女性情報</h1>
             <p className="mt-0.5 text-xs text-gray-500">
-              エリアごとに、セルと列名を直接編集できます。色は各列のヘッダー下から変更できます。
+              エリアごとに入力できます。列名は表の見出しを直接編集、列の色や幅は見出しを選んで上のバーから変更します。
             </p>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -445,6 +460,76 @@ export default function WomenInfoPage() {
             <span className="w-12 text-xs text-gray-400">{savingConfig ? '保存中' : '保存済'}</span>
           </div>
         </div>
+        {selectedColumn && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 text-xs text-gray-600">
+            <span className="font-bold text-gray-800">列設定:</span>
+            <span className="max-w-32 truncate rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-700">
+              {selectedColumn.label || '無題'}
+            </span>
+            <button
+              type="button"
+              onClick={() => moveColumn(selectedColumn.id, -1)}
+              disabled={columns[0]?.id === selectedColumn.id}
+              className="h-8 rounded-lg border border-gray-300 bg-white px-2 font-bold hover:bg-gray-50 disabled:opacity-30"
+              title="左へ"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              onClick={() => moveColumn(selectedColumn.id, 1)}
+              disabled={columns[columns.length - 1]?.id === selectedColumn.id}
+              className="h-8 rounded-lg border border-gray-300 bg-white px-2 font-bold hover:bg-gray-50 disabled:opacity-30"
+              title="右へ"
+            >
+              →
+            </button>
+            <label className="flex h-8 items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2">
+              <input
+                type="checkbox"
+                checked={selectedColumn.multiline}
+                onChange={e => updateColumn(selectedColumn.id, { multiline: e.target.checked })}
+              />
+              複数行
+            </label>
+            <label className="flex h-8 items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2">
+              幅
+              <input
+                type="number"
+                min={80}
+                max={420}
+                value={selectedColumn.width}
+                onChange={e => editColumn(selectedColumn.id, { width: Number(e.target.value) || 120 })}
+                onBlur={() => saveColumns()}
+                className="w-16 border-0 bg-transparent text-xs font-bold outline-none"
+              />
+            </label>
+            <ColorPicker label="見出し" value={selectedColumn.headerBg} onChange={value => updateColumn(selectedColumn.id, { headerBg: value })} />
+            <ColorPicker label="文字" value={selectedColumn.headerText} onChange={value => updateColumn(selectedColumn.id, { headerText: value })} />
+            <ColorPicker label="セル" value={selectedColumn.cellBg} onChange={value => updateColumn(selectedColumn.id, { cellBg: value })} />
+            <ColorPicker label="セル字" value={selectedColumn.cellText} onChange={value => updateColumn(selectedColumn.id, { cellText: value })} />
+            <div className="flex items-center gap-1">
+              {COLOR_CHOICES.slice(0, 8).map(color => (
+                <button
+                  key={`${selectedColumn.id}-${color}`}
+                  type="button"
+                  onClick={() => updateColumn(selectedColumn.id, { cellBg: color })}
+                  className="h-5 w-5 rounded border border-gray-300"
+                  style={{ backgroundColor: color }}
+                  title="セル色"
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => deleteColumn(selectedColumn.id)}
+              disabled={columns.length <= 1}
+              className="ml-auto h-8 rounded-lg border border-red-200 bg-red-50 px-3 font-bold text-red-600 hover:bg-red-100 disabled:opacity-30"
+            >
+              列削除
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -457,85 +542,23 @@ export default function WomenInfoPage() {
                 <tr>
                   <th className="sticky left-0 z-30 w-14 border-r border-gray-700 bg-gray-900 px-2 py-2 text-center text-white">操作</th>
                   <th className="sticky left-14 z-30 w-12 border-r border-gray-700 bg-gray-900 px-2 py-2 text-center text-white">No</th>
-                  {columns.map((column, index) => (
+                  {columns.map(column => (
                     <th
                       key={column.id}
-                      className="border-r border-gray-300 p-2 align-top"
+                      onClick={() => setSelectedColumnId(column.id)}
+                      className={`border-r border-gray-300 p-0 align-middle ${selectedColumnId === column.id ? 'ring-2 ring-inset ring-blue-400' : ''}`}
                       style={{ width: column.width, backgroundColor: column.headerBg, color: column.headerText }}
                     >
                       <input
                         type="text"
                         value={column.label}
-                        onChange={e => updateColumn(column.id, { label: e.target.value })}
-                        className="mb-2 h-8 w-full rounded border border-white/30 bg-white/15 px-2 text-xs font-bold outline-none placeholder:text-current focus:bg-white/25"
+                        onFocus={() => setSelectedColumnId(column.id)}
+                        onChange={e => editColumn(column.id, { label: e.target.value })}
+                        onBlur={() => saveColumns()}
+                        className="block h-10 w-full border-0 bg-transparent px-2 text-left text-xs font-bold outline-none placeholder:text-current focus:bg-white/15"
                         style={{ color: column.headerText }}
                         placeholder="列名"
                       />
-                      <div className="mb-2 grid grid-cols-2 gap-1">
-                        <ColorPicker label="見出し" value={column.headerBg} onChange={value => updateColumn(column.id, { headerBg: value })} />
-                        <ColorPicker label="文字" value={column.headerText} onChange={value => updateColumn(column.id, { headerText: value })} />
-                        <ColorPicker label="セル" value={column.cellBg} onChange={value => updateColumn(column.id, { cellBg: value })} />
-                        <ColorPicker label="セル字" value={column.cellText} onChange={value => updateColumn(column.id, { cellText: value })} />
-                      </div>
-                      <div className="mb-2 flex flex-wrap gap-1">
-                        {COLOR_CHOICES.slice(0, 8).map(color => (
-                          <button
-                            key={`${column.id}-${color}`}
-                            type="button"
-                            onClick={() => updateColumn(column.id, { cellBg: color })}
-                            className="h-4 w-4 rounded border border-white/50"
-                            style={{ backgroundColor: color }}
-                            title="セル色を変更"
-                          />
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => moveColumn(column.id, -1)}
-                          disabled={index === 0}
-                          className="h-6 w-6 rounded bg-white/20 text-[10px] disabled:opacity-30"
-                          title="左へ"
-                        >
-                          ←
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => moveColumn(column.id, 1)}
-                          disabled={index === columns.length - 1}
-                          className="h-6 w-6 rounded bg-white/20 text-[10px] disabled:opacity-30"
-                          title="右へ"
-                        >
-                          →
-                        </button>
-                        <label className="flex h-6 items-center gap-1 rounded bg-white/20 px-1 text-[10px]">
-                          <input
-                            type="checkbox"
-                            checked={column.multiline}
-                            onChange={e => updateColumn(column.id, { multiline: e.target.checked })}
-                          />
-                          複数
-                        </label>
-                        <input
-                          type="number"
-                          min={80}
-                          max={420}
-                          value={column.width}
-                          onChange={e => updateColumn(column.id, { width: Number(e.target.value) || 120 })}
-                          className="h-6 w-14 rounded border-0 bg-white/20 px-1 text-[10px] outline-none"
-                          style={{ color: column.headerText }}
-                          title="列幅"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => deleteColumn(column.id)}
-                          disabled={columns.length <= 1}
-                          className="ml-auto h-6 w-6 rounded bg-red-500/80 text-[10px] font-bold text-white disabled:opacity-30"
-                          title="列削除"
-                        >
-                          ×
-                        </button>
-                      </div>
                     </th>
                   ))}
                   <th className="w-16 bg-gray-900 px-2 py-2 text-center text-white">状態</th>
