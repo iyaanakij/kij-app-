@@ -12,6 +12,7 @@ const AREA_STORAGE_KEY = 'kij_women_info_area'
 const WOMEN_INFO_AREA_IDS = [1, 2, 3, 4]
 const COLUMN_WIDTH_MIN = 20
 const COLUMN_WIDTH_MAX = 420
+const RETIRED_ROW_BG = '#fff1f2'
 
 const COLOR_CHOICES = [
   '#ffffff', '#f8fafc', '#fef3c7', '#fee2e2', '#dcfce7', '#dbeafe', '#f3e8ff', '#ffedd5',
@@ -52,9 +53,12 @@ type SheetColumn = {
 type WomenInfoRow = {
   id: string
   storeId: number
+  status: WomenInfoStatus
   sortOrder: number
   values: Record<string, string>
 }
+
+type WomenInfoStatus = 'active' | 'retired'
 
 type SheetConfig = {
   columns: SheetColumn[]
@@ -100,6 +104,7 @@ function parseRow(row: BoardAnnotationRow, columns: SheetColumn[]): WomenInfoRow
   try {
     const parsed = JSON.parse(row.memo.slice(ROW_MEMO_PREFIX.length)) as {
       sortOrder?: number
+      status?: string
       values?: Record<string, string>
       [key: string]: unknown
     }
@@ -114,6 +119,7 @@ function parseRow(row: BoardAnnotationRow, columns: SheetColumn[]): WomenInfoRow
     return {
       id: row.id,
       storeId: row.store_id,
+      status: parsed.status === 'retired' ? 'retired' : 'active',
       sortOrder: typeof parsed.sortOrder === 'number' ? parsed.sortOrder : 0,
       values: base,
     }
@@ -143,7 +149,7 @@ function parseConfig(row: BoardAnnotationRow | undefined): ConfigState {
 }
 
 function encodeRow(row: WomenInfoRow): string {
-  return `${ROW_MEMO_PREFIX}${JSON.stringify({ sortOrder: row.sortOrder, values: row.values })}`
+  return `${ROW_MEMO_PREFIX}${JSON.stringify({ sortOrder: row.sortOrder, status: row.status, values: row.values })}`
 }
 
 function encodeConfig(columns: SheetColumn[]): string {
@@ -188,6 +194,7 @@ export default function WomenInfoPage() {
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set())
   const [query, setQuery] = useState('')
   const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null)
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null)
   const womenInfoStores = useMemo(() => STORES.filter(store => WOMEN_INFO_AREA_IDS.includes(store.id)), [])
 
   const fetchRows = useCallback(async () => {
@@ -216,6 +223,7 @@ export default function WomenInfoPage() {
     setColumns(config.columns)
     setRows(parsedRows)
     setDirtyIds(new Set())
+    setSelectedRowId(null)
     setLoading(false)
   }, [selectedAreaId])
 
@@ -241,6 +249,7 @@ export default function WomenInfoPage() {
     setColumns(DEFAULT_COLUMNS.map((column, index) => normalizeColumn(column, index)))
     setRows([])
     setDirtyIds(new Set())
+    setSelectedRowId(null)
   }
 
   useEffect(() => {
@@ -267,6 +276,10 @@ export default function WomenInfoPage() {
   const selectedColumn = useMemo(() => {
     return columns.find(column => column.id === selectedColumnId) ?? columns[0] ?? null
   }, [columns, selectedColumnId])
+
+  const selectedRow = useMemo(() => {
+    return rows.find(row => row.id === selectedRowId) ?? null
+  }, [rows, selectedRowId])
 
   const setSaving = (rowId: string, saving: boolean) => {
     setSavingIds(current => {
@@ -320,6 +333,11 @@ export default function WomenInfoPage() {
     if (row.id.startsWith('pending-')) {
       if (!hasContent(row)) {
         setSaving(row.id, false)
+        setDirtyIds(current => {
+          const next = new Set(current)
+          next.delete(row.id)
+          return next
+        })
         return
       }
       const { data, error } = await supabase.from('board_annotations').insert(payload).select('id').single()
@@ -329,6 +347,7 @@ export default function WomenInfoPage() {
         return
       }
       setRows(current => current.map(item => item.id === row.id ? { ...row, id: data.id } : item))
+      setSelectedRowId(current => current === row.id ? data.id : current)
       setDirtyIds(current => {
         const next = new Set(current)
         next.delete(row.id)
@@ -360,6 +379,7 @@ export default function WomenInfoPage() {
   }
 
   function updateCell(rowId: string, columnId: string, value: string) {
+    setSelectedRowId(rowId)
     setRows(current => current.map(row => row.id === rowId
       ? { ...row, values: { ...row.values, [columnId]: value } }
       : row
@@ -374,15 +394,36 @@ export default function WomenInfoPage() {
 
   function addRow() {
     const sortOrder = rows.length ? Math.max(...rows.map(row => row.sortOrder)) + 1 : 1
-    setRows(current => [...current, { id: `pending-${Date.now()}`, storeId: selectedAreaId, sortOrder, values: defaultValues(columns) }])
+    const id = `pending-${Date.now()}`
+    setRows(current => [...current, { id, storeId: selectedAreaId, status: 'active', sortOrder, values: defaultValues(columns) }])
+    setSelectedRowId(id)
   }
 
   async function deleteRow(rowId: string) {
     const row = rows.find(item => item.id === rowId)
+    if (!row) return
+    const rowName = row.values.field_1?.trim()
+    if (!window.confirm(`${rowName || '選択中の行'}を削除します。よろしいですか？`)) return
     setRows(current => current.filter(item => item.id !== rowId))
-    if (!row || row.id.startsWith('pending-')) return
+    setSelectedRowId(current => current === rowId ? null : current)
+    if (row.id.startsWith('pending-')) return
     const { error } = await supabase.from('board_annotations').delete().eq('id', row.id)
     if (error) fetchRows()
+  }
+
+  async function deleteSelectedRow() {
+    if (!selectedRow) return
+    await deleteRow(selectedRow.id)
+  }
+
+  async function updateRowStatus(rowId: string, status: WomenInfoStatus) {
+    setSelectedRowId(rowId)
+    const row = rows.find(item => item.id === rowId)
+    if (!row) return
+    const nextRow = { ...row, status }
+    setRows(current => current.map(item => item.id === rowId ? nextRow : item))
+    setDirtyIds(current => new Set(current).add(rowId))
+    await persistRow(nextRow)
   }
 
   async function moveRow(rowId: string, direction: -1 | 1) {
@@ -593,6 +634,15 @@ export default function WomenInfoPage() {
             >
               列削除
             </button>
+            <button
+              type="button"
+              onClick={deleteSelectedRow}
+              disabled={!selectedRow}
+              className="h-8 rounded-lg border border-red-200 bg-white px-3 font-bold text-red-600 hover:bg-red-50 disabled:opacity-30"
+              title={selectedRow ? '選択中の行を削除' : '削除する行を選択してください'}
+            >
+              行削除
+            </button>
           </div>
         )}
       </div>
@@ -626,7 +676,7 @@ export default function WomenInfoPage() {
                       />
                     </th>
                   ))}
-                  <th className="sticky right-0 z-30 w-24 border-l border-gray-700 bg-gray-900 px-2 py-2 text-center text-white">状態</th>
+                  <th className="sticky right-0 z-30 w-28 border-l border-gray-700 bg-gray-900 px-2 py-2 text-center text-white">状態</th>
                 </tr>
               </thead>
               <tbody>
@@ -637,8 +687,19 @@ export default function WomenInfoPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredRows.map((row, index) => (
-                    <tr key={row.id} className="border-t border-gray-200 odd:bg-white even:bg-gray-50/60">
+                  filteredRows.map((row, index) => {
+                    const isRetired = row.status === 'retired'
+                    const rowBg = isRetired ? RETIRED_ROW_BG : undefined
+                    const rowClass = selectedRowId === row.id
+                      ? 'border-t border-blue-300 bg-blue-50/40'
+                      : 'border-t border-gray-200 odd:bg-white even:bg-gray-50/60'
+                    return (
+                    <tr
+                      key={row.id}
+                      onClick={() => setSelectedRowId(row.id)}
+                      className={rowClass}
+                      style={rowBg ? { backgroundColor: rowBg } : undefined}
+                    >
                       <td className="sticky left-0 z-10 border-r border-gray-200 bg-inherit px-1 py-1">
                         <div className="flex items-center justify-center gap-1">
                           <button
@@ -665,10 +726,15 @@ export default function WomenInfoPage() {
                         {index + 1}
                       </td>
                       {columns.map(column => (
-                        <td key={column.id} className="border-r border-gray-200 p-0 align-top" style={{ backgroundColor: column.cellBg }}>
+                        <td
+                          key={column.id}
+                          className="border-r border-gray-200 p-0 align-top"
+                          style={{ backgroundColor: rowBg ?? column.cellBg }}
+                        >
                           {column.multiline ? (
                             <textarea
                               value={row.values[column.id] ?? ''}
+                              onFocus={() => setSelectedRowId(row.id)}
                               onChange={e => updateCell(row.id, column.id, e.target.value)}
                               onBlur={() => saveCell(row.id)}
                               rows={2}
@@ -679,6 +745,7 @@ export default function WomenInfoPage() {
                             <input
                               type="text"
                               value={row.values[column.id] ?? ''}
+                              onFocus={() => setSelectedRowId(row.id)}
                               onChange={e => updateCell(row.id, column.id, e.target.value)}
                               onBlur={() => saveCell(row.id)}
                               className="block h-10 w-full border-0 bg-transparent px-2 text-xs outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
@@ -692,18 +759,19 @@ export default function WomenInfoPage() {
                           <span className="min-w-10 text-[11px] text-gray-400">
                             {savingIds.has(row.id) ? '保存中' : dirtyIds.has(row.id) ? '未保存' : '保存済'}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => deleteRow(row.id)}
-                            className="h-7 w-7 rounded border border-red-100 bg-red-50 text-xs font-bold text-red-600 hover:bg-red-100"
-                            title="削除"
+                          <select
+                            value={row.status}
+                            onChange={e => updateRowStatus(row.id, e.target.value as WomenInfoStatus)}
+                            className="h-7 rounded border border-gray-300 bg-white px-1 text-xs font-bold text-gray-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                            title="在籍状態"
                           >
-                            ×
-                          </button>
+                            <option value="active">在籍</option>
+                            <option value="retired">退店</option>
+                          </select>
                         </div>
                       </td>
                     </tr>
-                  ))
+                  )})
                 )}
               </tbody>
             </table>
