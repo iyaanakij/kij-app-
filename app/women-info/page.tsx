@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { STORES } from '@/lib/types'
 
@@ -148,6 +148,40 @@ function parseConfig(row: BoardAnnotationRow | undefined): ConfigState {
   }
 }
 
+function configScore(row: BoardAnnotationRow): number {
+  if (!row.memo?.startsWith(CONFIG_MEMO_PREFIX)) return -1
+  try {
+    const parsed = JSON.parse(row.memo.slice(CONFIG_MEMO_PREFIX.length)) as Partial<SheetConfig>
+    const parsedColumns = Array.isArray(parsed.columns) ? parsed.columns : []
+    return parsedColumns.reduce((score, rawColumn, index) => {
+      const fallback = DEFAULT_COLUMNS[index]
+      const column = normalizeColumn(rawColumn, index)
+      if (!fallback) return score + 20
+      if (column.id !== fallback.id) score += 4
+      if (column.label !== fallback.label) score += 4
+      if (column.width !== fallback.width) score += 10
+      if (column.multiline !== fallback.multiline) score += 3
+      if (column.headerBg !== fallback.headerBg) score += 2
+      if (column.headerText !== fallback.headerText) score += 2
+      if (column.cellBg !== fallback.cellBg) score += 2
+      if (column.cellText !== fallback.cellText) score += 2
+      return score
+    }, parsedColumns.length !== DEFAULT_COLUMNS.length ? 20 : 0)
+  } catch {
+    return -1
+  }
+}
+
+function selectConfigRow(rows: BoardAnnotationRow[]): BoardAnnotationRow | undefined {
+  return rows
+    .filter(row => row.memo?.startsWith(CONFIG_MEMO_PREFIX))
+    .sort((a, b) => {
+      const scoreDiff = configScore(b) - configScore(a)
+      if (scoreDiff !== 0) return scoreDiff
+      return new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+    })[0]
+}
+
 function encodeRow(row: WomenInfoRow): string {
   return `${ROW_MEMO_PREFIX}${JSON.stringify({ sortOrder: row.sortOrder, status: row.status, values: row.values })}`
 }
@@ -158,6 +192,12 @@ function encodeConfig(columns: SheetColumn[]): string {
 
 function hasContent(row: WomenInfoRow): boolean {
   return Object.values(row.values).some(value => value.trim())
+}
+
+function getInitialAreaId(): number {
+  if (typeof window === 'undefined') return DEFAULT_AREA_ID
+  const saved = Number(window.localStorage.getItem(AREA_STORAGE_KEY))
+  return WOMEN_INFO_AREA_IDS.includes(saved) ? saved : DEFAULT_AREA_ID
 }
 
 function ColorPicker({
@@ -184,7 +224,7 @@ function ColorPicker({
 }
 
 export default function WomenInfoPage() {
-  const [selectedAreaId, setSelectedAreaId] = useState(DEFAULT_AREA_ID)
+  const [selectedAreaId, setSelectedAreaId] = useState(getInitialAreaId)
   const [configId, setConfigId] = useState<string | null>(null)
   const [columns, setColumns] = useState<SheetColumn[]>(() => DEFAULT_COLUMNS.map((column, index) => normalizeColumn(column, index)))
   const [rows, setRows] = useState<WomenInfoRow[]>([])
@@ -195,25 +235,28 @@ export default function WomenInfoPage() {
   const [query, setQuery] = useState('')
   const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null)
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null)
+  const selectedAreaRef = useRef(selectedAreaId)
   const womenInfoStores = useMemo(() => STORES.filter(store => WOMEN_INFO_AREA_IDS.includes(store.id)), [])
 
-  const fetchRows = useCallback(async () => {
+  const fetchRows = useCallback(async (areaId = selectedAreaId) => {
     setLoading(true)
     const { data, error } = await supabase
       .from('board_annotations')
       .select('id, store_id, memo, created_at')
-      .eq('store_id', selectedAreaId)
+      .eq('store_id', areaId)
       .eq('date', WOMEN_INFO_DATE)
       .or(`memo.like.${ROW_MEMO_PREFIX}%,memo.like.${CONFIG_MEMO_PREFIX}%`)
       .order('created_at', { ascending: false })
 
     if (error) {
-      setLoading(false)
+      if (areaId === selectedAreaRef.current) setLoading(false)
       return
     }
 
+    if (areaId !== selectedAreaRef.current) return
+
     const rawRows = (data ?? []) as BoardAnnotationRow[]
-    const config = parseConfig(rawRows.find(row => row.memo?.startsWith(CONFIG_MEMO_PREFIX)))
+    const config = parseConfig(selectConfigRow(rawRows))
     const parsedRows = rawRows
       .map(row => parseRow(row, config.columns))
       .filter((row): row is WomenInfoRow => Boolean(row))
@@ -228,19 +271,26 @@ export default function WomenInfoPage() {
   }, [selectedAreaId])
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { void fetchRows() }, 0)
-    return () => window.clearTimeout(timer)
-  }, [fetchRows])
+    selectedAreaRef.current = selectedAreaId
+  }, [selectedAreaId])
 
   useEffect(() => {
+    let active = true
     const timer = window.setTimeout(() => {
-      const saved = window.localStorage.getItem(AREA_STORAGE_KEY)
-      if (saved && WOMEN_INFO_AREA_IDS.includes(Number(saved))) {
-        setSelectedAreaId(Number(saved))
-      }
+      if (active) void fetchRows(selectedAreaId)
     }, 0)
-    return () => window.clearTimeout(timer)
-  }, [])
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [fetchRows, selectedAreaId])
+
+  useEffect(() => {
+    const saved = Number(window.localStorage.getItem(AREA_STORAGE_KEY))
+    if (!WOMEN_INFO_AREA_IDS.includes(saved)) {
+      window.localStorage.setItem(AREA_STORAGE_KEY, String(selectedAreaId))
+    }
+  }, [selectedAreaId])
 
   function selectArea(areaId: number) {
     setSelectedAreaId(areaId)
@@ -539,7 +589,7 @@ export default function WomenInfoPage() {
             />
             <button
               type="button"
-              onClick={fetchRows}
+              onClick={() => fetchRows(selectedAreaId)}
               disabled={savingConfig}
               className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
