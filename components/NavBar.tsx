@@ -12,6 +12,7 @@ const navItems = [
   { href: '/shift', label: 'シフト管理' },
   { href: '/ranking', label: 'ランキング' },
   { href: '/dorm', label: '寮管理' },
+  { href: '/women-info', label: '女性情報' },
   { href: '/staff', label: 'スタッフ' },
   { href: '/photodiary', label: '写メ日記' },
 ]
@@ -19,7 +20,10 @@ const navItems = [
 function ThemeToggle() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  useEffect(() => {
+    const timer = window.setTimeout(() => setMounted(true), 0)
+    return () => window.clearTimeout(timer)
+  }, [])
   if (!mounted) return <div className="w-8 h-8" />
 
   const isDark = theme === 'dark'
