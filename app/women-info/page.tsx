@@ -10,7 +10,7 @@ const WOMEN_INFO_DATE = '2000-01-02'
 const DEFAULT_AREA_ID = 1
 const AREA_STORAGE_KEY = 'kij_women_info_area'
 const WOMEN_INFO_AREA_IDS = [1, 2, 3, 4]
-const COLUMN_WIDTH_MIN = 80
+const COLUMN_WIDTH_MIN = 20
 const COLUMN_WIDTH_MAX = 420
 
 const COLOR_CHOICES = [
