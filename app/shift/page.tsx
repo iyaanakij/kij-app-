@@ -40,6 +40,7 @@ const DORM_USAGE_MEMO = '__SHIFT_DORM_USAGE__'
 const DORM_ENTRY_MEMO_PREFIX = '__NARITA_DORM_ENTRY__'
 const SHOOTING_MEMO_PREFIX = '__SHIFT_SHOOTING__'
 const RETURN_HOME_MEMO = '__SHIFT_RETURN_HOME__'
+const SHIFT_CONFIRMED_MEMO = '__SHIFT_CONFIRMED__'
 const SUMMARY_COLUMN_WIDTH = 72
 
 interface ShiftMarker {
@@ -177,8 +178,8 @@ export default function ShiftPage() {
     const startDate = formatDateStr(year, month, 1)
     const endDate = formatDateStr(year, month, getDaysInMonth(year, month))
     const memoFilter = selectedAreaId === NARITA_AREA_ID
-      ? `memo.eq.${DORM_USAGE_MEMO},memo.like.${DORM_ENTRY_MEMO_PREFIX}%,memo.like.${SHOOTING_MEMO_PREFIX}%,memo.eq.${RETURN_HOME_MEMO}`
-      : `memo.like.${SHOOTING_MEMO_PREFIX}%`
+      ? `memo.eq.${DORM_USAGE_MEMO},memo.like.${DORM_ENTRY_MEMO_PREFIX}%,memo.like.${SHOOTING_MEMO_PREFIX}%,memo.eq.${RETURN_HOME_MEMO},memo.eq.${SHIFT_CONFIRMED_MEMO}`
+      : `memo.like.${SHOOTING_MEMO_PREFIX}%,memo.eq.${SHIFT_CONFIRMED_MEMO}`
     const { data, error } = await supabase
       .from('board_annotations')
       .select('id, staff_id, date, store_id, memo')
@@ -305,6 +306,30 @@ export default function ShiftPage() {
 
   function getReturnHomeMarker(staffId: number, day: number): ShiftMarker | undefined {
     return getMarker(staffId, day, marker => marker.memo === RETURN_HOME_MEMO)
+  }
+
+  function isConfirmed(staffId: number): boolean {
+    const dateStr = formatDateStr(year, month, 1)
+    return shiftMarkers.some(m => m.staff_id === staffId && m.date === dateStr && m.memo === SHIFT_CONFIRMED_MEMO)
+  }
+
+  async function toggleConfirmed(staffId: number) {
+    const dateStr = formatDateStr(year, month, 1)
+    const existing = shiftMarkers.find(m => m.staff_id === staffId && m.date === dateStr && m.memo === SHIFT_CONFIRMED_MEMO)
+    const area = AREAS.find(a => a.id === selectedAreaId)!
+    const storeId = area.storeIds[0]
+    if (existing) {
+      await supabase.from('board_annotations').delete().eq('id', existing.id)
+      setShiftMarkers(current => current.filter(m => m.id !== existing.id))
+      return
+    }
+    const { data, error } = await supabase
+      .from('board_annotations')
+      .insert({ staff_id: staffId, date: dateStr, start_time: 0, end_time: 0, color: 'blue', memo: SHIFT_CONFIRMED_MEMO, store_id: storeId })
+      .select('id, staff_id, date, store_id, memo')
+      .single()
+    if (error) { console.warn('failed to save shift confirmation', error); return }
+    if (data) setShiftMarkers(current => [...current, data as ShiftMarker])
   }
 
   function getDormCountForDay(day: number): number {
@@ -716,10 +741,11 @@ export default function ShiftPage() {
       ) : (
         <div className="bg-white rounded-xl shadow-md border border-gray-100">
           <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }} onClick={e => { if ((e.target as HTMLElement).tagName !== 'INPUT') { setEditingCell(null) } }}>
-            <table className="text-xs border-collapse" style={{ minWidth: `${120 + daysInMonth * 52 + summaryColumnCount * SUMMARY_COLUMN_WIDTH}px` }}>
+            <table className="text-xs border-collapse" style={{ minWidth: `${160 + daysInMonth * 52 + summaryColumnCount * SUMMARY_COLUMN_WIDTH}px` }}>
               <thead className="sticky top-0 z-20">
                 <tr className="bg-gray-900 text-white">
                   <th className="sticky left-0 z-10 bg-gray-900 px-3 py-2.5 border-r border-gray-700 w-28 text-left font-semibold">スタッフ</th>
+                  <th className="sticky left-28 z-10 bg-gray-900 px-1 py-2.5 border-r border-gray-700 w-10 text-center font-semibold text-[10px]">確認</th>
                   {days.map(d => {
                     const wd = getWeekday(d)
                     const isSun = wd === 0
@@ -748,6 +774,7 @@ export default function ShiftPage() {
                     <div>出勤人数</div>
                     {selectedAreaId === NARITA_AREA_ID && <div className="text-[10px] text-emerald-200">寮空室</div>}
                   </td>
+                  <td className="sticky left-28 z-10 bg-gray-800 border-r border-gray-600 w-10"></td>
                   {days.map(d => (
                     <td key={d} className={`px-1 py-1 border-l border-gray-600 text-center font-bold ${isToday(d) ? 'bg-blue-900' : ''}`}>
                       <div className="text-yellow-300">{getStaffCountForDay(d) || ''}</div>
@@ -774,6 +801,15 @@ export default function ShiftPage() {
                   return (
                   <tr key={staff.id} className={`border-b border-gray-100 ${staffIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
                     <td className="sticky left-0 z-10 bg-inherit border-r border-gray-200 px-3 py-1.5 font-semibold text-gray-800">{staff.name}</td>
+                    <td className="sticky left-28 z-10 bg-inherit border-r border-gray-200 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={isConfirmed(staff.id)}
+                        onChange={() => toggleConfirmed(staff.id)}
+                        onClick={e => e.stopPropagation()}
+                        className="cursor-pointer accent-blue-600 w-3.5 h-3.5"
+                      />
+                    </td>
                     {days.map((d, dayIdx) => {
                       const shift = getShift(staff.id, d)
                       const wd = getWeekday(d)
