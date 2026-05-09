@@ -13,6 +13,16 @@ const WOMEN_INFO_AREA_IDS = [1, 2, 3, 4]
 const COLUMN_WIDTH_MIN = 20
 const COLUMN_WIDTH_MAX = 420
 const RETIRED_ROW_BG = '#fff1f2'
+const ROW_HEIGHTS_STORAGE_KEY = 'kij_women_info_row_heights'
+
+function loadRowHeights(): Record<string, number> {
+  if (typeof window === 'undefined') return {}
+  try {
+    return JSON.parse(window.localStorage.getItem(ROW_HEIGHTS_STORAGE_KEY) ?? '{}') as Record<string, number>
+  } catch {
+    return {}
+  }
+}
 
 const COLOR_CHOICES = [
   '#ffffff', '#f8fafc', '#fef3c7', '#fee2e2', '#dcfce7', '#dbeafe', '#f3e8ff', '#ffedd5',
@@ -235,6 +245,7 @@ export default function WomenInfoPage() {
   const [query, setQuery] = useState('')
   const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null)
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null)
+  const [rowHeights, setRowHeights] = useState<Record<string, number>>(loadRowHeights)
   const selectedAreaRef = useRef(selectedAreaId)
   const womenInfoStores = useMemo(() => STORES.filter(store => WOMEN_INFO_AREA_IDS.includes(store.id)), [])
 
@@ -506,6 +517,16 @@ export default function WomenInfoPage() {
 
   async function saveColumnWidth(columnId: string, width: number) {
     await updateColumn(columnId, { width: clampColumnWidth(width) })
+  }
+
+  function saveRowHeight(rowId: string, columnId: string, el: HTMLTextAreaElement) {
+    const height = el.offsetHeight
+    const key = `${rowId}:${columnId}`
+    setRowHeights(current => {
+      const next = { ...current, [key]: height }
+      window.localStorage.setItem(ROW_HEIGHTS_STORAGE_KEY, JSON.stringify(next))
+      return next
+    })
   }
 
   async function addColumn() {
@@ -787,9 +808,10 @@ export default function WomenInfoPage() {
                               onFocus={() => setSelectedRowId(row.id)}
                               onChange={e => updateCell(row.id, column.id, e.target.value)}
                               onBlur={() => saveCell(row.id)}
+                              onMouseUp={e => saveRowHeight(row.id, column.id, e.currentTarget)}
                               rows={2}
                               className="block min-h-14 w-full resize-y border-0 bg-transparent px-2 py-2 text-xs leading-relaxed outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
-                              style={{ color: column.cellText }}
+                              style={{ color: column.cellText, height: rowHeights[`${row.id}:${column.id}`] ?? undefined }}
                             />
                           ) : (
                             <input
