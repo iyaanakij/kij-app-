@@ -728,11 +728,11 @@ export default function WomenInfoPage() {
                 <tr>
                   <th className="sticky left-0 z-30 w-14 border-r border-gray-700 bg-gray-900 px-2 py-2 text-center text-white">操作</th>
                   <th className="sticky left-14 z-30 w-12 border-r border-gray-700 bg-gray-900 px-2 py-2 text-center text-white">No</th>
-                  {columns.map(column => (
+                  {columns.map((column, colIndex) => (
                     <th
                       key={column.id}
                       onClick={() => setSelectedColumnId(column.id)}
-                      className={`border-r border-gray-300 p-0 align-middle ${selectedColumnId === column.id ? 'ring-2 ring-inset ring-blue-400' : ''}`}
+                      className={`border-r border-gray-300 p-0 align-middle ${colIndex === 0 ? 'sticky left-[104px] z-30' : ''} ${selectedColumnId === column.id ? 'ring-2 ring-inset ring-blue-400' : ''}`}
                       style={{ width: column.width, backgroundColor: column.headerBg, color: column.headerText }}
                     >
                       <input
@@ -796,10 +796,10 @@ export default function WomenInfoPage() {
                       <td className="sticky left-14 z-10 border-r border-gray-200 bg-inherit px-2 py-2 text-center font-semibold text-gray-500">
                         {index + 1}
                       </td>
-                      {columns.map(column => (
+                      {columns.map((column, colIndex) => (
                         <td
                           key={column.id}
-                          className="border-r border-gray-200 p-0 align-top"
+                          className={`border-r border-gray-200 p-0 align-top ${colIndex === 0 ? 'sticky left-[104px] z-10' : ''}`}
                           style={{ backgroundColor: rowBg ?? column.cellBg }}
                         >
                           {column.multiline ? (
