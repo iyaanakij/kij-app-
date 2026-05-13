@@ -543,11 +543,11 @@ export default function WomenInfoPage() {
       window.removeEventListener('mouseup', onUp)
       if (!ref) return
       const { id, lastH } = ref
-      setRowH(prev => {
-        const next = { ...prev, [id]: lastH }
-        window.localStorage.setItem(ROW_H_KEY, JSON.stringify(next))
-        return next
-      })
+      setRowH(prev => ({ ...prev, [id]: lastH }))
+      try {
+        const saved = JSON.parse(window.localStorage.getItem(ROW_H_KEY) ?? '{}') as Record<string, number>
+        window.localStorage.setItem(ROW_H_KEY, JSON.stringify({ ...saved, [id]: lastH }))
+      } catch {}
     }
 
     window.addEventListener('mousemove', onMove)
