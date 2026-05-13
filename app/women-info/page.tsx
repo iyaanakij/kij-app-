@@ -847,7 +847,7 @@ export default function WomenInfoPage() {
                       {columns.map((column, colIndex) => (
                         <td
                           key={column.id}
-                          className={`border-r border-gray-200 p-0 align-top ${colIndex === 0 ? 'sticky left-[104px] z-10' : ''}`}
+                          className={`relative border-r border-gray-200 p-0 align-top ${colIndex === 0 ? 'sticky left-[104px] z-10' : ''}`}
                           style={{ backgroundColor: rowBg ?? column.cellBg, height: rowHeight }}
                         >
                           {column.multiline ? (
@@ -857,8 +857,8 @@ export default function WomenInfoPage() {
                               onChange={e => updateCell(row.id, column.id, e.target.value)}
                               onBlur={() => saveCell(row.id)}
                               rows={2}
-                              className="block w-full resize-y border-0 bg-transparent px-2 py-2 text-xs leading-relaxed outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
-                              style={{ color: column.cellText, minHeight: rowHeight }}
+                              className="block w-full resize-none border-0 bg-transparent px-2 py-2 text-xs leading-relaxed outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
+                              style={{ color: column.cellText, height: rowHeight }}
                             />
                           ) : (
                             <input
@@ -871,6 +871,11 @@ export default function WomenInfoPage() {
                               style={{ color: column.cellText, height: rowHeight }}
                             />
                           )}
+                          <div
+                            className="absolute bottom-0 left-0 right-0 h-1.5 cursor-row-resize bg-transparent hover:bg-blue-300/60"
+                            onMouseDown={e => startRowResize(e, row.id)}
+                            title="ドラッグで行の高さを変更"
+                          />
                         </td>
                       ))}
                       <td className="sticky right-0 z-10 border-l border-gray-200 bg-inherit px-2 py-1 text-center align-middle" style={{ height: rowHeight }}>
