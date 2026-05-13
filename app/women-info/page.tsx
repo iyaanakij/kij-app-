@@ -13,12 +13,14 @@ const WOMEN_INFO_AREA_IDS = [1, 2, 3, 4]
 const COLUMN_WIDTH_MIN = 20
 const COLUMN_WIDTH_MAX = 420
 const RETIRED_ROW_BG = '#fff1f2'
-const ROW_HEIGHTS_STORAGE_KEY = 'kij_women_info_row_heights'
+const ROW_H_KEY = 'kij_women_info_row_h'
+const ROW_HEIGHT_MIN = 28
+const ROW_HEIGHT_DEFAULT = 40
 
-function loadRowHeights(): Record<string, number> {
+function loadRowH(): Record<string, number> {
   if (typeof window === 'undefined') return {}
   try {
-    return JSON.parse(window.localStorage.getItem(ROW_HEIGHTS_STORAGE_KEY) ?? '{}') as Record<string, number>
+    return JSON.parse(window.localStorage.getItem(ROW_H_KEY) ?? '{}') as Record<string, number>
   } catch {
     return {}
   }
@@ -245,8 +247,9 @@ export default function WomenInfoPage() {
   const [query, setQuery] = useState('')
   const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null)
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null)
-  const [rowHeights, setRowHeights] = useState<Record<string, number>>(loadRowHeights)
+  const [rowH, setRowH] = useState<Record<string, number>>(loadRowH)
   const selectedAreaRef = useRef(selectedAreaId)
+  const rowResizeRef = useRef<{ id: string; startY: number; startH: number } | null>(null)
   const womenInfoStores = useMemo(() => STORES.filter(store => WOMEN_INFO_AREA_IDS.includes(store.id)), [])
 
   const fetchRows = useCallback(async (areaId = selectedAreaId) => {
@@ -519,14 +522,29 @@ export default function WomenInfoPage() {
     await updateColumn(columnId, { width: clampColumnWidth(width) })
   }
 
-  function saveRowHeight(rowId: string, columnId: string, el: HTMLTextAreaElement) {
-    const height = el.offsetHeight
-    const key = `${rowId}:${columnId}`
-    setRowHeights(current => {
-      const next = { ...current, [key]: height }
-      window.localStorage.setItem(ROW_HEIGHTS_STORAGE_KEY, JSON.stringify(next))
-      return next
-    })
+  function startRowResize(e: React.MouseEvent, rowId: string) {
+    e.preventDefault()
+    e.stopPropagation()
+    rowResizeRef.current = { id: rowId, startY: e.clientY, startH: rowH[rowId] ?? ROW_HEIGHT_DEFAULT }
+
+    function onMove(ev: MouseEvent) {
+      if (!rowResizeRef.current) return
+      const h = Math.max(ROW_HEIGHT_MIN, rowResizeRef.current.startH + ev.clientY - rowResizeRef.current.startY)
+      setRowH(prev => ({ ...prev, [rowResizeRef.current!.id]: h }))
+    }
+
+    function onUp() {
+      rowResizeRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      setRowH(prev => {
+        window.localStorage.setItem(ROW_H_KEY, JSON.stringify(prev))
+        return prev
+      })
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
   }
 
   async function addColumn() {
@@ -771,8 +789,8 @@ export default function WomenInfoPage() {
                       className={rowClass}
                       style={rowBg ? { backgroundColor: rowBg } : undefined}
                     >
-                      <td className="sticky left-0 z-10 border-r border-gray-200 bg-inherit px-1 py-1">
-                        <div className="flex items-center justify-center gap-1">
+                      <td className="sticky left-0 z-10 border-r border-gray-200 bg-inherit relative" style={{ height: rowH[row.id] ?? ROW_HEIGHT_DEFAULT }}>
+                        <div className="flex h-full items-center justify-center gap-1">
                           <button
                             type="button"
                             onClick={() => moveRow(row.id, -1)}
@@ -792,15 +810,20 @@ export default function WomenInfoPage() {
                             ↓
                           </button>
                         </div>
+                        <div
+                          className="absolute bottom-0 left-0 right-0 h-1.5 cursor-row-resize bg-transparent hover:bg-blue-300/60"
+                          onMouseDown={e => startRowResize(e, row.id)}
+                          title="ドラッグで行の高さを変更"
+                        />
                       </td>
-                      <td className="sticky left-14 z-10 border-r border-gray-200 bg-inherit px-2 py-2 text-center font-semibold text-gray-500">
+                      <td className="sticky left-14 z-10 border-r border-gray-200 bg-inherit px-2 py-2 text-center font-semibold text-gray-500 align-middle" style={{ height: rowH[row.id] ?? ROW_HEIGHT_DEFAULT }}>
                         {index + 1}
                       </td>
                       {columns.map((column, colIndex) => (
                         <td
                           key={column.id}
                           className={`border-r border-gray-200 p-0 align-top ${colIndex === 0 ? 'sticky left-[104px] z-10' : ''}`}
-                          style={{ backgroundColor: rowBg ?? column.cellBg }}
+                          style={{ backgroundColor: rowBg ?? column.cellBg, height: rowH[row.id] ?? ROW_HEIGHT_DEFAULT }}
                         >
                           {column.multiline ? (
                             <textarea
@@ -808,10 +831,9 @@ export default function WomenInfoPage() {
                               onFocus={() => setSelectedRowId(row.id)}
                               onChange={e => updateCell(row.id, column.id, e.target.value)}
                               onBlur={() => saveCell(row.id)}
-                              onMouseUp={e => saveRowHeight(row.id, column.id, e.currentTarget)}
                               rows={2}
-                              className="block min-h-14 w-full resize-y border-0 bg-transparent px-2 py-2 text-xs leading-relaxed outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
-                              style={{ color: column.cellText, height: rowHeights[`${row.id}:${column.id}`] ?? undefined }}
+                              className="block w-full resize-y border-0 bg-transparent px-2 py-2 text-xs leading-relaxed outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
+                              style={{ color: column.cellText, minHeight: rowH[row.id] ?? 56 }}
                             />
                           ) : (
                             <input
@@ -820,13 +842,13 @@ export default function WomenInfoPage() {
                               onFocus={() => setSelectedRowId(row.id)}
                               onChange={e => updateCell(row.id, column.id, e.target.value)}
                               onBlur={() => saveCell(row.id)}
-                              className="block h-10 w-full border-0 bg-transparent px-2 text-xs outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
-                              style={{ color: column.cellText }}
+                              className="block w-full border-0 bg-transparent px-2 text-xs outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
+                              style={{ color: column.cellText, height: rowH[row.id] ?? ROW_HEIGHT_DEFAULT }}
                             />
                           )}
                         </td>
                       ))}
-                      <td className="sticky right-0 z-10 border-l border-gray-200 bg-inherit px-2 py-1 text-center">
+                      <td className="sticky right-0 z-10 border-l border-gray-200 bg-inherit px-2 py-1 text-center align-middle" style={{ height: rowH[row.id] ?? ROW_HEIGHT_DEFAULT }}>
                         <div className="flex items-center justify-center gap-2">
                           <span className="min-w-10 text-[11px] text-gray-400">
                             {savingIds.has(row.id) ? '保存中' : dirtyIds.has(row.id) ? '未保存' : '保存済'}
