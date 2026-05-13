@@ -249,7 +249,7 @@ export default function WomenInfoPage() {
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null)
   const [rowH, setRowH] = useState<Record<string, number>>(loadRowH)
   const selectedAreaRef = useRef(selectedAreaId)
-  const rowResizeRef = useRef<{ id: string; startY: number; startH: number } | null>(null)
+  const rowResizeRef = useRef<{ id: string; startY: number; startH: number; lastH: number } | null>(null)
   const womenInfoStores = useMemo(() => STORES.filter(store => WOMEN_INFO_AREA_IDS.includes(store.id)), [])
 
   const fetchRows = useCallback(async (areaId = selectedAreaId) => {
@@ -525,21 +525,28 @@ export default function WomenInfoPage() {
   function startRowResize(e: React.MouseEvent, rowId: string) {
     e.preventDefault()
     e.stopPropagation()
-    rowResizeRef.current = { id: rowId, startY: e.clientY, startH: rowH[rowId] ?? ROW_HEIGHT_DEFAULT }
+    const initH = rowH[rowId] ?? ROW_HEIGHT_DEFAULT
+    rowResizeRef.current = { id: rowId, startY: e.clientY, startH: initH, lastH: initH }
 
     function onMove(ev: MouseEvent) {
-      if (!rowResizeRef.current) return
-      const h = Math.max(ROW_HEIGHT_MIN, rowResizeRef.current.startH + ev.clientY - rowResizeRef.current.startY)
-      setRowH(prev => ({ ...prev, [rowResizeRef.current!.id]: h }))
+      const ref = rowResizeRef.current
+      if (!ref) return
+      const h = Math.max(ROW_HEIGHT_MIN, ref.startH + ev.clientY - ref.startY)
+      ref.lastH = h
+      setRowH(prev => ({ ...prev, [ref.id]: h }))
     }
 
     function onUp() {
+      const ref = rowResizeRef.current
       rowResizeRef.current = null
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
+      if (!ref) return
+      const { id, lastH } = ref
       setRowH(prev => {
-        window.localStorage.setItem(ROW_H_KEY, JSON.stringify(prev))
-        return prev
+        const next = { ...prev, [id]: lastH }
+        window.localStorage.setItem(ROW_H_KEY, JSON.stringify(next))
+        return next
       })
     }
 
