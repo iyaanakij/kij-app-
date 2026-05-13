@@ -67,6 +67,7 @@ type WomenInfoRow = {
   storeId: number
   status: WomenInfoStatus
   sortOrder: number
+  height?: number
   values: Record<string, string>
 }
 
@@ -107,6 +108,10 @@ function clampColumnWidth(width: number): number {
   return Math.min(COLUMN_WIDTH_MAX, Math.max(COLUMN_WIDTH_MIN, Math.round(width)))
 }
 
+function clampRowHeight(height: number): number {
+  return Math.max(ROW_HEIGHT_MIN, Math.round(height))
+}
+
 function defaultValues(columns: SheetColumn[]): Record<string, string> {
   return Object.fromEntries(columns.map(column => [column.id, '']))
 }
@@ -117,6 +122,7 @@ function parseRow(row: BoardAnnotationRow, columns: SheetColumn[]): WomenInfoRow
     const parsed = JSON.parse(row.memo.slice(ROW_MEMO_PREFIX.length)) as {
       sortOrder?: number
       status?: string
+      height?: number
       values?: Record<string, string>
       [key: string]: unknown
     }
@@ -133,6 +139,7 @@ function parseRow(row: BoardAnnotationRow, columns: SheetColumn[]): WomenInfoRow
       storeId: row.store_id,
       status: parsed.status === 'retired' ? 'retired' : 'active',
       sortOrder: typeof parsed.sortOrder === 'number' ? parsed.sortOrder : 0,
+      height: typeof parsed.height === 'number' ? clampRowHeight(parsed.height) : undefined,
       values: base,
     }
   } catch {
@@ -195,7 +202,7 @@ function selectConfigRow(rows: BoardAnnotationRow[]): BoardAnnotationRow | undef
 }
 
 function encodeRow(row: WomenInfoRow): string {
-  return `${ROW_MEMO_PREFIX}${JSON.stringify({ sortOrder: row.sortOrder, status: row.status, values: row.values })}`
+  return `${ROW_MEMO_PREFIX}${JSON.stringify({ sortOrder: row.sortOrder, status: row.status, height: row.height, values: row.values })}`
 }
 
 function encodeConfig(columns: SheetColumn[]): string {
@@ -530,13 +537,13 @@ export default function WomenInfoPage() {
   function startRowResize(e: React.MouseEvent, rowId: string) {
     e.preventDefault()
     e.stopPropagation()
-    const initH = rowH[rowId] ?? ROW_HEIGHT_DEFAULT
+    const initH = rowH[rowId] ?? rows.find(row => row.id === rowId)?.height ?? ROW_HEIGHT_DEFAULT
     rowResizeRef.current = { id: rowId, startY: e.clientY, startH: initH, lastH: initH }
 
     function onMove(ev: MouseEvent) {
       const ref = rowResizeRef.current
       if (!ref) return
-      const h = Math.max(ROW_HEIGHT_MIN, ref.startH + ev.clientY - ref.startY)
+      const h = clampRowHeight(ref.startH + ev.clientY - ref.startY)
       ref.lastH = h
       setRowH(prev => ({ ...prev, [ref.id]: h }))
     }
@@ -553,6 +560,11 @@ export default function WomenInfoPage() {
         const saved = JSON.parse(window.localStorage.getItem(ROW_H_KEY) ?? '{}') as Record<string, number>
         window.localStorage.setItem(ROW_H_KEY, JSON.stringify({ ...saved, [id]: lastH }))
       } catch {}
+      const row = rows.find(item => item.id === id)
+      if (!row) return
+      const nextRow = { ...row, height: lastH }
+      setRows(current => current.map(item => item.id === id ? nextRow : item))
+      if (!id.startsWith('pending-')) void persistRow(nextRow)
     }
 
     window.addEventListener('mousemove', onMove)
@@ -791,6 +803,7 @@ export default function WomenInfoPage() {
                   filteredRows.map((row, index) => {
                     const isRetired = row.status === 'retired'
                     const rowBg = isRetired ? RETIRED_ROW_BG : undefined
+                    const rowHeight = rowH[row.id] ?? row.height ?? ROW_HEIGHT_DEFAULT
                     const rowClass = selectedRowId === row.id
                       ? 'border-t border-blue-300 bg-blue-50/40'
                       : 'border-t border-gray-200 odd:bg-white even:bg-gray-50/60'
@@ -801,7 +814,7 @@ export default function WomenInfoPage() {
                       className={rowClass}
                       style={rowBg ? { backgroundColor: rowBg } : undefined}
                     >
-                      <td className="sticky left-0 z-10 border-r border-gray-200 bg-inherit relative" style={{ height: rowH[row.id] ?? ROW_HEIGHT_DEFAULT }}>
+                      <td className="sticky left-0 z-10 border-r border-gray-200 bg-inherit relative" style={{ height: rowHeight }}>
                         <div className="flex h-full items-center justify-center gap-1">
                           <button
                             type="button"
@@ -828,14 +841,14 @@ export default function WomenInfoPage() {
                           title="ドラッグで行の高さを変更"
                         />
                       </td>
-                      <td className="sticky left-14 z-10 border-r border-gray-200 bg-inherit px-2 py-2 text-center font-semibold text-gray-500 align-middle" style={{ height: rowH[row.id] ?? ROW_HEIGHT_DEFAULT }}>
+                      <td className="sticky left-14 z-10 border-r border-gray-200 bg-inherit px-2 py-2 text-center font-semibold text-gray-500 align-middle" style={{ height: rowHeight }}>
                         {index + 1}
                       </td>
                       {columns.map((column, colIndex) => (
                         <td
                           key={column.id}
                           className={`border-r border-gray-200 p-0 align-top ${colIndex === 0 ? 'sticky left-[104px] z-10' : ''}`}
-                          style={{ backgroundColor: rowBg ?? column.cellBg, height: rowH[row.id] ?? ROW_HEIGHT_DEFAULT }}
+                          style={{ backgroundColor: rowBg ?? column.cellBg, height: rowHeight }}
                         >
                           {column.multiline ? (
                             <textarea
@@ -845,7 +858,7 @@ export default function WomenInfoPage() {
                               onBlur={() => saveCell(row.id)}
                               rows={2}
                               className="block w-full resize-y border-0 bg-transparent px-2 py-2 text-xs leading-relaxed outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
-                              style={{ color: column.cellText, minHeight: rowH[row.id] ?? 56 }}
+                              style={{ color: column.cellText, minHeight: rowHeight }}
                             />
                           ) : (
                             <input
@@ -855,12 +868,12 @@ export default function WomenInfoPage() {
                               onChange={e => updateCell(row.id, column.id, e.target.value)}
                               onBlur={() => saveCell(row.id)}
                               className="block w-full border-0 bg-transparent px-2 text-xs outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
-                              style={{ color: column.cellText, height: rowH[row.id] ?? ROW_HEIGHT_DEFAULT }}
+                              style={{ color: column.cellText, height: rowHeight }}
                             />
                           )}
                         </td>
                       ))}
-                      <td className="sticky right-0 z-10 border-l border-gray-200 bg-inherit px-2 py-1 text-center align-middle" style={{ height: rowH[row.id] ?? ROW_HEIGHT_DEFAULT }}>
+                      <td className="sticky right-0 z-10 border-l border-gray-200 bg-inherit px-2 py-1 text-center align-middle" style={{ height: rowHeight }}>
                         <div className="flex items-center justify-center gap-2">
                           <span className="min-w-10 text-[11px] text-gray-400">
                             {savingIds.has(row.id) ? '保存中' : dirtyIds.has(row.id) ? '未保存' : '保存済'}
