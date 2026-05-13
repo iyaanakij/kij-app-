@@ -8,7 +8,26 @@ const adminSupabase = createClient(
 
 export async function GET(request: NextRequest) {
   const id = Number(request.nextUrl.searchParams.get('id'))
-  if (!id) return NextResponse.json({ error: 'id が必要です' }, { status: 400 })
+  const year = Number(request.nextUrl.searchParams.get('year'))
+  const month = Number(request.nextUrl.searchParams.get('month'))
+
+  if (!id) {
+    if (!year || !month || month < 1 || month > 12) {
+      return NextResponse.json({ error: 'id または year/month が必要です' }, { status: 400 })
+    }
+    const { data: job, error } = await adminSupabase
+      .from('performance_batch_jobs')
+      .select('*')
+      .eq('year', year)
+      .eq('month', month)
+      .eq('status', 'done')
+      .order('completed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ job })
+  }
 
   const { data: job, error } = await adminSupabase
     .from('performance_batch_jobs')

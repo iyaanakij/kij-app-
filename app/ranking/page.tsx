@@ -37,6 +37,25 @@ function standardRank(values: number[], idx: number, higherIsBetter: boolean): n
   return values.filter(o => (higherIsBetter ? o > v : o < v)).length + 1
 }
 
+function lastBatchStorageKey(month: string): string {
+  return `kij_ranking_last_batch_completed_at_${month}`
+}
+
+function readLastBatchCompletedAt(month: string): string | null {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem(lastBatchStorageKey(month))
+}
+
+function formatBatchTime(iso: string): string {
+  return new Date(iso).toLocaleString('ja-JP', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
 // area → CS3 shop_id
 const AREA_TO_SHOP: Record<number, string> = {
   1: '111702', // 成田
@@ -95,6 +114,7 @@ interface ShiftRow {
   date: string
   start_time: number
   end_time: number
+  status: 'normal' | 'x'
 }
 
 type RankingKey = keyof Pick<StaffStats, 'honShimei' | 'shashinShimei' | 'honRate' | 'kadoritsu' | 'nonHonCourseMin' | 'honCourseMin'>
@@ -116,7 +136,7 @@ const RANKINGS: RankingDef[] = [
 ]
 
 type BatchJobStatus = 'pending' | 'running' | 'done' | 'error'
-interface BatchJob { id: number; year: number; month: number; status: BatchJobStatus; message?: string }
+interface BatchJob { id: number; year: number; month: number; status: BatchJobStatus; message?: string; completed_at?: string | null }
 
 export default function RankingPage() {
   const monthOptions = getMonthOptions()
@@ -131,8 +151,14 @@ export default function RankingPage() {
 
   const [batchJob, setBatchJob] = useState<BatchJob | null>(null)
   const [batchError, setBatchError] = useState<string | null>(null)
+  const [lastBatchCompletedAt, setLastBatchCompletedAt] = useState<string | null>(() => readLastBatchCompletedAt(monthOptions[0].value))
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reloadRef = useRef<(() => void) | null>(null)
+
+  function rememberBatchCompletedAt(targetMonth: string, completedAt: string) {
+    setLastBatchCompletedAt(completedAt)
+    localStorage.setItem(lastBatchStorageKey(targetMonth), completedAt)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -272,20 +298,25 @@ export default function RankingPage() {
         if (staffIds.length > 0) {
           const shifts = await fetchAllPaginated<ShiftRow>((from, to) =>
             supabase.from('shifts')
-              .select('staff_id, date, start_time, end_time')
+              .select('staff_id, date, start_time, end_time, status')
               .in('store_id', area.storeIds)
               .in('staff_id', staffIds)
+              .neq('status', 'x')
               .gte('date', dateFrom)
               .lte('date', dateTo)
               .range(from, to)
           )
-          const seenShiftDays = new Set<string>()
+          const shiftByDay = new Map<string, ShiftRow>()
           for (const sh of shifts) {
             const key = `${sh.staff_id}:${sh.date}`
-            if (seenShiftDays.has(key)) continue
-            seenShiftDays.add(key)
+            const current = shiftByDay.get(key)
+            if (!current || (sh.end_time - sh.start_time) > (current.end_time - current.start_time)) {
+              shiftByDay.set(key, sh)
+            }
+          }
+          for (const sh of shiftByDay.values()) {
             const s = staffMap.get(sh.staff_id)
-            if (s) s.shiftMin += (sh.end_time - sh.start_time) * 60
+            if (s) s.shiftMin += Math.max(0, sh.end_time - sh.start_time) * 60
           }
         }
 
@@ -316,6 +347,24 @@ export default function RankingPage() {
     }
   }, [month, areaId, section])
 
+  useEffect(() => {
+    let cancelled = false
+    const [y, m] = month.split('-').map(Number)
+    async function loadLastBatchCompletedAt() {
+      try {
+        const res = await fetch(`/api/admin/performance-batch-job?year=${y}&month=${m}`)
+        const data = await res.json()
+        if (cancelled || !res.ok || !data.job?.completed_at) return
+        setLastBatchCompletedAt(data.job.completed_at)
+        localStorage.setItem(lastBatchStorageKey(month), data.job.completed_at)
+      } catch {
+        // 表示補助なので取得失敗時はキャッシュ表示のままにする
+      }
+    }
+    loadLastBatchCompletedAt()
+    return () => { cancelled = true }
+  }, [month])
+
   // ポーリング停止
   function stopPoll() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
@@ -340,7 +389,12 @@ export default function RankingPage() {
     if (!res.ok || !data.job) { setBatchError(data.error ?? '集計開始に失敗しました'); return }
 
     setBatchJob(data.job)
-    if (data.job.status === 'done') { reloadRef.current?.(); return }
+    if (data.job.status === 'done') {
+      const completedAt = data.job.completed_at ?? new Date().toISOString()
+      rememberBatchCompletedAt(month, completedAt)
+      reloadRef.current?.()
+      return
+    }
     if (data.job.status === 'error') { setBatchError(data.job.message ?? '集計エラー'); return }
 
     // pending / running → ポーリング開始（最大5分）
@@ -367,6 +421,8 @@ export default function RankingPage() {
         consecutiveFails = 0
         setBatchJob(d.job)
         if (d.job.status === 'done') {
+          const completedAt = d.job.completed_at ?? new Date().toISOString()
+          rememberBatchCompletedAt(month, completedAt)
           stopPoll()
           reloadRef.current?.()
         } else if (d.job.status === 'error') {
@@ -384,6 +440,11 @@ export default function RankingPage() {
   }
 
   const batchRunning = batchJob?.status === 'pending' || batchJob?.status === 'running'
+
+  function handleMonthChange(nextMonth: string) {
+    setMonth(nextMonth)
+    setLastBatchCompletedAt(readLastBatchCompletedAt(nextMonth))
+  }
 
   const rankMaps = RANKINGS.map(def => {
     const values = stats.map(s => s[def.key])
@@ -408,7 +469,7 @@ export default function RankingPage() {
         <div className="flex flex-wrap items-center gap-3 mb-6">
           <select
             value={month}
-            onChange={e => setMonth(e.target.value)}
+            onChange={e => handleMonthChange(e.target.value)}
             className="bg-gray-800 border border-gray-700 text-gray-200 rounded px-3 py-1.5 text-sm"
           >
             {monthOptions.map(o => (
@@ -455,6 +516,11 @@ export default function RankingPage() {
           >
             {batchRunning ? '集計中...' : '集計'}
           </button>
+          {lastBatchCompletedAt && (
+            <span className="text-xs text-gray-500 whitespace-nowrap">
+              最終集計: {formatBatchTime(lastBatchCompletedAt)}
+            </span>
+          )}
         </div>
 
         {batchRunning && (
