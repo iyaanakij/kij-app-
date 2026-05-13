@@ -247,10 +247,15 @@ export default function WomenInfoPage() {
   const [query, setQuery] = useState('')
   const [selectedColumnId, setSelectedColumnId] = useState<string | null>(null)
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null)
-  const [rowH, setRowH] = useState<Record<string, number>>(loadRowH)
+  const [rowH, setRowH] = useState<Record<string, number>>({})
   const selectedAreaRef = useRef(selectedAreaId)
   const rowResizeRef = useRef<{ id: string; startY: number; startH: number; lastH: number } | null>(null)
   const womenInfoStores = useMemo(() => STORES.filter(store => WOMEN_INFO_AREA_IDS.includes(store.id)), [])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setRowH(loadRowH()), 0)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   const fetchRows = useCallback(async (areaId = selectedAreaId) => {
     setLoading(true)
