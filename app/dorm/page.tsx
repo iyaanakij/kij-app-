@@ -107,6 +107,16 @@ export default function DormPage() {
   const [dormStaffIds, setDormStaffIds] = useState<Set<number>>(new Set())
   const [dormStaffConfigRows, setDormStaffConfigRows] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(false)
+  const [hiddenDays, setHiddenDays] = useState<Set<number>>(new Set())
+
+  function toggleHiddenDay(day: number) {
+    setHiddenDays(prev => {
+      const next = new Set(prev)
+      if (next.has(day)) next.delete(day)
+      else next.add(day)
+      return next
+    })
+  }
 
   const daysInMonth = getDaysInMonth(year, month)
   const days = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => i + 1), [daysInMonth])
@@ -379,7 +389,17 @@ export default function DormPage() {
               部屋 {DORM_ROOMS.join('・')} / 寮プルダウン対象 {dormStaffIds.size === 0 ? '未設定' : `${dormStaff.length}名`}
             </div>
           </div>
-          <button onClick={fetchData} className="ml-auto px-3 py-1.5 rounded-full bg-gray-900 text-white text-xs font-bold hover:bg-gray-700 transition-colors">再読込</button>
+          <div className="ml-auto flex items-center gap-2">
+            {hiddenDays.size > 0 && (
+              <button
+                onClick={() => setHiddenDays(new Set())}
+                className="px-3 py-1.5 text-xs bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-full font-medium transition-colors"
+              >
+                全日表示（{hiddenDays.size}件非表示）
+              </button>
+            )}
+            <button onClick={fetchData} className="px-3 py-1.5 rounded-full bg-gray-900 text-white text-xs font-bold hover:bg-gray-700 transition-colors">再読込</button>
+          </div>
         </div>
         <div className="mt-3 border-t border-gray-100 pt-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -455,10 +475,30 @@ export default function DormPage() {
                   const wd = new Date(year, month - 1, day).getDay()
                   const staffOptions = getStaffOptionsForDate(date)
                   const rowBg = wd === 0 ? 'bg-red-50/70' : wd === 6 ? 'bg-sky-50/70' : 'bg-white'
+                  const isHidden = hiddenDays.has(day)
+                  if (isHidden) {
+                    return (
+                      <Fragment key={date}>
+                        <tr
+                          className="border-t border-gray-200 cursor-pointer hover:bg-gray-50 select-none"
+                          onClick={() => toggleHiddenDay(day)}
+                        >
+                          <td className="sticky left-0 z-10 bg-white border-r border-gray-200 px-1 py-0.5 text-center text-xs font-bold text-gray-400">{day}</td>
+                          <td className={`sticky left-9 z-10 bg-white border-r border-gray-200 px-1 py-0.5 text-center text-xs font-bold ${wd === 0 ? 'text-red-300' : wd === 6 ? 'text-sky-300' : 'text-gray-300'}`}>{WEEKDAY_LABELS[wd]}</td>
+                          <td colSpan={DORM_ROOMS.length * 3 + 1} className="px-2 py-0.5 text-[10px] text-gray-300">▼ タップして展開</td>
+                        </tr>
+                      </Fragment>
+                    )
+                  }
                   return (
                     <Fragment key={date}>
                       <tr className={`${rowBg} border-t border-gray-200`}>
-                        <td rowSpan={2} className="sticky left-0 z-10 bg-inherit border-r border-gray-200 px-1 py-2 text-center text-sm font-bold text-gray-800">{day}</td>
+                        <td
+                          rowSpan={2}
+                          onClick={() => toggleHiddenDay(day)}
+                          className="sticky left-0 z-10 bg-inherit border-r border-gray-200 px-1 py-2 text-center text-sm font-bold text-gray-800 cursor-pointer hover:bg-gray-100 select-none"
+                          title={`${day}日を非表示`}
+                        >{day}</td>
                         <td rowSpan={2} className={`sticky left-9 z-10 bg-inherit border-r border-gray-200 px-1 py-2 text-center font-bold ${wd === 0 ? 'text-red-500' : wd === 6 ? 'text-sky-500' : 'text-gray-500'}`}>{WEEKDAY_LABELS[wd]}</td>
                         {DORM_ROOMS.map(room => {
                           const entry = getEntry(date, room)

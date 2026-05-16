@@ -68,6 +68,16 @@ export default function ShiftPage() {
   const [rejectReason, setRejectReason] = useState('')
 
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
+  const [hiddenDays, setHiddenDays] = useState<Set<number>>(new Set())
+
+  function toggleHiddenDay(day: number) {
+    setHiddenDays(prev => {
+      const next = new Set(prev)
+      if (next.has(day)) next.delete(day)
+      else next.add(day)
+      return next
+    })
+  }
 
   // Inline editing
   const [editingCell, setEditingCell] = useState<{ staffId: number; day: number } | null>(null)
@@ -716,6 +726,14 @@ export default function ShiftPage() {
             ))}
           </div>
           <div className="ml-auto flex items-center gap-2">
+            {hiddenDays.size > 0 && (
+              <button
+                onClick={() => setHiddenDays(new Set())}
+                className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-full font-medium transition-colors"
+              >
+                全日表示（{hiddenDays.size}件非表示）
+              </button>
+            )}
             {lastSyncAt && (
               <span className="text-xs text-gray-400">
                 CS3同期: {new Date(lastSyncAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -751,11 +769,27 @@ export default function ShiftPage() {
                     const isSun = wd === 0
                     const isSat = wd === 6
                     const today = isToday(d)
+                    const hidden = hiddenDays.has(d)
+                    if (hidden) {
+                      return (
+                        <th
+                          key={d}
+                          onClick={() => toggleHiddenDay(d)}
+                          className="border-l border-gray-700 text-center cursor-pointer hover:bg-gray-700"
+                          style={{ minWidth: 10, width: 10, maxWidth: 10, padding: 0 }}
+                          title={`${d}日を表示`}
+                        >
+                          <div className="text-gray-500 select-none" style={{ writingMode: 'vertical-rl', fontSize: 8, lineHeight: 1, padding: '2px 1px' }}>▶</div>
+                        </th>
+                      )
+                    }
                     return (
                       <th
                         key={d}
-                        className={`px-1 py-2 border-l border-gray-700 text-center ${isSun ? 'text-red-300' : isSat ? 'text-sky-300' : 'text-gray-200'} ${today ? 'bg-blue-800' : ''}`}
+                        onClick={() => toggleHiddenDay(d)}
+                        className={`px-1 py-2 border-l border-gray-700 text-center cursor-pointer select-none ${isSun ? 'text-red-300' : isSat ? 'text-sky-300' : 'text-gray-200'} ${today ? 'bg-blue-800' : 'hover:bg-gray-700'}`}
                         style={{ minWidth: 52 }}
+                        title={`${d}日を非表示`}
                       >
                         <div className={today ? 'inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-400 text-white font-bold text-xs' : ''}>{d}</div>
                         <div className="text-xs opacity-75">{WEEKDAY_LABELS[wd]}</div>
@@ -775,14 +809,19 @@ export default function ShiftPage() {
                     {selectedAreaId === NARITA_AREA_ID && <div className="text-[10px] text-emerald-200">寮空室</div>}
                   </td>
                   <td className="sticky left-28 z-10 bg-gray-800 border-r border-gray-600 w-10"></td>
-                  {days.map(d => (
-                    <td key={d} className={`px-1 py-1 border-l border-gray-600 text-center font-bold ${isToday(d) ? 'bg-blue-900' : ''}`}>
-                      <div className="text-yellow-300">{getStaffCountForDay(d) || ''}</div>
-                      {selectedAreaId === NARITA_AREA_ID && (
-                        <div className="text-[10px] leading-3 text-emerald-200">{getDormVacancyForDay(d)}</div>
-                      )}
-                    </td>
-                  ))}
+                  {days.map(d => {
+                    if (hiddenDays.has(d)) {
+                      return <td key={d} className="border-l border-gray-600 bg-gray-800" style={{ minWidth: 10, width: 10, maxWidth: 10, padding: 0 }} />
+                    }
+                    return (
+                      <td key={d} className={`px-1 py-1 border-l border-gray-600 text-center font-bold ${isToday(d) ? 'bg-blue-900' : ''}`}>
+                        <div className="text-yellow-300">{getStaffCountForDay(d) || ''}</div>
+                        {selectedAreaId === NARITA_AREA_ID && (
+                          <div className="text-[10px] leading-3 text-emerald-200">{getDormVacancyForDay(d)}</div>
+                        )}
+                      </td>
+                    )
+                  })}
                   <td className="px-1 py-1 border-l-2 border-gray-500 text-center font-bold text-yellow-300">{monthlyTotalShiftDays || ''}</td>
                   <td className="px-1 py-1 border-l border-gray-600 text-center font-bold text-yellow-300">{monthlyTotalHours ? `${formatHours(monthlyTotalHours)}h` : ''}</td>
                   <td className="px-1 py-1 border-l border-gray-600 text-center font-bold text-yellow-300">{monthlyAverageStaffCount ? monthlyAverageStaffCount.toFixed(1) : ''}</td>
@@ -811,6 +850,16 @@ export default function ShiftPage() {
                       />
                     </td>
                     {days.map((d, dayIdx) => {
+                      if (hiddenDays.has(d)) {
+                        return (
+                          <td
+                            key={d}
+                            onClick={() => toggleHiddenDay(d)}
+                            className="border-l border-gray-100 bg-gray-50 cursor-pointer hover:bg-blue-50"
+                            style={{ minWidth: 10, width: 10, maxWidth: 10, padding: 0 }}
+                          />
+                        )
+                      }
                       const shift = getShift(staff.id, d)
                       const wd = getWeekday(d)
                       const isSun = wd === 0
