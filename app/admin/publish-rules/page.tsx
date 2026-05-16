@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 
 const SHOPS = [
   { id: '111701', label: '西船橋' },
@@ -51,11 +51,13 @@ function CastMatrix({
   castName,
   rowMap,
   onSaved,
+  onNameSaved,
 }: {
   castId: string
   castName: string
   rowMap: Map<RuleKey, RuleRow>
   onSaved: (castId: string, updates: Pick<RuleRow, 'source_shop_id' | 'site_id' | 'enabled'>[]) => void
+  onNameSaved: (castId: string, newName: string) => void
 }) {
   const [edits, setEdits] = useState<Record<RuleKey, boolean>>(() => {
     const init: Record<RuleKey, boolean> = {}
@@ -64,6 +66,28 @@ function CastMatrix({
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [nameValue, setNameValue] = useState(castName)
+  const [nameSaving, setNameSaving] = useState(false)
+  const nameInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (editingName) nameInputRef.current?.focus()
+  }, [editingName])
+
+  const handleNameSave = async () => {
+    const trimmed = nameValue.trim()
+    if (!trimmed || trimmed === castName) { setEditingName(false); setNameValue(castName); return }
+    setNameSaving(true)
+    const res = await fetch('/api/admin/publish-rules', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cs3_cast_id: castId, cast_name: trimmed }),
+    })
+    setNameSaving(false)
+    if (res.ok) { onNameSaved(castId, trimmed); setEditingName(false) }
+    else { setNameValue(castName); setEditingName(false) }
+  }
 
   const { hasVenrey, hasHP } = castCreds(rowMap)
   const enabledCount = Object.values(edits).filter(Boolean).length
@@ -105,7 +129,30 @@ function CastMatrix({
     <details className="border border-gray-200 rounded-lg overflow-hidden">
       <summary className="flex items-center justify-between px-4 py-3 bg-white cursor-pointer hover:bg-gray-50 select-none">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="font-medium text-gray-800 text-sm truncate">{castName}</span>
+          {editingName ? (
+            <input
+              ref={nameInputRef}
+              value={nameValue}
+              onChange={e => setNameValue(e.target.value)}
+              onBlur={handleNameSave}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleNameSave() } if (e.key === 'Escape') { setNameValue(castName); setEditingName(false) } }}
+              onClick={e => e.preventDefault()}
+              disabled={nameSaving}
+              className="font-medium text-gray-800 text-sm border border-blue-400 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-300 w-36"
+            />
+          ) : (
+            <span className="font-medium text-gray-800 text-sm truncate">{nameValue}</span>
+          )}
+          <button
+            type="button"
+            onClick={e => { e.preventDefault(); e.stopPropagation(); setEditingName(v => !v) }}
+            className="shrink-0 text-gray-300 hover:text-blue-500 transition-colors"
+            title="名前を編集"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+            </svg>
+          </button>
           <div className="flex gap-1 shrink-0">
             {hasVenrey && (
               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">Venrey</span>
@@ -248,6 +295,10 @@ export default function PublishRulesPage() {
       const u = updates.find(u => u.source_shop_id === r.source_shop_id && u.site_id === r.site_id)
       return u ? { ...r, enabled: u.enabled } : r
     }))
+  }, [])
+
+  const handleNameSaved = useCallback((castId: string, newName: string) => {
+    setRules(prev => prev.map(r => r.cs3_cast_id === castId ? { ...r, cast_name: newName } : r))
   }, [])
 
   const casts = (() => {
@@ -393,6 +444,7 @@ export default function PublishRulesPage() {
             castName={c.castName}
             rowMap={c.rowMap}
             onSaved={handleSaved}
+            onNameSaved={handleNameSaved}
           />
         ))}
       </div>

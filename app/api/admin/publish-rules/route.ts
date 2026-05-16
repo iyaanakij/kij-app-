@@ -45,3 +45,19 @@ export async function POST(request: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
+
+export async function PATCH(request: NextRequest) {
+  const body = await request.json()
+  const { cs3_cast_id, cast_name } = body as { cs3_cast_id?: string; cast_name?: string }
+  if (!cs3_cast_id || typeof cast_name !== 'string' || !cast_name.trim()) {
+    return NextResponse.json({ error: 'cs3_cast_id and cast_name are required' }, { status: 400 })
+  }
+
+  const { error } = await adminSupabase
+    .from('publish_rules')
+    .update({ cast_name: cast_name.trim(), updated_at: new Date().toISOString() })
+    .eq('cs3_cast_id', cs3_cast_id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}
