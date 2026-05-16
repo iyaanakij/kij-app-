@@ -775,7 +775,7 @@ export default function ShiftPage() {
       ) : (
         <div className="bg-white rounded-xl shadow-md border border-gray-100">
           <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 160px)' }} onClick={e => { if ((e.target as HTMLElement).tagName !== 'INPUT') { setEditingCell(null) } }}>
-            <table className="text-xs border-collapse" style={{ minWidth: `${160 + daysInMonth * 52 + summaryColumnCount * SUMMARY_COLUMN_WIDTH}px` }}>
+            <table className="text-xs border-collapse" style={{ minWidth: `${160 + days.reduce((sum, d) => sum + (hiddenDays.has(d) ? 10 : 52), 0) + summaryColumnCount * SUMMARY_COLUMN_WIDTH}px` }}>
               <thead className="sticky top-0 z-20">
                 <tr className="bg-gray-900 text-white">
                   <th className="sticky left-0 z-10 bg-gray-900 px-3 py-2.5 border-r border-gray-700 w-28 text-left font-semibold">スタッフ</th>
