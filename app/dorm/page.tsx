@@ -118,6 +118,22 @@ export default function DormPage() {
     })
   }
 
+  const hiddenDaysKey = `kij_dorm_hidden_days_${year}_${month}`
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(hiddenDaysKey)
+      setHiddenDays(stored ? new Set(JSON.parse(stored) as number[]) : new Set())
+    } catch {
+      setHiddenDays(new Set())
+    }
+  }, [hiddenDaysKey])
+
+  useEffect(() => {
+    if (hiddenDays.size === 0) localStorage.removeItem(hiddenDaysKey)
+    else localStorage.setItem(hiddenDaysKey, JSON.stringify(Array.from(hiddenDays)))
+  }, [hiddenDays, hiddenDaysKey])
+
   const daysInMonth = getDaysInMonth(year, month)
   const days = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => i + 1), [daysInMonth])
   const naritaArea = AREAS.find(a => a.id === NARITA_AREA_ID)!

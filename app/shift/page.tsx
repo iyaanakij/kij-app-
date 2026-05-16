@@ -79,6 +79,22 @@ export default function ShiftPage() {
     })
   }
 
+  const hiddenDaysKey = `kij_shift_hidden_days_${year}_${month}_${selectedAreaId}`
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(hiddenDaysKey)
+      setHiddenDays(stored ? new Set(JSON.parse(stored) as number[]) : new Set())
+    } catch {
+      setHiddenDays(new Set())
+    }
+  }, [hiddenDaysKey])
+
+  useEffect(() => {
+    if (hiddenDays.size === 0) localStorage.removeItem(hiddenDaysKey)
+    else localStorage.setItem(hiddenDaysKey, JSON.stringify(Array.from(hiddenDays)))
+  }, [hiddenDays, hiddenDaysKey])
+
   // Inline editing
   const [editingCell, setEditingCell] = useState<{ staffId: number; day: number } | null>(null)
   const [editValue, setEditValue] = useState('')
