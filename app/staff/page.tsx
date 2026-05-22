@@ -51,6 +51,7 @@ export default function StaffPage() {
   const [newTargetMediaName, setNewTargetMediaName] = useState('')
   const [newTargetDestination, setNewTargetDestination] = useState('')
   const [deliverySaving, setDeliverySaving] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const fetchStaff = useCallback(async () => {
     setLoading(true)
@@ -304,7 +305,10 @@ export default function StaffPage() {
     })
   }
 
+  const unassignedCount = staffList.filter(s => s.storeIds.length === 0).length
+
   const filteredStaff = staffList.filter(s => {
+    if (searchQuery && !s.name.toLowerCase().includes(searchQuery.toLowerCase())) return false
     const brand = getStaffBrand(s.storeIds)
     if (selectedBrandFilter && brand !== selectedBrandFilter) return false
     if (selectedStoreFilter !== null) {
@@ -324,6 +328,9 @@ export default function StaffPage() {
           <div>
             <h1 className="text-lg font-bold text-gray-800">スタッフ管理</h1>
             <p className="text-xs text-gray-500 mt-0.5">全{staffList.length}名 / 表示{filteredStaff.length}名</p>
+            {unassignedCount > 0 && (
+              <p className="text-xs text-orange-600 font-medium mt-0.5">⚠ 店舗未設定 {unassignedCount}名（シフトが反映されません）</p>
+            )}
             {syncResult && (
               <div className="text-xs text-green-600 mt-1 space-y-0.5">
                 {[...STORES, ...IYASHI_STORES].map(store => {
@@ -343,6 +350,7 @@ export default function StaffPage() {
             <button
               onClick={syncFromHP}
               disabled={syncing}
+              title="City Heavenからキャスト名を自動取得・登録します（重複解消も自動実行）"
               className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded-full font-medium text-sm transition-colors shadow-sm"
             >
               {syncing ? '同期中...' : 'HP同期'}
@@ -357,6 +365,14 @@ export default function StaffPage() {
         </div>
         {/* フィルター（1行） */}
         <div className="flex gap-1.5 mt-3 flex-wrap items-center">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="名前で検索..."
+            className="border border-gray-200 rounded-full px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white w-28"
+          />
+          <span className="text-gray-200 mx-0.5">|</span>
           {([null, 'both', 'M', 'Y'] as (StaffBrand | null)[]).map(brand => {
             const label = brand === null ? '全て' : brand === 'both' ? '共通' : brand === 'M' ? 'M性感' : '癒し'
             const count = brand === null ? staffList.length : staffList.filter(s => getStaffBrand(s.storeIds) === brand).length
@@ -396,6 +412,16 @@ export default function StaffPage() {
             )
           })}
         </div>
+        <details className="mt-3">
+          <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600 font-medium select-none">操作ガイドを表示 ▾</summary>
+          <div className="mt-2 text-xs text-gray-500 bg-gray-50 rounded-lg p-3 space-y-1.5 border border-gray-100">
+            <p><span className="font-semibold text-orange-600">所属店舗の設定</span> — シフト表への自動反映に必須。未設定のままだとCS3で承認されてもシフト表に表示されません</p>
+            <p><span className="font-semibold text-green-700">HP同期</span> — City Heavenからキャスト名を自動取得して登録・更新します（重複解消も自動実行）</p>
+            <p><span className="font-semibold text-purple-700">アカウント</span> — キャストがシフト・写メ日記を確認するためのログインアカウントを発行します（LINE連携も管理）</p>
+            <p><span className="font-semibold text-amber-700">編集</span> — 名前・入店日・所属店舗・写メ日記転送先を変更します</p>
+            <p><span className="font-semibold text-red-600">削除</span> — スタッフを完全削除します。シフト・予約データに影響するため慎重に使用してください</p>
+          </div>
+        </details>
       </div>
 
       {loading ? (
@@ -433,6 +459,7 @@ export default function StaffPage() {
                         <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-medium">登録済</span>
                       )}
                     </div>
+                    {s.notes && <p className="text-xs text-gray-400 font-normal mt-0.5 truncate max-w-xs">{s.notes}</p>}
                   </td>
                   <td className="px-4 py-3 text-gray-500 text-sm">
                     {s.join_date ? s.join_date.replace(/-/g, '/') : <span className="text-gray-300">—</span>}
@@ -440,7 +467,7 @@ export default function StaffPage() {
                   <td className="px-4 py-3">
                     <div className="flex gap-1.5 flex-wrap">
                       {s.storeIds.length === 0 ? (
-                        <span className="text-gray-400 text-xs">未設定</span>
+                        <span className="bg-orange-100 text-orange-700 text-xs px-2.5 py-0.5 rounded-full font-medium border border-orange-200">⚠ 店舗未設定</span>
                       ) : (
                         s.storeIds.map(sid => {
                           const mStore = STORES.find(st => st.id === sid)
@@ -460,18 +487,21 @@ export default function StaffPage() {
                     <div className="flex gap-1.5 justify-end items-center">
                       <button
                         onClick={() => openEdit(s)}
+                        title="名前・入店日・所属店舗・写メ日記転送先を編集"
                         className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-medium transition-colors"
                       >
                         編集
                       </button>
                       <button
                         onClick={() => openAccountModal(s)}
+                        title="キャスト用ログインアカウントの発行・LINE連携管理"
                         className="px-3 py-1.5 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-700 text-xs font-medium transition-colors"
                       >
                         アカウント
                       </button>
                       <button
                         onClick={() => deleteStaff(s.id, s.name)}
+                        title="スタッフを削除（シフト・予約データに影響します）"
                         className="px-3 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 text-xs font-medium transition-colors"
                       >
                         削除
@@ -622,7 +652,8 @@ export default function StaffPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">所属店舗（複数選択可）</label>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">所属店舗（複数選択可）</label>
+                <p className="text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-lg px-2.5 py-1.5 mb-2">シフト表への自動反映には設定が必須です</p>
                 <div className="flex gap-2 flex-wrap">
                   {STORES.map(s => {
                     const selected = (editing.storeIds ?? []).includes(s.id)
