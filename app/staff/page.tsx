@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import { Staff, STORES, IYASHI_STORES, M_STORE_IDS, Y_STORE_IDS, getStaffBrand, StaffBrand } from '@/lib/types'
+import { Staff, STORES, IYASHI_STORES, getStaffBrand, StaffBrand } from '@/lib/types'
 
 interface StaffWithStores extends Staff {
   storeIds: number[]
@@ -30,7 +30,6 @@ export default function StaffPage() {
   const [loading, setLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Partial<StaffWithStores>>(emptyStaff())
-  const [isEdit, setIsEdit] = useState(false)
   const [saving, setSaving] = useState(false)
   const [accountModalOpen, setAccountModalOpen] = useState(false)
   const [accountStaff, setAccountStaff] = useState<StaffWithStores | null>(null)
@@ -43,8 +42,6 @@ export default function StaffPage() {
   const [accountLoading, setAccountLoading] = useState(false)
   const [accountUserId, setAccountUserId] = useState<string | null>(null)
   const [registeredStaffIds, setRegisteredStaffIds] = useState<Set<number>>(new Set())
-  const [syncing, setSyncing] = useState(false)
-  const [syncResult, setSyncResult] = useState<Record<number, { added: number; linked: number; skipped: number; total: number }> | null>(null)
   const [selectedStoreFilter, setSelectedStoreFilter] = useState<number | null>(null)
   const [selectedBrandFilter, setSelectedBrandFilter] = useState<StaffBrand | null>(null)
   const [deliveryTargets, setDeliveryTargets] = useState<DeliveryTarget[]>([])
@@ -74,18 +71,8 @@ export default function StaffPage() {
 
   useEffect(() => { fetchStaff() }, [fetchStaff])
 
-  function openAdd() {
-    setEditing(emptyStaff())
-    setIsEdit(false)
-    setDeliveryTargets([])
-    setNewTargetMediaName('')
-    setNewTargetDestination('')
-    setModalOpen(true)
-  }
-
   async function openEdit(s: StaffWithStores) {
     setEditing({ ...s })
-    setIsEdit(true)
     setNewTargetMediaName('')
     setNewTargetDestination('')
     const { data } = await supabase
@@ -132,21 +119,12 @@ export default function StaffPage() {
       notes: editing.notes || null,
     }
 
-    let staffId: number
-    if (isEdit && editing.id) {
+    if (editing.id) {
       await supabase.from('staff').update(payload).eq('id', editing.id)
-      staffId = editing.id
-    } else {
-      const { data } = await supabase.from('staff').insert(payload).select().single()
-      staffId = data?.id
-    }
-
-    if (staffId) {
-      // Sync store assignments
-      await supabase.from('staff_stores').delete().eq('staff_id', staffId)
+      await supabase.from('staff_stores').delete().eq('staff_id', editing.id)
       const storeIds = editing.storeIds ?? []
       if (storeIds.length > 0) {
-        await supabase.from('staff_stores').insert(storeIds.map(sid => ({ staff_id: staffId, store_id: sid })))
+        await supabase.from('staff_stores').insert(storeIds.map(sid => ({ staff_id: editing.id!, store_id: sid })))
       }
     }
 
@@ -266,27 +244,6 @@ export default function StaffPage() {
     setAccountSaving(false)
   }
 
-  async function syncFromHP() {
-    setSyncing(true)
-    setSyncResult(null)
-    try {
-      const res = await fetch('/api/cast-sync', { method: 'POST' })
-      const data = await res.json()
-      if (data.error) {
-        alert('同期エラー: ' + data.error)
-        setSyncing(false)
-        return
-      }
-      setSyncResult(data.perStore)
-      // 同期後に自動で重複解消
-      await fetch('/api/staff-dedup', { method: 'POST' })
-      fetchStaff()
-    } catch {
-      alert('同期に失敗しました')
-    }
-    setSyncing(false)
-  }
-
   async function deleteStaff(id: number, name: string) {
     if (!confirm(`${name} を削除しますか？\nこのスタッフのシフトと予約データも影響を受けます。`)) return
     const { error } = await supabase.from('staff').delete().eq('id', id)
@@ -324,44 +281,12 @@ export default function StaffPage() {
   return (
     <div className="p-3">
       <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4 mb-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-lg font-bold text-gray-800">スタッフ管理</h1>
-            <p className="text-xs text-gray-500 mt-0.5">全{staffList.length}名 / 表示{filteredStaff.length}名</p>
-            {unassignedCount > 0 && (
-              <p className="text-xs text-orange-600 font-medium mt-0.5">⚠ 店舗未設定 {unassignedCount}名（シフトが反映されません）</p>
-            )}
-            {syncResult && (
-              <div className="text-xs text-green-600 mt-1 space-y-0.5">
-                {[...STORES, ...IYASHI_STORES].map(store => {
-                  const r = syncResult[store.id]
-                  if (!r) return null
-                  const brand = M_STORE_IDS.includes(store.id) ? 'M性感' : '癒したくて'
-                  return (
-                    <p key={store.id}>
-                      {brand}/{store.name}: 取得{r.total}名 / 新規{r.added}名 / 紐付け{r.linked}名
-                    </p>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={syncFromHP}
-              disabled={syncing}
-              title="City Heavenからキャスト名を自動取得・登録します（重複解消も自動実行）"
-              className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-4 py-2 rounded-full font-medium text-sm transition-colors shadow-sm"
-            >
-              {syncing ? '同期中...' : 'HP同期'}
-            </button>
-            <button
-              onClick={openAdd}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-medium text-sm transition-colors shadow-sm"
-            >
-              + 追加
-            </button>
-          </div>
+        <div>
+          <h1 className="text-lg font-bold text-gray-800">スタッフ管理</h1>
+          <p className="text-xs text-gray-500 mt-0.5">全{staffList.length}名 / 表示{filteredStaff.length}名</p>
+          {unassignedCount > 0 && (
+            <p className="text-xs text-orange-600 font-medium mt-0.5">⚠ 店舗未設定 {unassignedCount}名（シフトが反映されません）</p>
+          )}
         </div>
         {/* フィルター（1行） */}
         <div className="flex gap-1.5 mt-3 flex-wrap items-center">
@@ -626,7 +551,7 @@ export default function StaffPage() {
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
             <div className="bg-gray-900 text-white px-5 py-4 rounded-t-xl flex items-center justify-between flex-shrink-0">
-              <h2 className="font-bold text-base">{isEdit ? 'スタッフ編集' : '新規スタッフ追加'}</h2>
+              <h2 className="font-bold text-base">スタッフ編集</h2>
               <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-white text-xl leading-none transition-colors">✕</button>
             </div>
             <div className="p-5 space-y-4 text-sm overflow-y-auto">
@@ -700,7 +625,7 @@ export default function StaffPage() {
                 />
               </div>
 
-              {isEdit && editing.id && (
+              {editing.id && (
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">📧 写メ日記転送先</label>
                   <div className="space-y-2">
@@ -755,7 +680,7 @@ export default function StaffPage() {
                 disabled={saving}
                 className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 shadow-sm"
               >
-                {saving ? '保存中...' : isEdit ? '更新' : '追加'}
+                {saving ? '保存中...' : '更新'}
               </button>
             </div>
           </div>
