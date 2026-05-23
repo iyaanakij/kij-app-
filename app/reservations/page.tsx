@@ -332,7 +332,7 @@ export default function ReservationsPage() {
               onClick={async () => {
                 setSyncStatus('waiting')
                 setSyncMsg('')
-                await supabase.channel('cs3-sync').send({ type: 'broadcast', event: 'sync-request', payload: {} })
+                await supabase.channel('cs3-sync').httpSend('sync-request', {})
               }}
               disabled={syncStatus === 'waiting'}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors flex items-center gap-1.5 ${

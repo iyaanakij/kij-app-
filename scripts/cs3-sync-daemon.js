@@ -317,12 +317,9 @@ async function runSync(trigger = 'auto') {
     await Promise.race([syncWork(), timeout])
   } catch (err) {
     console.error(`[${ts()}] ❌ エラー:`, err.message)
-    // syncing を先に解除してから非同期ブロードキャスト（send()がハングしても影響しない）
+    // syncing を先に解除してから非同期ブロードキャスト（httpSend()がハングしても影響しない）
     syncing = false
-    supabase.channel('cs3-sync').send({
-      type: 'broadcast', event: 'sync-error',
-      payload: { error: err.message },
-    }).catch(() => {})
+    supabase.channel('cs3-sync').httpSend('sync-error', { error: err.message }).catch(() => {})
     return
   }
   syncing = false
@@ -353,9 +350,8 @@ async function syncWork() {
   const r = await upsertReservationsToSupabase(entries, successfulShops)
   console.log(`[${ts()}] ✅ 完了 — 登録:${r.synced} スキップ:${r.skipped} 削除:${r.deleted}`)
 
-  await supabase.channel('cs3-sync').send({
-    type: 'broadcast', event: 'sync-done',
-    payload: { synced: r.synced, skipped: r.skipped, deleted: r.deleted, at: new Date().toISOString() },
+  await supabase.channel('cs3-sync').httpSend('sync-done', {
+    synced: r.synced, skipped: r.skipped, deleted: r.deleted, at: new Date().toISOString(),
   }).catch(() => {})
 }
 
