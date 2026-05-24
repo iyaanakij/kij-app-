@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Shift, Staff, ShiftRequest, AREAS, formatShiftTime, todayString } from '@/lib/types'
+import { getAuthHeaders } from '@/lib/auth'
 
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
@@ -246,10 +247,10 @@ export default function ShiftPage() {
   useEffect(() => { fetchRequests() }, [fetchRequests])
   useEffect(() => { fetchLastSyncAt() }, [fetchLastSyncAt])
 
-  const notifyLine = (staff_id: number, message: string) => {
+  const notifyLine = async (staff_id: number, message: string) => {
     fetch('/api/line/notify', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
       body: JSON.stringify({ staff_id, message }),
     }).catch(() => {})
   }

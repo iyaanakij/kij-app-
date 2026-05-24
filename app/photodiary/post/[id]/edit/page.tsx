@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { getAuthHeaders } from '@/lib/auth'
 import { PhotoDiary, PhotoDiaryImage, isVideo } from '@/lib/types'
 import { getCurrentUser, UserInfo } from '@/lib/auth'
 
@@ -138,7 +139,7 @@ export default function PhotoDiaryEditPage() {
       if (publishNow && !wasPublished) {
         await fetch('/api/photodiary/deliver', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
           body: JSON.stringify({ diary_id: diary.id }),
           keepalive: true,
         }).catch(err => console.error('配信エラー:', err))

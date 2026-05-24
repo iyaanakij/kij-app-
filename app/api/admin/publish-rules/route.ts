@@ -1,12 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/server-auth'
 
 const adminSupabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
+  const authErr = await requireAuth(request)
+  if (authErr) return authErr.error
   const all: Record<string, unknown>[] = []
   const CHUNK = 1000
   let from = 0
@@ -29,6 +32,8 @@ export async function GET(_request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authErr = await requireAuth(request)
+  if (authErr) return authErr.error
   const body = await request.json()
   const updates: { cs3_cast_id: string; source_shop_id: string; site_id: string; enabled: boolean }[] = body.updates
   if (!Array.isArray(updates) || updates.length === 0) {
@@ -47,6 +52,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const authErr = await requireAuth(request)
+  if (authErr) return authErr.error
   const body = await request.json()
   const { cs3_cast_id, cast_name } = body as { cs3_cast_id?: string; cast_name?: string }
   if (!cs3_cast_id || typeof cast_name !== 'string' || !cast_name.trim()) {

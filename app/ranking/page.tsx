@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { AREAS } from '@/lib/types'
+import { getAuthHeaders } from '@/lib/auth'
 
 function getMonthOptions() {
   const options: { label: string; value: string }[] = []
@@ -352,7 +353,7 @@ export default function RankingPage() {
     const [y, m] = month.split('-').map(Number)
     async function loadLastBatchCompletedAt() {
       try {
-        const res = await fetch(`/api/admin/performance-batch-job?year=${y}&month=${m}`)
+        const res = await fetch(`/api/admin/performance-batch-job?year=${y}&month=${m}`, { headers: await getAuthHeaders() })
         const data = await res.json()
         if (cancelled || !res.ok || !data.job?.completed_at) return
         setLastBatchCompletedAt(data.job.completed_at)
@@ -382,7 +383,7 @@ export default function RankingPage() {
 
     const res = await fetch('/api/admin/trigger-performance-batch', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
       body: JSON.stringify({ year: y, month: m }),
     })
     const data = await res.json()
@@ -408,7 +409,7 @@ export default function RankingPage() {
         return
       }
       try {
-        const r = await fetch(`/api/admin/performance-batch-job?id=${data.job.id}`)
+        const r = await fetch(`/api/admin/performance-batch-job?id=${data.job.id}`, { headers: await getAuthHeaders() })
         const d = await r.json()
         if (!r.ok || !d.job) {
           consecutiveFails++

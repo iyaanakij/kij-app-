@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { getAuthHeaders } from '@/lib/auth'
 import { getCurrentUser, UserInfo } from '@/lib/auth'
 
 interface Preview { url: string; isVideo: boolean }
@@ -103,7 +104,7 @@ export default function PhotoDiaryNewPage() {
         try {
           const deliverRes = await fetch('/api/photodiary/deliver', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
             body: JSON.stringify({ diary_id: diary.id }),
             keepalive: true,
           })

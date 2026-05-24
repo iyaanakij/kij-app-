@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { getAuthHeaders } from '@/lib/auth'
 
 const SHOPS = [
   { id: '111701', label: '西船橋' },
@@ -81,7 +82,7 @@ function CastMatrix({
     setNameSaving(true)
     const res = await fetch('/api/admin/publish-rules', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
       body: JSON.stringify({ cs3_cast_id: castId, cast_name: trimmed }),
     })
     setNameSaving(false)
@@ -118,7 +119,7 @@ function CastMatrix({
     )
     const res = await fetch('/api/admin/publish-rules', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...await getAuthHeaders() },
       body: JSON.stringify({ updates }),
     })
     setSaving(false)
@@ -281,9 +282,11 @@ export default function PublishRulesPage() {
   const [page, setPage] = useState(0)
 
   useEffect(() => {
-    fetch('/api/admin/publish-rules')
-      .then(r => r.json())
-      .then(json => { setRules(json.rules ?? []); setLoading(false) })
+    getAuthHeaders().then(headers =>
+      fetch('/api/admin/publish-rules', { headers })
+        .then(r => r.json())
+        .then(json => { setRules(json.rules ?? []); setLoading(false) })
+    )
   }, [])
 
   const handleSaved = useCallback((

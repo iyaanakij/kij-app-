@@ -9,6 +9,12 @@ export interface UserInfo {
   staff_id: number | null
 }
 
+export async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return {}
+  return { Authorization: `Bearer ${session.access_token}` }
+}
+
 export async function getCurrentUser(): Promise<UserInfo | null> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
