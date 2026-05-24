@@ -267,7 +267,7 @@ async function main() {
 
 - phone_cvr = 電話クリック数 ÷ セッション数（%）
 - reservation_cvr = WEB予約クリック数 ÷ セッション数（%）
-- request_click = LINE・問い合わせ系クリック数
+- request_click = 出勤リクエストクリック数（指名したいキャストへの出勤依頼）
 - survey_click = アンケート系クリック数
 - channels = 流入チャネル別セッション数（Organic Search / Direct / Referral 等）
 
