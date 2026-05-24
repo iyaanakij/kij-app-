@@ -26,8 +26,8 @@ const GA4_PROPERTIES = [
 ]
 
 const SC_SITES = [
-  { url: 'https://m-kairaku.com/', name: 'M性感' },
-  { url: 'https://iyashitakute.com/', name: '癒したくて' },
+  { url: 'https://www.m-kairaku.com/', name: 'M性感' },
+  { url: 'https://www.iyashitakute.com/', name: '癒したくて' },
 ]
 
 // --- OAuth2 ---
