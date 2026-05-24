@@ -242,7 +242,7 @@ export default function ReservationsPage() {
             </thead>
             <tbody>
               {rows.map(({ name, subtotal, transport, count }) => {
-                const misc = Math.max(0, Math.round((subtotal - 5000) * 0.8))
+                const misc = Math.ceil(Math.max(0, (subtotal - 5000) * 0.08) / 100) * 100
                 const finalPay = subtotal - misc + transport
                 return (
                   <tr key={name} className="bg-gray-50 hover:brightness-95">
