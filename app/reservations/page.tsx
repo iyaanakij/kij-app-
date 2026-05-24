@@ -51,6 +51,20 @@ function calculateCastPay(r: Reservation): number {
   return Math.max(0, pay)
 }
 
+// 移動費を除いた小計（雑費計算の基準額）
+function getCastSubtotal(r: Reservation): number {
+  let pay = 0
+  pay += getCourseCastPay(r.course_duration, r.course_type)
+  if (r.nomination_type && r.nomination_type !== 'フリー' && r.nomination_type !== '') pay += 2000
+  if (r.extension) pay += Math.round(r.extension * 0.5)
+  if (r.nude) pay += 1000
+  for (const opt of [r.option1, r.option2, r.option3, r.option4, r.option5, r.option6]) {
+    if (opt) pay += OP_CAST_PAY[opt] ?? 0
+  }
+  if (r.discount) pay -= r.discount
+  return Math.max(0, pay)
+}
+
 const MEMO_PREFIX = 'MEMO:'
 
 function parseInternalMemo(value: string | null): string {
@@ -196,6 +210,57 @@ export default function ReservationsPage() {
 
   const mCount = reservations.filter(r => M_STORE_IDS.includes(r.store_id)).length
   const eCount = reservations.filter(r => !M_STORE_IDS.includes(r.store_id)).length
+
+  const renderSalaryTable = () => {
+    type CastEntry = { name: string; subtotal: number; transport: number; count: number }
+    const staffMap = new Map<number, CastEntry>()
+
+    for (const r of reservations) {
+      const staff = r.staff as Staff
+      if (!staff) continue
+      const entry = staffMap.get(staff.id) ?? { name: staff.name, subtotal: 0, transport: 0, count: 0 }
+      entry.subtotal += getCastSubtotal(r)
+      entry.transport += r.transportation_fee ?? 0
+      entry.count += 1
+      staffMap.set(staff.id, entry)
+    }
+
+    const rows = Array.from(staffMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'ja'))
+    if (rows.length === 0) return null
+
+    return (
+      <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4 mt-4">
+        <h3 className="text-sm font-bold text-gray-700 mb-3">女性別 給料サマリー</h3>
+        <div className="overflow-x-auto">
+          <table className="text-xs border-collapse">
+            <thead>
+              <tr className="bg-gray-700 text-white">
+                {['女性', '件数', '小計合計', '雑費', '移動費', '最終給料'].map(h => (
+                  <th key={h} className="px-3 py-1.5 border border-gray-600 whitespace-nowrap font-semibold text-left">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ name, subtotal, transport, count }) => {
+                const misc = Math.max(0, Math.round((subtotal - 5000) * 0.8))
+                const finalPay = subtotal - misc + transport
+                return (
+                  <tr key={name} className="bg-gray-50 hover:brightness-95">
+                    <td className="px-3 py-1.5 border border-gray-200 font-semibold text-purple-700 whitespace-nowrap">{name}</td>
+                    <td className="px-3 py-1.5 border border-gray-200 text-center text-gray-600">{count}件</td>
+                    <td className="px-3 py-1.5 border border-gray-200 text-right text-gray-800">¥{subtotal.toLocaleString()}</td>
+                    <td className="px-3 py-1.5 border border-gray-200 text-right text-red-600">-¥{misc.toLocaleString()}</td>
+                    <td className="px-3 py-1.5 border border-gray-200 text-right text-blue-600">{transport > 0 ? `+¥${transport.toLocaleString()}` : '-'}</td>
+                    <td className="px-3 py-1.5 border border-gray-200 text-right font-bold text-emerald-700 whitespace-nowrap">¥{finalPay.toLocaleString()}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
 
   const renderSection = (section: 'E' | 'M', label: string) => {
     const rows = reservations.filter(r => section === 'M' ? M_STORE_IDS.includes(r.store_id) : !M_STORE_IDS.includes(r.store_id))
@@ -389,10 +454,13 @@ export default function ReservationsPage() {
           <div className="text-gray-500 animate-pulse">読み込み中...</div>
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4">
-          {renderSection('E', 'エステ・癒したくて 予約')}
-          {renderSection('M', '快楽M性感俱楽部 予約')}
-        </div>
+        <>
+          <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4">
+            {renderSection('E', 'エステ・癒したくて 予約')}
+            {renderSection('M', '快楽M性感俱楽部 予約')}
+          </div>
+          {renderSalaryTable()}
+        </>
       )}
 
     </div>
