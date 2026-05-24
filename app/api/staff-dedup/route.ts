@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/server-auth'
+import { NextResponse } from 'next/server'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,9 +8,7 @@ const supabase = createClient(
 
 // 同名スタッフの重複を解消する
 // 最も古い（id最小）レコードを正とし、新しい方のIDを付け替えてから削除
-export async function POST(request: NextRequest) {
-  const authErr = await requireAuth(request)
-  if (authErr) return authErr.error
+export async function POST() {
   try {
     const { data: allStaff } = await supabase.from('staff').select('id, name').order('id')
     if (!allStaff) return NextResponse.json({ error: 'fetch failed' }, { status: 500 })

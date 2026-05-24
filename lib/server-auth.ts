@@ -35,3 +35,22 @@ export async function requireAuth(request: Request): Promise<{ error: NextRespon
 
   return null
 }
+
+// cast または staff どちらでも通す（写メ日記配信など）
+export async function requireAuthAny(request: Request): Promise<{ error: NextResponse } | null> {
+  const auth = request.headers.get('authorization') ?? ''
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+
+  if (token === process.env.SYNC_SECRET) return null
+
+  if (!token) {
+    return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  }
+
+  const { data: { user }, error } = await adminSupabase.auth.getUser(token)
+  if (error || !user) {
+    return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
+  }
+
+  return null
+}

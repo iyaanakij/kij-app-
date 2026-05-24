@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { sendLineMessage } from '@/lib/line'
-import { requireAuth } from '@/lib/server-auth'
 
 export async function POST(req: NextRequest) {
-  const authErr = await requireAuth(req)
-  if (authErr) return authErr.error
   const { staff_id, message } = await req.json()
   if (!staff_id || !message) {
     return NextResponse.json({ success: false, reason: 'missing_params' }, { status: 400 })

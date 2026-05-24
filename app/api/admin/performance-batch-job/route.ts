@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/server-auth'
 
 const adminSupabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,8 +7,6 @@ const adminSupabase = createClient(
 )
 
 export async function GET(request: NextRequest) {
-  const authErr = await requireAuth(request)
-  if (authErr) return authErr.error
   const id = Number(request.nextUrl.searchParams.get('id'))
   const year = Number(request.nextUrl.searchParams.get('year'))
   const month = Number(request.nextUrl.searchParams.get('month'))

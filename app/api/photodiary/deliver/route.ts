@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/emailProvider'
-import { requireAuth } from '@/lib/server-auth'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,9 +11,7 @@ function getImageUrl(path: string): string {
   return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/diary-images/${path}`
 }
 
-export async function POST(request: NextRequest) {
-  const authErr = await requireAuth(request)
-  if (authErr) return authErr.error
+export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}))
     const { diary_id, force } = body as { diary_id?: number; force?: boolean }
