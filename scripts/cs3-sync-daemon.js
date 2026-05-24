@@ -160,6 +160,7 @@ async function upsertReservationsToSupabase(entries, successfulShops) {
       option6: entry.playOptions?.[5] ?? null,
       extension: entry.extensionFee ?? 0,
       discount: entry.discountAmount ?? 0,
+      cs3_cast_fee: entry.castFeeCs3 ?? null,
       confirmed: true, communicated: false,
       arrival_confirmed: false, checked: false, notes: notesKey,
     }
@@ -273,6 +274,10 @@ function parseReservations(html) {
     const baseCourse = parseInt(courseStr)
     const extMin = baseCourse > 0 ? Math.max(0, times.courseDuration - baseCourse) : 0
     const extensionFee = (extMin > 0 && extMin % 10 === 0) ? (extMin / 10) * 3000 : 0
+    // fee_pre=暫定委託費(キャスト取り分)、fee=確定値があれば優先
+    const feeActual = parseInt(extractTdText(rowHtml, 'reservation_list_value_fee').replace(/[^\d]/g, '')) || 0
+    const feePre    = parseInt(extractTdText(rowHtml, 'reservation_list_value_fee_pre').replace(/[^\d]/g, '')) || 0
+    const castFeeCs3 = feeActual > 0 ? feeActual : (feePre > 0 ? feePre : null)
     entries.push({
       cs3Id, storeId, date,
       time: times.time, checkoutTime: times.checkoutTime,
@@ -290,6 +295,7 @@ function parseReservations(html) {
       playOptions,
       extensionFee,
       discountAmount: parseDiscountAmount(discountRaw),
+      castFeeCs3,
     })
   }
   return entries

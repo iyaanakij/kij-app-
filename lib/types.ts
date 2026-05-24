@@ -62,6 +62,7 @@ export interface Reservation {
   extension: number
   discount: number
   total_amount: number
+  cs3_cast_fee: number | null
   checkout_time: number | null
   arrival_confirmed: boolean
   notes: string | null

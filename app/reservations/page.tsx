@@ -52,7 +52,9 @@ function calculateCastPay(r: Reservation): number {
 }
 
 // 移動費を除いた小計（雑費計算の基準額）
+// cs3_cast_fee（CS3の暫定委託費）が取得済みならそれを使用。未取得時は独自計算にフォールバック
 function getCastSubtotal(r: Reservation): number {
+  if (r.cs3_cast_fee != null) return r.cs3_cast_fee
   let pay = 0
   pay += getCourseCastPay(r.course_duration, r.course_type)
   if (r.nomination_type && r.nomination_type !== 'フリー' && r.nomination_type !== '') pay += 2000
