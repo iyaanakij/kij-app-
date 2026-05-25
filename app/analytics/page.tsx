@@ -3,13 +3,26 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
+interface PeriodRange {
+  startDate: string
+  endDate: string
+}
+
 interface Report {
   id: number
   report_date: string
   report_type: string
   summary: string
   raw_data: {
-    period?: { startDate: string; endDate: string }
+    // 新形式: ga4/searchConsole別の期間
+    period?: {
+      ga4?: PeriodRange
+      searchConsole?: PeriodRange
+      previous?: { ga4?: PeriodRange; searchConsole?: PeriodRange }
+      // 旧形式互換
+      startDate?: string
+      endDate?: string
+    }
     ga4?: Record<string, { current: GA4Summary; previous: GA4Summary }>
   }
   created_at: string
@@ -126,7 +139,10 @@ export default function AnalyticsPage() {
 
       {period && (
         <p className="text-xs text-gray-500 mb-4">
-          集計期間: {formatDate(period.startDate)} 〜 {formatDate(period.endDate)}
+          {period.ga4
+            ? <>GA4: {formatDate(period.ga4.startDate)} 〜 {formatDate(period.ga4.endDate)}　SC: {formatDate(period.searchConsole!.startDate)} 〜 {formatDate(period.searchConsole!.endDate)}</>
+            : <>集計期間: {formatDate(period.startDate!)} 〜 {formatDate(period.endDate!)}</>
+          }
         </p>
       )}
 
