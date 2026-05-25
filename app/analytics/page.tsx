@@ -69,7 +69,7 @@ function MarkdownContent({ text }: { text: string }) {
           return (
             <div key={i} className={`grid text-xs ${isHeader ? 'font-semibold bg-gray-100' : 'border-b border-gray-100'}`}
               style={{ gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))` }}>
-              {cells.map((c, ci) => <div key={ci} className="px-2 py-1 truncate">{c.trim().replace(/\*\*/g, '')}</div>)}
+              {cells.map((c, ci) => <div key={ci} className="px-2 py-1 break-words">{c.trim().replace(/\*\*/g, '')}</div>)}
             </div>
           )
         }
