@@ -796,12 +796,12 @@ export default function WomenInfoPage() {
               <thead className="sticky top-0 z-20">
                 <tr>
                   <th className="sticky left-0 z-30 w-14 border-r border-gray-700 bg-gray-900 px-2 py-2 text-center text-white">操作</th>
-                  <th className="sticky left-14 z-30 w-12 border-r border-gray-700 bg-gray-900 px-2 py-2 text-center text-white">No</th>
+                  <th className="md:sticky left-14 z-30 w-12 border-r border-gray-700 bg-gray-900 px-2 py-2 text-center text-white">No</th>
                   {columns.map((column, colIndex) => (
                     <th
                       key={column.id}
                       onClick={() => setSelectedColumnId(column.id)}
-                      className={`border-r border-gray-300 p-0 align-middle ${colIndex === 0 ? 'sticky left-[104px] z-30' : ''} ${selectedColumnId === column.id ? 'ring-2 ring-inset ring-blue-400' : ''}`}
+                      className={`border-r border-gray-300 p-0 align-middle ${colIndex === 0 ? 'sticky left-14 md:left-[104px] z-30' : ''} ${selectedColumnId === column.id ? 'ring-2 ring-inset ring-blue-400' : ''}`}
                       style={{ width: column.width, backgroundColor: column.headerBg, color: column.headerText }}
                     >
                       <input
@@ -816,7 +816,7 @@ export default function WomenInfoPage() {
                       />
                     </th>
                   ))}
-                  <th className="sticky right-0 z-30 w-28 border-l border-gray-700 bg-gray-900 px-2 py-2 text-center text-white">状態</th>
+                  <th className="md:sticky right-0 z-30 w-28 border-l border-gray-700 bg-gray-900 px-2 py-2 text-center text-white">状態</th>
                 </tr>
               </thead>
               <tbody>
@@ -874,13 +874,13 @@ export default function WomenInfoPage() {
                           title="ドラッグで行の高さを変更"
                         />
                       </td>
-                      <td className="sticky left-14 z-10 border-r border-gray-200 bg-inherit px-2 py-2 text-center font-semibold text-gray-500 align-middle" style={{ height: rowHeight }}>
+                      <td className="md:sticky left-14 z-10 border-r border-gray-200 bg-inherit px-2 py-2 text-center font-semibold text-gray-500 align-middle" style={{ height: rowHeight }}>
                         {index + 1}
                       </td>
                       {columns.map((column, colIndex) => (
                         <td
                           key={column.id}
-                          className={`relative border-r border-gray-200 p-0 align-top ${colIndex === 0 ? 'sticky left-[104px] z-10' : ''}`}
+                          className={`relative border-r border-gray-200 p-0 align-top ${colIndex === 0 ? 'sticky left-14 md:left-[104px] z-10' : ''}`}
                           style={{ backgroundColor: rowBg ?? resolveColor(column.cellBg, DARK_CELL_BG, isDark), height: rowHeight }}
                         >
                           {column.multiline ? (
@@ -911,7 +911,7 @@ export default function WomenInfoPage() {
                           />
                         </td>
                       ))}
-                      <td className="sticky right-0 z-10 border-l border-gray-200 bg-inherit px-2 py-1 text-center align-middle" style={{ height: rowHeight }}>
+                      <td className="md:sticky right-0 z-10 border-l border-gray-200 bg-inherit px-2 py-1 text-center align-middle" style={{ height: rowHeight }}>
                         <div className="flex items-center justify-center gap-2">
                           <span className="min-w-10 text-[11px] text-gray-400">
                             {savingIds.has(row.id) ? '保存中' : dirtyIds.has(row.id) ? '未保存' : '保存済'}
