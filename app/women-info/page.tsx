@@ -243,12 +243,22 @@ function ColorPicker({
   )
 }
 
-const DARK_CELL_BG   = '#1a2e48'
-const DARK_CELL_TEXT = '#eef2f7'
+const DARK_CELL_BG    = '#1a2e48'
+const DARK_CELL_TEXT  = '#eef2f7'
 const DARK_RETIRED_BG = 'rgba(153,27,27,.28)'
 
-function resolveColor(value: string, lightDefault: string, darkDefault: string, isDark: boolean) {
-  return isDark && value === lightDefault ? darkDefault : value
+function hexLuminance(hex: string): number {
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return 0.5
+  const r = parseInt(hex.slice(1, 3), 16) / 255
+  const g = parseInt(hex.slice(3, 5), 16) / 255
+  const b = parseInt(hex.slice(5, 7), 16) / 255
+  const [R, G, B] = [r, g, b].map(c => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+  return 0.2126 * R + 0.7152 * G + 0.0722 * B
+}
+
+function resolveColor(value: string, darkDefault: string, isDark: boolean) {
+  if (!isDark) return value
+  return hexLuminance(value) > 0.15 ? darkDefault : value
 }
 
 export default function WomenInfoPage() {
@@ -859,7 +869,7 @@ export default function WomenInfoPage() {
                         <td
                           key={column.id}
                           className={`relative border-r border-gray-200 p-0 align-top ${colIndex === 0 ? 'sticky left-[104px] z-10' : ''}`}
-                          style={{ backgroundColor: rowBg ?? resolveColor(column.cellBg, '#ffffff', DARK_CELL_BG, isDark), height: rowHeight }}
+                          style={{ backgroundColor: rowBg ?? resolveColor(column.cellBg, DARK_CELL_BG, isDark), height: rowHeight }}
                         >
                           {column.multiline ? (
                             <textarea
@@ -869,7 +879,7 @@ export default function WomenInfoPage() {
                               onBlur={() => saveCell(row.id)}
                               rows={2}
                               className="block w-full resize-none border-0 bg-transparent px-2 py-2 text-xs leading-relaxed outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
-                              style={{ color: resolveColor(column.cellText, '#1f2937', DARK_CELL_TEXT, isDark), height: rowHeight }}
+                              style={{ color: resolveColor(column.cellText, DARK_CELL_TEXT, isDark), height: rowHeight }}
                             />
                           ) : (
                             <input
@@ -879,7 +889,7 @@ export default function WomenInfoPage() {
                               onChange={e => updateCell(row.id, column.id, e.target.value)}
                               onBlur={() => saveCell(row.id)}
                               className="block w-full border-0 bg-transparent px-2 text-xs outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
-                              style={{ color: resolveColor(column.cellText, '#1f2937', DARK_CELL_TEXT, isDark), height: rowHeight }}
+                              style={{ color: resolveColor(column.cellText, DARK_CELL_TEXT, isDark), height: rowHeight }}
                             />
                           )}
                           <div
