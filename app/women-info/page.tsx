@@ -261,6 +261,12 @@ function resolveColor(value: string, darkDefault: string, isDark: boolean) {
   return hexLuminance(value) > 0.15 ? darkDefault : value
 }
 
+// For text: dark text (low luminance) → replace with light text in dark mode
+function resolveTextColor(value: string, darkDefault: string, isDark: boolean) {
+  if (!isDark) return value
+  return hexLuminance(value) <= 0.15 ? darkDefault : value
+}
+
 export default function WomenInfoPage() {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
@@ -885,7 +891,7 @@ export default function WomenInfoPage() {
                               onBlur={() => saveCell(row.id)}
                               rows={2}
                               className="block w-full resize-none border-0 bg-transparent px-2 py-2 text-xs leading-relaxed outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
-                              style={{ color: resolveColor(column.cellText, DARK_CELL_TEXT, isDark), height: rowHeight }}
+                              style={{ color: resolveTextColor(column.cellText, DARK_CELL_TEXT, isDark), height: rowHeight }}
                             />
                           ) : (
                             <input
@@ -895,7 +901,7 @@ export default function WomenInfoPage() {
                               onChange={e => updateCell(row.id, column.id, e.target.value)}
                               onBlur={() => saveCell(row.id)}
                               className="block w-full border-0 bg-transparent px-2 text-xs outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
-                              style={{ color: resolveColor(column.cellText, DARK_CELL_TEXT, isDark), height: rowHeight }}
+                              style={{ color: resolveTextColor(column.cellText, DARK_CELL_TEXT, isDark), height: rowHeight }}
                             />
                           )}
                           <div
