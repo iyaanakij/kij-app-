@@ -104,6 +104,10 @@ export default function ShiftPage() {
   const [editValue, setEditValue] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
 
+  // Mobile action sheet
+  const [activeCell, setActiveCell] = useState<{ staffId: number; day: number } | null>(null)
+  const [isTouchDevice, setIsTouchDevice] = useState(false)
+
   const todayDay = todayDay2
 
   const daysInMonth = getDaysInMonth(year, month)
@@ -249,6 +253,9 @@ export default function ShiftPage() {
   useEffect(() => { fetchShiftMarkers() }, [fetchShiftMarkers])
   useEffect(() => { fetchRequests() }, [fetchRequests])
   useEffect(() => { fetchLastSyncAt() }, [fetchLastSyncAt])
+  useEffect(() => {
+    setIsTouchDevice(!window.matchMedia('(hover: hover)').matches)
+  }, [])
 
   const notifyLine = async (staff_id: number, message: string) => {
     fetch('/api/line/notify', {
@@ -493,6 +500,14 @@ export default function ShiftPage() {
     return year === todayYear && month === todayMonth && day === todayDay
   }
 
+  function openMobileSheet(staffId: number, day: number) {
+    const shift = getShift(staffId, day)
+    let val = ''
+    if (shift) val = shift.status === 'x' ? 'x' : displayShiftTime(shift)
+    setEditValue(val)
+    setActiveCell({ staffId, day })
+  }
+
   function startEdit(staffId: number, day: number) {
     const shift = getShift(staffId, day)
     let val = ''
@@ -624,6 +639,13 @@ export default function ShiftPage() {
 
   const pendingCount = requests.filter(r => r.status === 'pending').length
 
+  const activeCellShift = activeCell ? getShift(activeCell.staffId, activeCell.day) : undefined
+  const activeCellCanUseMarkers = !activeCellShift || activeCellShift.status !== 'x'
+  const activeCellIsShooting = !!(activeCell && activeCellCanUseMarkers && getShootingMarker(activeCell.staffId, activeCell.day))
+  const activeCellIsDorm = !!(activeCell && selectedAreaId === NARITA_AREA_ID && activeCellCanUseMarkers && getDormUsage(activeCell.staffId, activeCell.day))
+  const activeCellIsReturnHome = !!(activeCell && selectedAreaId === NARITA_AREA_ID && activeCellCanUseMarkers && getReturnHomeMarker(activeCell.staffId, activeCell.day))
+  const activeCellStaff = activeCell ? sortedStaffList.find(s => s.id === activeCell.staffId) : undefined
+
   return (
     <div className="p-3">
       {/* Tab切替 */}
@@ -651,6 +673,7 @@ export default function ShiftPage() {
           {requests.length === 0 ? (
             <div className="text-center py-16 text-gray-400">申請はありません</div>
           ) : (
+            <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="bg-gray-900 text-white">
@@ -693,6 +716,7 @@ export default function ShiftPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       )}
@@ -932,7 +956,7 @@ export default function ShiftPage() {
                         <td
                           key={d}
                           title={shootingText || undefined}
-                          onClick={e => { e.stopPropagation(); startEdit(staff.id, d) }}
+                          onClick={e => { e.stopPropagation(); isTouchDevice ? openMobileSheet(staff.id, d) : startEdit(staff.id, d) }}
                           className={`group relative border-l border-gray-100 px-0.5 py-0 text-center cursor-pointer transition-colors overflow-visible ${isEditing ? 'bg-yellow-50 ring-2 ring-inset ring-yellow-400 z-10' : `${cellBg} ${textColor}`} ${today ? 'ring-1 ring-inset ring-blue-400' : ''}`}
                           style={{ minWidth: 52, height: 30 }}
                         >
@@ -1029,6 +1053,90 @@ export default function ShiftPage() {
         <span className="flex items-center gap-1.5"><span className="w-4 h-4 bg-sky-50 inline-block rounded border border-sky-200"></span> 土曜</span>
       </div>
       </div>
+      )}
+
+      {/* Mobile action sheet */}
+      {activeCell && isTouchDevice && (
+        <div className="fixed inset-0 z-[100]">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setActiveCell(null)} />
+          <div className="absolute bottom-0 left-0 right-0 bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl px-4 pt-4 pb-10">
+            <div className="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full mx-auto mb-4" />
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="font-semibold text-gray-900 dark:text-gray-100 text-base">{activeCellStaff?.name ?? ''}</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  {year}年{month}月{activeCell.day}日（{WEEKDAY_LABELS[getWeekday(activeCell.day)]}）
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveCell(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="mb-4">
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 block">
+                シフト時間（例: 14-22 / x で休み / 空欄で削除）
+              </label>
+              <input
+                type="text"
+                value={editValue}
+                onChange={e => setEditValue(e.target.value)}
+                placeholder="14-22"
+                autoFocus
+                className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            {activeCellCanUseMarkers && (
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => toggleShooting(activeCell!.staffId, activeCell!.day)}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
+                    activeCellIsShooting
+                      ? 'bg-violet-600 text-white border-violet-600'
+                      : 'text-violet-700 dark:text-violet-300 border-violet-300 dark:border-violet-600 bg-white dark:bg-gray-800'
+                  }`}
+                >
+                  撮影
+                </button>
+                {selectedAreaId === NARITA_AREA_ID && (
+                  <>
+                    <button
+                      onClick={() => toggleDormUsage(activeCell!.staffId, activeCell!.day)}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
+                        activeCellIsDorm
+                          ? 'bg-emerald-600 text-white border-emerald-600'
+                          : 'text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-600 bg-white dark:bg-gray-800'
+                      }`}
+                    >
+                      寮使用
+                    </button>
+                    <button
+                      onClick={() => toggleReturnHome(activeCell!.staffId, activeCell!.day)}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
+                        activeCellIsReturnHome
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-600 bg-white dark:bg-gray-800'
+                      }`}
+                    >
+                      帰宅
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+            <button
+              onClick={async () => {
+                await commitEdit(activeCell!.staffId, activeCell!.day, editValue)
+                setActiveCell(null)
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-xl font-semibold text-base transition-colors"
+            >
+              保存
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
