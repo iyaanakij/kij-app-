@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTheme } from 'next-themes'
 import { supabase } from '@/lib/supabase'
 import { STORES } from '@/lib/types'
 
@@ -242,7 +243,17 @@ function ColorPicker({
   )
 }
 
+const DARK_CELL_BG   = '#1a2e48'
+const DARK_CELL_TEXT = '#eef2f7'
+const DARK_RETIRED_BG = 'rgba(153,27,27,.28)'
+
+function resolveColor(value: string, lightDefault: string, darkDefault: string, isDark: boolean) {
+  return isDark && value === lightDefault ? darkDefault : value
+}
+
 export default function WomenInfoPage() {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
   const [selectedAreaId, setSelectedAreaId] = useState(getInitialAreaId)
   const [configId, setConfigId] = useState<string | null>(null)
   const [columns, setColumns] = useState<SheetColumn[]>(() => DEFAULT_COLUMNS.map((column, index) => normalizeColumn(column, index)))
@@ -802,7 +813,7 @@ export default function WomenInfoPage() {
                 ) : (
                   filteredRows.map((row, index) => {
                     const isRetired = row.status === 'retired'
-                    const rowBg = isRetired ? RETIRED_ROW_BG : undefined
+                    const rowBg = isRetired ? (isDark ? DARK_RETIRED_BG : RETIRED_ROW_BG) : undefined
                     const rowHeight = rowH[row.id] ?? row.height ?? ROW_HEIGHT_DEFAULT
                     const rowClass = selectedRowId === row.id
                       ? 'border-t border-blue-300 bg-blue-50/40'
@@ -848,7 +859,7 @@ export default function WomenInfoPage() {
                         <td
                           key={column.id}
                           className={`relative border-r border-gray-200 p-0 align-top ${colIndex === 0 ? 'sticky left-[104px] z-10' : ''}`}
-                          style={{ backgroundColor: rowBg ?? column.cellBg, height: rowHeight }}
+                          style={{ backgroundColor: rowBg ?? resolveColor(column.cellBg, '#ffffff', DARK_CELL_BG, isDark), height: rowHeight }}
                         >
                           {column.multiline ? (
                             <textarea
@@ -858,7 +869,7 @@ export default function WomenInfoPage() {
                               onBlur={() => saveCell(row.id)}
                               rows={2}
                               className="block w-full resize-none border-0 bg-transparent px-2 py-2 text-xs leading-relaxed outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
-                              style={{ color: column.cellText, height: rowHeight }}
+                              style={{ color: resolveColor(column.cellText, '#1f2937', DARK_CELL_TEXT, isDark), height: rowHeight }}
                             />
                           ) : (
                             <input
@@ -868,7 +879,7 @@ export default function WomenInfoPage() {
                               onChange={e => updateCell(row.id, column.id, e.target.value)}
                               onBlur={() => saveCell(row.id)}
                               className="block w-full border-0 bg-transparent px-2 text-xs outline-none focus:bg-blue-50 focus:ring-2 focus:ring-blue-300"
-                              style={{ color: column.cellText, height: rowHeight }}
+                              style={{ color: resolveColor(column.cellText, '#1f2937', DARK_CELL_TEXT, isDark), height: rowHeight }}
                             />
                           )}
                           <div
