@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useTheme } from 'next-themes'
 import { supabase } from '@/lib/supabase'
 import { Shift, Staff, ShiftRequest, AREAS, formatShiftTime, todayString } from '@/lib/types'
 import { getAuthHeaders } from '@/lib/auth'
@@ -53,6 +54,8 @@ interface ShiftMarker {
 }
 
 export default function ShiftPage() {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
   const todayStr = todayString()
   const [todayYear, todayMonth, todayDay2] = todayStr.split('-').map(Number)
   const [year, setYear] = useState(todayYear)
@@ -905,23 +908,23 @@ export default function ShiftPage() {
                       } else if (shift.status === 'x') {
                         cellBg = 'bg-red-200 hover:bg-red-300'
                         cellText = '×'
-                        textColor = 'text-red-700 font-bold'
+                        textColor = isDark ? 'text-white font-bold' : 'text-red-700 font-bold'
                       } else {
                         cellText = displayShiftTime(shift)
-                        textColor = 'text-pink-900 font-medium'
+                        textColor = isDark ? 'text-white font-medium' : 'text-pink-900 font-medium'
                         cellBg = 'bg-pink-200 hover:bg-pink-300'
                       }
                       if (canUseMarkers && isReturnHome) {
                         cellBg = 'bg-amber-200 hover:bg-amber-300'
-                        textColor = 'text-amber-950 font-semibold'
+                        textColor = isDark ? 'text-white font-semibold' : 'text-amber-950 font-semibold'
                       }
                       if (canUseMarkers && isDorm) {
                         cellBg = 'bg-emerald-200 hover:bg-emerald-300'
-                        textColor = 'text-emerald-950 font-semibold'
+                        textColor = isDark ? 'text-white font-semibold' : 'text-emerald-950 font-semibold'
                       }
                       if (canUseMarkers && isShooting) {
                         cellBg = 'bg-violet-200 hover:bg-violet-300'
-                        textColor = 'text-violet-950 font-semibold'
+                        textColor = isDark ? 'text-white font-semibold' : 'text-violet-950 font-semibold'
                       }
                       if (!shift && markerLabels) cellText = markerLabels
 
