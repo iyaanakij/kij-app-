@@ -833,7 +833,13 @@ export default function WomenInfoPage() {
                       key={row.id}
                       onClick={() => setSelectedRowId(row.id)}
                       className={rowClass}
-                      style={rowBg ? { backgroundColor: rowBg } : undefined}
+                      style={
+                        rowBg
+                          ? { backgroundColor: rowBg }
+                          : isDark
+                            ? { backgroundColor: index % 2 === 0 ? '#1a2e48' : '#132338' }
+                            : undefined
+                      }
                     >
                       <td className="sticky left-0 z-10 border-r border-gray-200 bg-inherit relative" style={{ height: rowHeight }}>
                         <div className="flex h-full items-center justify-center gap-1">
