@@ -24,6 +24,7 @@ interface Report {
       endDate?: string
     }
     ga4?: Record<string, { current: GA4Summary; previous: GA4Summary }>
+    marketing?: MarketingData
   }
   created_at: string
 }
@@ -36,6 +37,62 @@ interface GA4Summary {
   avgDuration: number
   events: number
 }
+
+interface MarketingData {
+  storeInsights?: StoreInsight[]
+  seoOpportunities?: SeoOpportunity[]
+  actionItems?: ActionItem[]
+}
+
+interface StoreInsight {
+  store_name: string
+  priority: Priority
+  alerts: string[]
+  sessions: number
+  sessions_diff_pct: number | null
+  phone_click: number
+  phone_click_diff_pct: number | null
+  reservation_click: number
+  reservation_click_diff_pct: number | null
+  phone_cvr: number
+  phone_cvr_diff: number
+  reservation_cvr: number
+  reservation_cvr_diff: number
+  request_cvr: number
+  request_cvr_diff: number
+  primary_channel?: { name: string; sessions: number; share: number }
+  main_issue: string
+  recommended_action: string
+}
+
+interface SeoOpportunity {
+  priority: Priority
+  site: string
+  query: string
+  issue_type: string
+  clicks: number
+  impressions: number
+  ctr: number
+  position: number
+  clicks_diff: number | null
+  impressions_diff: number | null
+  ctr_diff: number | null
+  position_diff: number | null
+  recommended_action: string
+  expected_impact: string
+}
+
+interface ActionItem {
+  priority: Priority
+  category: string
+  target: string
+  reason: string
+  action: string
+  owner: string
+  expected_impact: string
+}
+
+type Priority = 'A' | 'B' | 'C'
 
 function formatDate(d: string) {
   return d.replace(/-/g, '/').slice(2)
@@ -52,6 +109,30 @@ function PctBadge({ curr, prev }: { curr: number; prev: number }) {
   if (p === null) return null
   const color = p >= 0 ? 'text-green-600' : 'text-red-500'
   return <span className={`text-xs ${color} ml-1`}>{p >= 0 ? '+' : ''}{p}%</span>
+}
+
+function SignedValue({ value, suffix = '' }: { value: number | null | undefined; suffix?: string }) {
+  if (value === null || value === undefined) return <span className="text-gray-400">-</span>
+  const color = value >= 0 ? 'text-green-600' : 'text-red-500'
+  return <span className={color}>{value >= 0 ? '+' : ''}{value}{suffix}</span>
+}
+
+function PriorityBadge({ priority }: { priority: Priority }) {
+  const classes = {
+    A: 'border-red-200 bg-red-50 text-red-700',
+    B: 'border-amber-200 bg-amber-50 text-amber-700',
+    C: 'border-gray-200 bg-gray-50 text-gray-600',
+  }
+  return (
+    <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded border px-2 text-xs font-semibold ${classes[priority]}`}>
+      {priority}
+    </span>
+  )
+}
+
+function CategoryLabel({ category }: { category: string }) {
+  const label = category === 'seo' ? 'SEO' : category === 'store' ? '店舗' : category
+  return <span className="text-xs text-gray-500">{label}</span>
 }
 
 function MarkdownContent({ text }: { text: string }) {
@@ -119,6 +200,10 @@ export default function AnalyticsPage() {
 
   const ga4 = selected?.raw_data?.ga4
   const period = selected?.raw_data?.period
+  const marketing = selected?.raw_data?.marketing
+  const actionItems = marketing?.actionItems?.slice(0, 5) ?? []
+  const seoOpportunities = marketing?.seoOpportunities?.slice(0, 8) ?? []
+  const storeInsights = marketing?.storeInsights?.filter(s => s.priority !== 'C').slice(0, 6) ?? []
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
@@ -144,6 +229,108 @@ export default function AnalyticsPage() {
             : <>集計期間: {formatDate(period.startDate!)} 〜 {formatDate(period.endDate!)}</>
           }
         </p>
+      )}
+
+      {actionItems.length > 0 && (
+        <section className="mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">今週の優先アクション</h2>
+            <span className="text-xs text-gray-400">marketing.actionItems</span>
+          </div>
+          <div className="space-y-2">
+            {actionItems.map((item, index) => (
+              <div key={`${item.category}-${item.target}-${index}`} className="rounded border bg-white p-3">
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="mb-1 flex items-center gap-2">
+                      <PriorityBadge priority={item.priority} />
+                      <CategoryLabel category={item.category} />
+                      <span className="text-xs text-gray-400">{item.owner}</span>
+                    </div>
+                    <h3 className="break-words text-sm font-semibold text-gray-900">{item.target}</h3>
+                  </div>
+                </div>
+                <p className="mb-1 text-xs leading-relaxed text-gray-600">{item.reason}</p>
+                <p className="text-sm leading-relaxed text-gray-800">{item.action}</p>
+                <p className="mt-2 text-xs text-gray-500">期待効果: {item.expected_impact}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {storeInsights.length > 0 && (
+        <section className="mb-6">
+          <h2 className="mb-2 text-sm font-semibold text-gray-700">店舗アラート</h2>
+          <div className="grid gap-2 md:grid-cols-2">
+            {storeInsights.map(store => (
+              <div key={store.store_name} className="rounded border bg-white p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="truncate text-sm font-semibold text-gray-900">{store.store_name}</h3>
+                  <PriorityBadge priority={store.priority} />
+                </div>
+                <p className="mb-2 text-xs font-medium text-gray-700">{store.main_issue}</p>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-600">
+                  <div>セッション {store.sessions.toLocaleString()}</div>
+                  <div>前週比 <SignedValue value={store.sessions_diff_pct} suffix="%" /></div>
+                  <div>電話CVR {store.phone_cvr}%</div>
+                  <div>差分 <SignedValue value={store.phone_cvr_diff} suffix="pt" /></div>
+                  <div>WEB予約CVR {store.reservation_cvr}%</div>
+                  <div>差分 <SignedValue value={store.reservation_cvr_diff} suffix="pt" /></div>
+                </div>
+                {store.primary_channel && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    主チャネル: {store.primary_channel.name} {store.primary_channel.share}%
+                  </p>
+                )}
+                <p className="mt-2 text-sm leading-relaxed text-gray-800">{store.recommended_action}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {seoOpportunities.length > 0 && (
+        <section className="mb-6">
+          <h2 className="mb-2 text-sm font-semibold text-gray-700">SEO改善候補</h2>
+          <div className="overflow-x-auto rounded border bg-white">
+            <table className="min-w-full text-left text-xs">
+              <thead className="border-b bg-gray-50 text-gray-500">
+                <tr>
+                  <th className="px-3 py-2 font-medium">優先</th>
+                  <th className="px-3 py-2 font-medium">サイト</th>
+                  <th className="px-3 py-2 font-medium">クエリ</th>
+                  <th className="px-3 py-2 font-medium">表示</th>
+                  <th className="px-3 py-2 font-medium">CTR</th>
+                  <th className="px-3 py-2 font-medium">順位</th>
+                  <th className="px-3 py-2 font-medium">施策</th>
+                </tr>
+              </thead>
+              <tbody>
+                {seoOpportunities.map((item, index) => (
+                  <tr key={`${item.site}-${item.query}-${index}`} className="border-b last:border-b-0">
+                    <td className="px-3 py-2 align-top"><PriorityBadge priority={item.priority} /></td>
+                    <td className="whitespace-nowrap px-3 py-2 align-top text-gray-600">{item.site}</td>
+                    <td className="min-w-36 px-3 py-2 align-top font-medium text-gray-900">{item.query}</td>
+                    <td className="px-3 py-2 align-top text-gray-700">
+                      {item.impressions.toLocaleString()}
+                      <span className="ml-1 text-gray-400">(<SignedValue value={item.impressions_diff} />)</span>
+                    </td>
+                    <td className="px-3 py-2 align-top text-gray-700">
+                      {item.ctr}%
+                      <span className="ml-1 text-gray-400">(<SignedValue value={item.ctr_diff} suffix="pt" />)</span>
+                    </td>
+                    <td className="px-3 py-2 align-top text-gray-700">
+                      {item.position}
+                      <span className="ml-1 text-gray-400">(<SignedValue value={item.position_diff} />)</span>
+                    </td>
+                    <td className="min-w-64 px-3 py-2 align-top text-gray-700">{item.recommended_action}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {/* GA4 店舗別サマリー */}
