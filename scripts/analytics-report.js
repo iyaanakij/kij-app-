@@ -38,6 +38,13 @@ const SC_SITES = [
   { url: 'https://www.m-kairaku.com/', name: 'M性感' },
 ]
 
+const M_STORE_PAGES = [
+  { siteUrl: 'https://www.m-kairaku.com/', siteName: 'M性感', area: '錦糸町', storeName: 'M性感 錦糸町', path: '/kinshicho/', includePath: '/kinshicho/' },
+  { siteUrl: 'https://www.m-kairaku.com/', siteName: 'M性感', area: '西船橋', storeName: 'M性感 西船橋', path: '/', includePath: '/', excludePaths: ['/chiba/', '/narita/', '/kinshicho/'] },
+  { siteUrl: 'https://www.m-kairaku.com/', siteName: 'M性感', area: '千葉', storeName: 'M性感 千葉', path: '/chiba/', includePath: '/chiba/' },
+  { siteUrl: 'https://www.m-kairaku.com/', siteName: 'M性感', area: '成田', storeName: 'M性感 成田', path: '/narita/', includePath: '/narita/' },
+]
+
 // --- OAuth2 ---
 async function getAccessToken() {
   const res = await fetch('https://oauth2.googleapis.com/token', {
@@ -206,6 +213,10 @@ function summarizeSC(data) {
     ctr: impressions > 0 ? Math.round(clicks / impressions * 1000) / 10 : 0,
     position: impressions > 0 ? Math.round(posWeightedSum / impressions * 10) / 10 : 0,
   }
+}
+
+function summarizeSCRows(rows) {
+  return summarizeSC({ rows })
 }
 
 function round1(value) {
@@ -391,9 +402,225 @@ function buildSeoOpportunities(scResults) {
   )).slice(0, 20)
 }
 
-function buildMarketingInsights(ga4Results, scResults) {
+function normalizeQuery(query) {
+  return String(query || '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+function classifySearchIntent(query, area) {
+  const q = normalizeQuery(query)
+  const hasArea = q.includes(area.toLowerCase())
+  const hasBrand = /快楽|かいらく|kairaku|m-kairaku|m性感倶楽部|m性感俱楽部|m性感クラブ|エム性感クラブ/.test(q)
+  const hasService = /m性感|性感|メンズエステ|メンエス|風俗|回春|マッサージ|出張|デリヘル|エステ/.test(q)
+
+  if (hasBrand) return 'brand'
+  if (hasArea && hasService) return 'area_service'
+  if (hasArea) return 'area_general'
+  if (hasService) return 'service'
+  return 'other'
+}
+
+function intentLabel(intent) {
+  const labels = {
+    brand: '指名系',
+    area_service: 'エリア業種系',
+    area_general: 'エリア一般',
+    service: '業種系',
+    other: 'その他',
+  }
+  return labels[intent] || intent
+}
+
+function diffPageQueryRow(row, prevRow) {
+  const base = {
+    page: row.keys[0],
+    query: row.keys[1],
+    clicks: row.clicks,
+    impressions: row.impressions,
+    ctr: Math.round(row.ctr * 1000) / 10,
+    position: Math.round(row.position * 10) / 10,
+  }
+  if (!prevRow) return base
+  return {
+    ...base,
+    prev_clicks: prevRow.clicks,
+    prev_impressions: prevRow.impressions,
+    prev_ctr: Math.round(prevRow.ctr * 1000) / 10,
+    prev_position: Math.round(prevRow.position * 10) / 10,
+    clicks_diff: row.clicks - prevRow.clicks,
+    impressions_diff: row.impressions - prevRow.impressions,
+    ctr_diff: Math.round((row.ctr - prevRow.ctr) * 1000) / 10,
+    position_diff: Math.round((row.position - prevRow.position) * 10) / 10,
+  }
+}
+
+function pageQueryKey(row) {
+  return `${row.page}|${normalizeQuery(row.query)}`
+}
+
+function buildQueryDrops(currentRows, previousRows, area) {
+  const currentMap = {}
+  for (const row of currentRows) {
+    currentMap[pageQueryKey(row)] = row
+  }
+
+  const lostQueries = []
+  for (const prev of previousRows) {
+    if (prev.impressions < 20) continue
+    const current = currentMap[pageQueryKey(prev)]
+    if (current) continue
+    lostQueries.push({
+      type: 'lost',
+      intent: classifySearchIntent(prev.query, area),
+      label: intentLabel(classifySearchIntent(prev.query, area)),
+      page: prev.page,
+      query: prev.query,
+      clicks: 0,
+      impressions: 0,
+      ctr: 0,
+      position: 0,
+      prev_clicks: prev.clicks,
+      prev_impressions: prev.impressions,
+      prev_ctr: prev.ctr,
+      prev_position: prev.position,
+      clicks_diff: -prev.clicks,
+      impressions_diff: -prev.impressions,
+      impressions_diff_pct: -100,
+    })
+  }
+
+  const decliningQueries = currentRows
+    .filter(row => (
+      typeof row.prev_impressions === 'number' &&
+      row.prev_impressions >= 20 &&
+      typeof row.impressions_diff === 'number' &&
+      row.impressions_diff <= -20
+    ))
+    .map(row => ({
+      type: 'declining',
+      intent: classifySearchIntent(row.query, area),
+      label: intentLabel(classifySearchIntent(row.query, area)),
+      ...row,
+      impressions_diff_pct: percentDiff(row.impressions, row.prev_impressions),
+    }))
+    .filter(row => row.impressions_diff_pct !== null && row.impressions_diff_pct <= -30)
+
+  return [...lostQueries, ...decliningQueries]
+    .sort((a, b) => Math.abs(b.impressions_diff || 0) - Math.abs(a.impressions_diff || 0))
+    .slice(0, 10)
+}
+
+function buildPageSeoInsights(pageResults) {
+  const insights = []
+  for (const pageData of pageResults) {
+    const currentRows = pageData.current?.rows || []
+    const previousRows = pageData.previous?.rows || []
+    const currentSummary = summarizeSCRows(currentRows)
+    const previousSummary = summarizeSCRows(previousRows)
+    const impressionsDiffPct = percentDiff(currentSummary.impressions, previousSummary.impressions)
+    const clicksDiffPct = percentDiff(currentSummary.clicks, previousSummary.clicks)
+    const ctrDiff = absDiff(currentSummary.ctr, previousSummary.ctr)
+    const positionDiff = absDiff(currentSummary.position, previousSummary.position)
+    const queryDrops = buildQueryDrops(currentRows, previousRows, pageData.area)
+
+    const grouped = {}
+    for (const row of currentRows) {
+      const intent = classifySearchIntent(row.query, pageData.area)
+      if (!grouped[intent]) {
+        grouped[intent] = { intent, label: intentLabel(intent), clicks: 0, impressions: 0, queries: [] }
+      }
+      grouped[intent].clicks += row.clicks
+      grouped[intent].impressions += row.impressions
+      grouped[intent].queries.push(row)
+    }
+
+    const queryGroups = Object.values(grouped)
+      .map(group => ({
+        ...group,
+        share: currentSummary.impressions > 0 ? round1(group.impressions / currentSummary.impressions * 100) : 0,
+        queries: group.queries.sort((a, b) => b.impressions - a.impressions).slice(0, 5),
+      }))
+      .sort((a, b) => b.impressions - a.impressions)
+
+    const signals = []
+    if (impressionsDiffPct !== null && impressionsDiffPct <= -15 && ctrDiff > 0.5) {
+      signals.push('impressions_down_ctr_up')
+    }
+    if (impressionsDiffPct !== null && impressionsDiffPct <= -20) signals.push('page_impressions_drop')
+    if (clicksDiffPct !== null && clicksDiffPct <= -20) signals.push('page_clicks_drop')
+    if (positionDiff >= 2) signals.push('page_rank_drop')
+    if (queryDrops.some(row => row.intent === 'area_service' || row.intent === 'area_general')) {
+      signals.push('nonbrand_query_drop')
+    }
+
+    const brand = queryGroups.find(group => group.intent === 'brand')
+    if ((brand?.share || 0) >= 45 && queryGroups.length > 1) signals.push('brand_heavy')
+
+    let priority = 'C'
+    if (
+      signals.includes('page_impressions_drop') ||
+      signals.includes('page_clicks_drop') ||
+      signals.includes('page_rank_drop') ||
+      signals.includes('nonbrand_query_drop')
+    ) {
+      priority = 'A'
+    } else if (signals.includes('impressions_down_ctr_up') || signals.includes('brand_heavy')) {
+      priority = 'B'
+    }
+
+    let mainIssue = '大きな異常なし'
+    let recommendedAction = '継続観測'
+    if (signals.includes('impressions_down_ctr_up')) {
+      mainIssue = '表示減・CTR上昇。濃い検索に偏り、新規系露出が減っている可能性'
+      recommendedAction = '非指名のエリア業種クエリを確認し、店舗トップ本文・FAQ・内部リンクを補強'
+    } else if (signals.includes('nonbrand_query_drop')) {
+      mainIssue = '非指名系クエリの表示回数が大きく減少'
+      recommendedAction = '減少クエリに対応する見出し・本文・FAQを店舗トップまたは関連ページへ追加'
+    } else if (signals.includes('page_impressions_drop')) {
+      mainIssue = '店舗ページ配下の表示回数が大きく減少'
+      recommendedAction = '表示減クエリと対象ページを確認し、title/description・本文上部・出勤導線を見直す'
+    } else if (signals.includes('page_clicks_drop')) {
+      mainIssue = '店舗ページ配下のクリックが大きく減少'
+      recommendedAction = '順位低下・CTR低下・競合訴求変化のどれかを切り分ける'
+    } else if (signals.includes('page_rank_drop')) {
+      mainIssue = '店舗ページ配下の平均順位が悪化'
+      recommendedAction = '上位クエリの検索意図に合わせて見出しと内部リンクを補強'
+    } else if (signals.includes('brand_heavy')) {
+      mainIssue = '指名系クエリ比率が高く、新規系検索の厚みが弱い可能性'
+      recommendedAction = 'エリア業種系クエリに対応する本文・FAQ・関連ページリンクを追加'
+    }
+
+    insights.push({
+      priority,
+      site: pageData.siteName,
+      area: pageData.area,
+      store_name: pageData.storeName,
+      path: pageData.path,
+      summary: currentSummary,
+      previous_summary: previousSummary,
+      clicks_diff_pct: clicksDiffPct,
+      impressions_diff_pct: impressionsDiffPct,
+      ctr_diff: ctrDiff,
+      position_diff: positionDiff,
+      signals,
+      query_groups: queryGroups,
+      top_queries: currentRows.slice(0, 10),
+      query_drops: queryDrops,
+      main_issue: mainIssue,
+      recommended_action: recommendedAction,
+    })
+  }
+
+  const rank = { A: 0, B: 1, C: 2 }
+  return insights.sort((a, b) => (
+    rank[a.priority] - rank[b.priority] ||
+    Math.abs(b.impressions_diff_pct || 0) - Math.abs(a.impressions_diff_pct || 0)
+  ))
+}
+
+function buildMarketingInsights(ga4Results, scResults, pageSeoResults = []) {
   const storeInsights = buildStoreInsights(ga4Results)
   const seoOpportunities = buildSeoOpportunities(scResults)
+  const pageSeoInsights = buildPageSeoInsights(pageSeoResults)
   const alerts = [
     ...storeInsights
       .filter(store => store.priority !== 'C')
@@ -413,6 +640,17 @@ function buildMarketingInsights(ga4Results, scResults) {
         reason: `${item.issue_type} / 表示${item.impressions}・CTR${item.ctr}%・順位${item.position}`,
         action: item.recommended_action,
       })),
+    ...pageSeoInsights
+      .filter(item => item.priority !== 'C')
+      .map(item => ({
+        priority: item.priority,
+        category: 'page_seo',
+        target: `${item.store_name}: ${item.path}`,
+        reason: `${item.main_issue} / 表示${item.summary.impressions}・CTR${item.summary.ctr}%・順位${item.summary.position}`,
+        action: item.query_drops?.length
+          ? `${item.recommended_action}。優先確認クエリ: ${item.query_drops.slice(0, 3).map(row => row.query).join(' / ')}`
+          : item.recommended_action,
+      })),
   ]
 
   const rank = { A: 0, B: 1, C: 2 }
@@ -421,13 +659,14 @@ function buildMarketingInsights(ga4Results, scResults) {
     .slice(0, 10)
     .map(item => ({
       ...item,
-      owner: item.category === 'seo' ? 'SEO/マーケ' : '店舗運用',
-      expected_impact: item.category === 'seo' ? '検索流入・CTR改善' : 'CVR改善・計測精度改善',
+      owner: item.category === 'store' ? '店舗運用' : 'SEO/マーケ',
+      expected_impact: item.category === 'store' ? 'CVR改善・計測精度改善' : '検索流入・CTR改善',
     }))
 
   return {
     storeInsights,
     seoOpportunities,
+    pageSeoInsights,
     castInsights: [],
     actionItems,
     alerts,
@@ -458,7 +697,7 @@ async function main() {
   console.log(`GA4: ${startDate} 〜 ${endDate} / 前週: ${prevStart} 〜 ${prevEnd}`)
   console.log(`SC : ${scStartDate} 〜 ${scEndDate} / 前週: ${scPrevStartDate} 〜 ${scPrevEndDate}`)
 
-  // GA4 全8店舗 × 3種レポート × 今週+前週 = 並列取得
+  // GA4 M性感4店舗 × 3種レポート × 今週+前週 = 並列取得
   const ga4Results = {}
   await Promise.all(GA4_PROPERTIES.map(async prop => {
     const [mainCurr, mainPrev, chCurr, chPrev, evCurr, evPrev] = await Promise.all([
@@ -562,11 +801,64 @@ async function main() {
   }))
   console.log(' SC完了')
 
-  const marketing = buildMarketingInsights(ga4Results, scResults)
+  // Search Console 店舗ページ深掘り（page + query）
+  const pageSeoResults = []
+  await Promise.all(M_STORE_PAGES.map(async page => {
+    const pageUrlContains = `https://www.m-kairaku.com${page.includePath}`
+    const excludeFilters = (page.excludePaths || []).map(path => ({
+      dimension: 'page',
+      operator: 'notContains',
+      expression: `https://www.m-kairaku.com${path}`,
+    }))
+    const body = {
+      dimensions: ['page', 'query'],
+      rowLimit: 50,
+      dimensionFilterGroups: [{
+        filters: [
+          {
+            dimension: 'page',
+            operator: 'contains',
+            expression: pageUrlContains,
+          },
+          ...excludeFilters,
+        ],
+      }],
+    }
+    const [current, previous] = await Promise.all([
+      fetchSC(page.siteUrl, token, { ...body, startDate: scStartDate, endDate: scEndDate }),
+      fetchSC(page.siteUrl, token, { ...body, startDate: scPrevStartDate, endDate: scPrevEndDate }),
+    ])
+
+    const prevMap = {}
+    for (const r of (previous?.rows || [])) {
+      prevMap[`${r.keys[0]}|${r.keys[1]}`] = r
+    }
+
+    pageSeoResults.push({
+      ...page,
+      current: {
+        rows: (current?.rows || []).map(r => diffPageQueryRow(r, prevMap[`${r.keys[0]}|${r.keys[1]}`])),
+      },
+      previous: {
+        rows: (previous?.rows || []).map(r => ({
+          page: r.keys[0],
+          query: r.keys[1],
+          clicks: r.clicks,
+          impressions: r.impressions,
+          ctr: Math.round(r.ctr * 1000) / 10,
+          position: Math.round(r.position * 10) / 10,
+        })),
+      },
+    })
+    process.stdout.write('.')
+  }))
+  console.log(' 店舗SEO完了')
+
+  const marketing = buildMarketingInsights(ga4Results, scResults, pageSeoResults)
 
   if (DRY_RUN) {
     console.log('--- DRY RUN: raw_data 構造プレビュー (先頭6000文字) ---')
-    console.log(JSON.stringify({ ga4: ga4Results, searchConsole: scResults, marketing }, null, 2).slice(0, 6000))
+    console.log(JSON.stringify({ ga4: ga4Results, searchConsole: scResults, pageSeo: pageSeoResults, marketing }, null, 2).slice(0, 6000))
     console.log('\n[analytics-report] DRY RUN 完了 ✓（Claude呼び出し・Supabase保存スキップ）')
     return
   }
@@ -578,7 +870,7 @@ async function main() {
   ])
 
   // Claude分析
-  const dataText = JSON.stringify({ ga4: ga4Results, searchConsole: scResults, marketing }, null, 2)
+  const dataText = JSON.stringify({ ga4: ga4Results, searchConsole: scResults, pageSeo: pageSeoResults, marketing }, null, 2)
 
   const prompt = `あなたは風俗店グループ「快楽M性感倶楽部」のウェブマーケティングアナリストです。
 以下はGA4・Search Consoleデータです。
@@ -593,6 +885,8 @@ async function main() {
 - searchConsole: current（今週）/ previous（前週）形式。M性感サイト分。
 - marketing.storeInsights: GA4から機械判定した店舗別アラート。priority A/B/C、alerts、recommended_action を含む。
 - marketing.seoOpportunities: Search Consoleから機械抽出したSEO改善候補。priority A/B/C、issue_type、recommended_action を含む。
+- marketing.pageSeoInsights: 店舗ページ配下の page+query 分析。表示減・CTR上昇、指名系偏重、順位悪化を検知する。
+- marketing.pageSeoInsights[].query_drops: 前週から消えた、または表示が大きく減ったクエリ。初期運用ではこの範囲を重点確認する。
 - marketing.actionItems: 店舗・SEOの優先アクション候補。ここを必ずレポートに反映すること。
 - phone_cvr = 電話クリック数 ÷ セッション数（%）
 - reservation_cvr = WEB予約クリック数 ÷ セッション数（%）
@@ -646,7 +940,15 @@ searchConsole.current.summary と searchConsole.previous.summary の実データ
 - marketing.seoOpportunities のpriority A/Bを優先し、表示回数が多くCTRが低いクエリ、8〜20位で伸ばせるクエリを具体的に挙げる
 - 各候補に recommended_action を添える
 
-### 7. 来週の改善アクション（優先度順）
+### 7. 店舗ページ別SEO深掘り
+marketing.pageSeoInsights を使い、priority A/Bの店舗ページを優先して書くこと。
+- 表示回数、クリック、CTR、平均順位の前週比
+- query_groups から指名系/エリア業種系/その他の偏り
+- query_drops がある場合は、減少クエリ名と減少幅を具体的に挙げる
+- 「表示減・CTR上昇」は新規自然流入減・指名流入偏重の疑いとして扱う
+- recommended_action を添える
+
+### 8. 来週の改善アクション（優先度順）
 marketing.actionItems から優先度A/Bを中心に最大5件。各項目は以下の形式:
 - 優先度 / 領域 / 対象
 - 理由
@@ -677,6 +979,7 @@ marketing.actionItems から優先度A/Bを中心に最大5件。各項目は以
       raw_data: {
         ga4: ga4Results,
         searchConsole: scResults,
+        pageSeo: pageSeoResults,
         marketing,
         period: {
           ga4: { startDate, endDate },
@@ -707,7 +1010,9 @@ if (require.main === module) {
 
 module.exports = {
   buildMarketingInsights,
+  buildPageSeoInsights,
   buildSeoOpportunities,
   buildStoreInsights,
+  classifySearchIntent,
   classifySeoOpportunity,
 }

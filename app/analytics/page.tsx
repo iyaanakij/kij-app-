@@ -41,6 +41,7 @@ interface GA4Summary {
 interface MarketingData {
   storeInsights?: StoreInsight[]
   seoOpportunities?: SeoOpportunity[]
+  pageSeoInsights?: PageSeoInsight[]
   actionItems?: ActionItem[]
 }
 
@@ -80,6 +81,66 @@ interface SeoOpportunity {
   position_diff: number | null
   recommended_action: string
   expected_impact: string
+}
+
+interface PageSeoInsight {
+  priority: Priority
+  site: string
+  area: string
+  store_name: string
+  path: string
+  summary: SearchSummary
+  previous_summary: SearchSummary
+  clicks_diff_pct: number | null
+  impressions_diff_pct: number | null
+  ctr_diff: number | null
+  position_diff: number | null
+  signals: string[]
+  query_groups: QueryGroup[]
+  top_queries: PageQuery[]
+  query_drops?: QueryDrop[]
+  main_issue: string
+  recommended_action: string
+}
+
+interface SearchSummary {
+  clicks: number
+  impressions: number
+  ctr: number
+  position: number
+}
+
+interface QueryGroup {
+  intent: string
+  label: string
+  clicks: number
+  impressions: number
+  share: number
+  queries: PageQuery[]
+}
+
+interface PageQuery {
+  page: string
+  query: string
+  clicks: number
+  impressions: number
+  ctr: number
+  position: number
+  clicks_diff?: number | null
+  impressions_diff?: number | null
+  ctr_diff?: number | null
+  position_diff?: number | null
+}
+
+interface QueryDrop extends PageQuery {
+  type: 'lost' | 'declining'
+  intent: string
+  label: string
+  prev_clicks?: number
+  prev_impressions?: number
+  prev_ctr?: number
+  prev_position?: number
+  impressions_diff_pct?: number | null
 }
 
 interface ActionItem {
@@ -131,7 +192,7 @@ function PriorityBadge({ priority }: { priority: Priority }) {
 }
 
 function CategoryLabel({ category }: { category: string }) {
-  const label = category === 'seo' ? 'SEO' : category === 'store' ? '店舗' : category
+  const label = category === 'seo' ? 'SEO' : category === 'page_seo' ? '店舗SEO' : category === 'store' ? '店舗' : category
   return <span className="text-xs text-gray-500">{label}</span>
 }
 
@@ -203,6 +264,7 @@ export default function AnalyticsPage() {
   const marketing = selected?.raw_data?.marketing
   const actionItems = marketing?.actionItems?.slice(0, 5) ?? []
   const seoOpportunities = marketing?.seoOpportunities?.slice(0, 8) ?? []
+  const pageSeoInsights = marketing?.pageSeoInsights?.slice(0, 6) ?? []
   const storeInsights = marketing?.storeInsights?.filter(s => s.priority !== 'C').slice(0, 6) ?? []
 
   return (
@@ -284,6 +346,97 @@ export default function AnalyticsPage() {
                   </p>
                 )}
                 <p className="mt-2 text-sm leading-relaxed text-gray-800">{store.recommended_action}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {pageSeoInsights.length > 0 && (
+        <section className="mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">店舗ページ別SEO深掘り</h2>
+            <span className="text-xs text-gray-400">marketing.pageSeoInsights</span>
+          </div>
+          <div className="space-y-2">
+            {pageSeoInsights.map(item => (
+              <div key={`${item.store_name}-${item.path}`} className="rounded border bg-white p-3">
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="mb-1 flex items-center gap-2">
+                      <PriorityBadge priority={item.priority} />
+                      <span className="text-xs text-gray-500">{item.path}</span>
+                    </div>
+                    <h3 className="text-sm font-semibold text-gray-900">{item.store_name}</h3>
+                  </div>
+                </div>
+                <p className="mb-2 text-xs font-medium text-gray-700">{item.main_issue}</p>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-600 sm:grid-cols-4">
+                  <div>クリック {item.summary.clicks.toLocaleString()}</div>
+                  <div>前週比 <SignedValue value={item.clicks_diff_pct} suffix="%" /></div>
+                  <div>表示 {item.summary.impressions.toLocaleString()}</div>
+                  <div>前週比 <SignedValue value={item.impressions_diff_pct} suffix="%" /></div>
+                  <div>CTR {item.summary.ctr}%</div>
+                  <div>差分 <SignedValue value={item.ctr_diff} suffix="pt" /></div>
+                  <div>順位 {item.summary.position}</div>
+                  <div>差分 <SignedValue value={item.position_diff} /></div>
+                </div>
+                {item.query_groups.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {item.query_groups.slice(0, 4).map(group => (
+                      <span key={`${item.path}-${group.intent}`} className="rounded border bg-gray-50 px-2 py-1 text-xs text-gray-700">
+                        {group.label} {group.share}% / 表示{group.impressions.toLocaleString()}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {item.top_queries.length > 0 && (
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className="text-gray-400">
+                        <tr>
+                          <th className="py-1 pr-3 font-medium">上位クエリ</th>
+                          <th className="py-1 pr-3 font-medium">表示</th>
+                          <th className="py-1 pr-3 font-medium">CTR</th>
+                          <th className="py-1 pr-3 font-medium">順位</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {item.top_queries.slice(0, 5).map(query => (
+                          <tr key={`${item.path}-${query.query}`} className="border-t border-gray-100">
+                            <td className="max-w-64 py-1 pr-3 font-medium text-gray-800">{query.query}</td>
+                            <td className="py-1 pr-3 text-gray-600">
+                              {query.impressions.toLocaleString()}
+                              <span className="ml-1 text-gray-400">(<SignedValue value={query.impressions_diff} />)</span>
+                            </td>
+                            <td className="py-1 pr-3 text-gray-600">{query.ctr}%</td>
+                            <td className="py-1 pr-3 text-gray-600">{query.position}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {item.query_drops && item.query_drops.length > 0 && (
+                  <div className="mt-3 rounded border border-red-100 bg-red-50 p-2">
+                    <div className="mb-1 text-xs font-semibold text-red-700">減少クエリ</div>
+                    <div className="space-y-1">
+                      {item.query_drops.slice(0, 4).map(query => (
+                        <div key={`${item.path}-${query.type}-${query.query}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-red-800">
+                          <span className="font-medium">{query.query}</span>
+                          <span className="text-red-500">{query.label}</span>
+                          <span>
+                            表示 {query.prev_impressions?.toLocaleString() ?? '-'} → {query.impressions.toLocaleString()}
+                            {query.impressions_diff_pct !== undefined && query.impressions_diff_pct !== null && (
+                              <span className="ml-1">({query.impressions_diff_pct}%)</span>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <p className="mt-3 text-sm leading-relaxed text-gray-800">{item.recommended_action}</p>
               </div>
             ))}
           </div>
