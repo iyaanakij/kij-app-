@@ -358,7 +358,7 @@ function classifySeoOpportunity(siteName, query) {
   } else if (isFalling) {
     issueType = 'click_drop'
     priority = 'B'
-    recommendedAction = '対象ページの表示崩れ、競合変化、検索意図とのズレを確認'
+    recommendedAction = '順位低下・CTR低下・対象ページの内容ズレを切り分ける'
     expectedImpact = 'クリック減少の原因特定'
   } else if (isImproving) {
     issueType = 'rising_query'
@@ -425,9 +425,84 @@ function intentLabel(intent) {
     area_service: 'エリア業種系',
     area_general: 'エリア一般',
     service: '業種系',
+    area_play: 'エリア×プレイ',
+    play_desire: 'プレイ/欲求',
+    beginner_need: '初心者/比較',
     other: 'その他',
   }
   return labels[intent] || intent
+}
+
+function classifyGrowthIntent(query, area) {
+  const q = normalizeQuery(query)
+  const hasArea = q.includes(area.toLowerCase()) || /千葉|成田|西船橋|船橋|錦糸町|東京|千葉県/.test(q)
+  const hasPlay = /m男|前立腺|乳首|寸止め|焦らし|ドライオーガズム|言葉責め|女性.*責め|責められたい|責めて|女王様|痴女|手コキ|射精管理|アナル|密着|性感マッサージ/.test(q)
+  const hasBeginnerNeed = /初めて|初心者|おすすめ|口コミ|体験|どんな|とは|痛い|怖い|料金|コース|選び方/.test(q)
+
+  if (hasPlay && hasArea) return 'area_play'
+  if (hasPlay) return 'play_desire'
+  if (hasBeginnerNeed && !/快楽|かいらく|kairaku|m-kairaku/.test(q)) return 'beginner_need'
+  return null
+}
+
+function buildGrowthQueryOpportunities(pageResults) {
+  const opportunities = []
+  for (const pageData of pageResults) {
+    const rows = pageData.current?.rows || []
+    for (const row of rows) {
+      const intent = classifyGrowthIntent(row.query, pageData.area)
+      if (!intent) continue
+
+      const impressionsDiffPct = typeof row.prev_impressions === 'number'
+        ? percentDiff(row.impressions, row.prev_impressions)
+        : null
+      const isReachableRank = row.position >= 5 && row.position <= 25
+      const isLowCtr = row.impressions >= 20 && row.ctr < 8
+      const isAreaPlay = intent === 'area_play'
+
+      let priority = 'C'
+      let recommendedAction = '関連する見出し・本文・FAQを追加し、店舗ページから導線を作る'
+      if (isAreaPlay && (isReachableRank || row.impressions >= 20)) {
+        priority = 'A'
+        recommendedAction = '店舗ページ本文上部またはFAQに、エリアとプレイ内容を自然に含む回答を追加'
+      } else if (isReachableRank || isLowCtr || intent === 'play_desire') {
+        priority = 'B'
+        recommendedAction = 'プレイ紹介/FAQを補強し、対応店舗・対応コースへの内部リンクを追加'
+      }
+
+      opportunities.push({
+        priority,
+        intent,
+        label: intentLabel(intent),
+        site: pageData.siteName,
+        area: pageData.area,
+        store_name: pageData.storeName,
+        path: pageData.path,
+        page: row.page,
+        query: row.query,
+        clicks: row.clicks,
+        impressions: row.impressions,
+        ctr: row.ctr,
+        position: row.position,
+        clicks_diff: row.clicks_diff ?? null,
+        impressions_diff: row.impressions_diff ?? null,
+        impressions_diff_pct: impressionsDiffPct,
+        ctr_diff: row.ctr_diff ?? null,
+        position_diff: row.position_diff ?? null,
+        recommended_action: recommendedAction,
+        expected_impact: isAreaPlay ? '来店可能性の高い非指名検索の獲得' : '店名未認知層の検索流入拡張',
+      })
+    }
+  }
+
+  const rank = { A: 0, B: 1, C: 2 }
+  return opportunities
+    .sort((a, b) => (
+      rank[a.priority] - rank[b.priority] ||
+      b.impressions - a.impressions ||
+      a.position - b.position
+    ))
+    .slice(0, 20)
 }
 
 function diffPageQueryRow(row, prevRow) {
@@ -621,6 +696,7 @@ function buildMarketingInsights(ga4Results, scResults, pageSeoResults = []) {
   const storeInsights = buildStoreInsights(ga4Results)
   const seoOpportunities = buildSeoOpportunities(scResults)
   const pageSeoInsights = buildPageSeoInsights(pageSeoResults)
+  const growthQueryOpportunities = buildGrowthQueryOpportunities(pageSeoResults)
   const alerts = [
     ...storeInsights
       .filter(store => store.priority !== 'C')
@@ -651,6 +727,15 @@ function buildMarketingInsights(ga4Results, scResults, pageSeoResults = []) {
           ? `${item.recommended_action}。優先確認クエリ: ${item.query_drops.slice(0, 3).map(row => row.query).join(' / ')}`
           : item.recommended_action,
       })),
+    ...growthQueryOpportunities
+      .filter(item => item.priority !== 'C')
+      .map(item => ({
+        priority: item.priority,
+        category: 'growth_query',
+        target: `${item.store_name}: ${item.query}`,
+        reason: `${item.label} / 表示${item.impressions}・CTR${item.ctr}%・順位${item.position}`,
+        action: item.recommended_action,
+      })),
   ]
 
   const rank = { A: 0, B: 1, C: 2 }
@@ -667,6 +752,7 @@ function buildMarketingInsights(ga4Results, scResults, pageSeoResults = []) {
     storeInsights,
     seoOpportunities,
     pageSeoInsights,
+    growthQueryOpportunities,
     castInsights: [],
     actionItems,
     alerts,
@@ -812,7 +898,7 @@ async function main() {
     }))
     const body = {
       dimensions: ['page', 'query'],
-      rowLimit: 50,
+      rowLimit: 250,
       dimensionFilterGroups: [{
         filters: [
           {
@@ -869,8 +955,21 @@ async function main() {
     'SUPABASE_SERVICE_ROLE_KEY',
   ])
 
-  // Claude分析
-  const dataText = JSON.stringify({ ga4: ga4Results, searchConsole: scResults, pageSeo: pageSeoResults, marketing }, null, 2)
+  // Claudeには機械判定済みのmarketingを中心に渡す。page+queryの全行は長くなるため渡さない。
+  const promptData = {
+    ga4: ga4Results,
+    searchConsole: scResults,
+    marketing,
+    pageSeoSummary: pageSeoResults.map(page => ({
+      siteName: page.siteName,
+      area: page.area,
+      storeName: page.storeName,
+      path: page.path,
+      currentRows: page.current.rows.length,
+      previousRows: page.previous.rows.length,
+    })),
+  }
+  const dataText = JSON.stringify(promptData, null, 2)
 
   const prompt = `あなたは風俗店グループ「快楽M性感倶楽部」のウェブマーケティングアナリストです。
 以下はGA4・Search Consoleデータです。
@@ -887,6 +986,7 @@ async function main() {
 - marketing.seoOpportunities: Search Consoleから機械抽出したSEO改善候補。priority A/B/C、issue_type、recommended_action を含む。
 - marketing.pageSeoInsights: 店舗ページ配下の page+query 分析。表示減・CTR上昇、指名系偏重、順位悪化を検知する。
 - marketing.pageSeoInsights[].query_drops: 前週から消えた、または表示が大きく減ったクエリ。初期運用ではこの範囲を重点確認する。
+- marketing.growthQueryOpportunities: 指名系・表記揺れ中心の上位クエリとは別に、プレイ内容・欲求・初心者/比較系の非指名検索を抽出した成長候補。
 - marketing.actionItems: 店舗・SEOの優先アクション候補。ここを必ずレポートに反映すること。
 - phone_cvr = 電話クリック数 ÷ セッション数（%）
 - reservation_cvr = WEB予約クリック数 ÷ セッション数（%）
@@ -948,7 +1048,13 @@ marketing.pageSeoInsights を使い、priority A/Bの店舗ページを優先し
 - 「表示減・CTR上昇」は新規自然流入減・指名流入偏重の疑いとして扱う
 - recommended_action を添える
 
-### 8. 来週の改善アクション（優先度順）
+### 8. 非指名・欲求検索の成長候補
+marketing.growthQueryOpportunities を使い、priority A/Bを優先して書くこと。
+- 店舗名、クエリ、分類、表示回数、CTR、順位
+- エリア×プレイ内容を最優先し、本文・FAQ・内部リンクのどれを足すべきか提案
+- 純粋な「エリア + M性感」の表記揺れはここでは成長候補として扱わない
+
+### 9. 来週の改善アクション（優先度順）
 marketing.actionItems から優先度A/Bを中心に最大5件。各項目は以下の形式:
 - 優先度 / 領域 / 対象
 - 理由

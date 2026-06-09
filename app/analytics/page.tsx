@@ -42,6 +42,7 @@ interface MarketingData {
   storeInsights?: StoreInsight[]
   seoOpportunities?: SeoOpportunity[]
   pageSeoInsights?: PageSeoInsight[]
+  growthQueryOpportunities?: GrowthQueryOpportunity[]
   actionItems?: ActionItem[]
 }
 
@@ -77,6 +78,29 @@ interface SeoOpportunity {
   position: number
   clicks_diff: number | null
   impressions_diff: number | null
+  ctr_diff: number | null
+  position_diff: number | null
+  recommended_action: string
+  expected_impact: string
+}
+
+interface GrowthQueryOpportunity {
+  priority: Priority
+  intent: string
+  label: string
+  site: string
+  area: string
+  store_name: string
+  path: string
+  page: string
+  query: string
+  clicks: number
+  impressions: number
+  ctr: number
+  position: number
+  clicks_diff: number | null
+  impressions_diff: number | null
+  impressions_diff_pct: number | null
   ctr_diff: number | null
   position_diff: number | null
   recommended_action: string
@@ -192,7 +216,15 @@ function PriorityBadge({ priority }: { priority: Priority }) {
 }
 
 function CategoryLabel({ category }: { category: string }) {
-  const label = category === 'seo' ? 'SEO' : category === 'page_seo' ? '店舗SEO' : category === 'store' ? '店舗' : category
+  const label = category === 'seo'
+    ? 'SEO'
+    : category === 'page_seo'
+      ? '店舗SEO'
+      : category === 'growth_query'
+        ? '成長検索'
+        : category === 'store'
+          ? '店舗'
+          : category
   return <span className="text-xs text-gray-500">{label}</span>
 }
 
@@ -264,6 +296,7 @@ export default function AnalyticsPage() {
   const marketing = selected?.raw_data?.marketing
   const actionItems = marketing?.actionItems?.slice(0, 5) ?? []
   const seoOpportunities = marketing?.seoOpportunities?.slice(0, 8) ?? []
+  const growthQueryOpportunities = marketing?.growthQueryOpportunities?.slice(0, 8) ?? []
   const pageSeoInsights = marketing?.pageSeoInsights?.slice(0, 6) ?? []
   const storeInsights = marketing?.storeInsights?.filter(s => s.priority !== 'C').slice(0, 6) ?? []
 
@@ -439,6 +472,54 @@ export default function AnalyticsPage() {
                 <p className="mt-3 text-sm leading-relaxed text-gray-800">{item.recommended_action}</p>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {growthQueryOpportunities.length > 0 && (
+        <section className="mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">非指名・欲求検索の成長候補</h2>
+            <span className="text-xs text-gray-400">marketing.growthQueryOpportunities</span>
+          </div>
+          <div className="overflow-x-auto rounded border bg-white">
+            <table className="min-w-full text-left text-xs">
+              <thead className="border-b bg-gray-50 text-gray-500">
+                <tr>
+                  <th className="px-3 py-2 font-medium">優先</th>
+                  <th className="px-3 py-2 font-medium">店舗</th>
+                  <th className="px-3 py-2 font-medium">分類</th>
+                  <th className="px-3 py-2 font-medium">クエリ</th>
+                  <th className="px-3 py-2 font-medium">表示</th>
+                  <th className="px-3 py-2 font-medium">CTR</th>
+                  <th className="px-3 py-2 font-medium">順位</th>
+                  <th className="px-3 py-2 font-medium">施策</th>
+                </tr>
+              </thead>
+              <tbody>
+                {growthQueryOpportunities.map((item, index) => (
+                  <tr key={`${item.store_name}-${item.query}-${index}`} className="border-b last:border-b-0">
+                    <td className="px-3 py-2 align-top"><PriorityBadge priority={item.priority} /></td>
+                    <td className="whitespace-nowrap px-3 py-2 align-top text-gray-600">{item.store_name}</td>
+                    <td className="whitespace-nowrap px-3 py-2 align-top text-gray-600">{item.label}</td>
+                    <td className="min-w-44 px-3 py-2 align-top font-medium text-gray-900">{item.query}</td>
+                    <td className="px-3 py-2 align-top text-gray-700">
+                      {item.impressions.toLocaleString()}
+                      <span className="ml-1 text-gray-400">(<SignedValue value={item.impressions_diff} />)</span>
+                    </td>
+                    <td className="px-3 py-2 align-top text-gray-700">
+                      {item.ctr}%
+                      <span className="ml-1 text-gray-400">(<SignedValue value={item.ctr_diff} suffix="pt" />)</span>
+                    </td>
+                    <td className="px-3 py-2 align-top text-gray-700">
+                      {item.position}
+                      <span className="ml-1 text-gray-400">(<SignedValue value={item.position_diff} />)</span>
+                    </td>
+                    <td className="min-w-64 px-3 py-2 align-top text-gray-700">{item.recommended_action}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </section>
       )}
