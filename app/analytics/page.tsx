@@ -178,6 +178,7 @@ interface ActionItem {
 }
 
 type Priority = 'A' | 'B' | 'C'
+type TabId = 'overview' | 'stores' | 'seo' | 'report'
 
 function formatDate(d: string) {
   return d.replace(/-/g, '/').slice(2)
@@ -263,6 +264,7 @@ function MarkdownContent({ text }: { text: string }) {
 export default function AnalyticsPage() {
   const [reports, setReports] = useState<Report[]>([])
   const [selected, setSelected] = useState<Report | null>(null)
+  const [activeTab, setActiveTab] = useState<TabId>('overview')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -299,6 +301,12 @@ export default function AnalyticsPage() {
   const growthQueryOpportunities = marketing?.growthQueryOpportunities?.slice(0, 8) ?? []
   const pageSeoInsights = marketing?.pageSeoInsights?.slice(0, 6) ?? []
   const storeInsights = marketing?.storeInsights?.filter(s => s.priority !== 'C').slice(0, 6) ?? []
+  const tabs: { id: TabId; label: string; count?: number }[] = [
+    { id: 'overview', label: '概要', count: actionItems.length },
+    { id: 'stores', label: '店舗', count: storeInsights.length },
+    { id: 'seo', label: 'SEO', count: pageSeoInsights.length + growthQueryOpportunities.length + seoOpportunities.length },
+    { id: 'report', label: 'AIレポート' },
+  ]
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
@@ -326,7 +334,34 @@ export default function AnalyticsPage() {
         </p>
       )}
 
-      {actionItems.length > 0 && (
+      <div className="mb-5 overflow-x-auto border-b">
+        <div className="flex min-w-max gap-1">
+          {tabs.map(tab => {
+            const isActive = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'border-gray-900 text-gray-900'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800'
+                }`}
+              >
+                {tab.label}
+                {tab.count !== undefined && (
+                  <span className={`ml-2 rounded px-1.5 py-0.5 text-xs ${isActive ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {activeTab === 'overview' && actionItems.length > 0 && (
         <section className="mb-6">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">今週の優先アクション</h2>
@@ -354,7 +389,7 @@ export default function AnalyticsPage() {
         </section>
       )}
 
-      {storeInsights.length > 0 && (
+      {activeTab === 'stores' && storeInsights.length > 0 && (
         <section className="mb-6">
           <h2 className="mb-2 text-sm font-semibold text-gray-700">店舗アラート</h2>
           <div className="grid gap-2 md:grid-cols-2">
@@ -385,7 +420,7 @@ export default function AnalyticsPage() {
         </section>
       )}
 
-      {pageSeoInsights.length > 0 && (
+      {activeTab === 'seo' && pageSeoInsights.length > 0 && (
         <section className="mb-6">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">店舗ページ別SEO深掘り</h2>
@@ -476,7 +511,7 @@ export default function AnalyticsPage() {
         </section>
       )}
 
-      {growthQueryOpportunities.length > 0 && (
+      {activeTab === 'seo' && growthQueryOpportunities.length > 0 && (
         <section className="mb-6">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">非指名・欲求検索の成長候補</h2>
@@ -524,7 +559,7 @@ export default function AnalyticsPage() {
         </section>
       )}
 
-      {seoOpportunities.length > 0 && (
+      {activeTab === 'seo' && seoOpportunities.length > 0 && (
         <section className="mb-6">
           <h2 className="mb-2 text-sm font-semibold text-gray-700">SEO改善候補</h2>
           <div className="overflow-x-auto rounded border bg-white">
@@ -568,7 +603,7 @@ export default function AnalyticsPage() {
       )}
 
       {/* GA4 店舗別サマリー */}
-      {ga4 && (
+      {activeTab === 'overview' && ga4 && (
         <div className="mb-6">
           <h2 className="text-sm font-semibold text-gray-700 mb-2">店舗別セッション数</h2>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -587,10 +622,12 @@ export default function AnalyticsPage() {
       )}
 
       {/* AI分析レポート */}
-      <div className="bg-white border rounded p-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">AI分析レポート</h2>
-        <MarkdownContent text={selected?.summary ?? ''} />
-      </div>
+      {activeTab === 'report' && (
+        <div className="bg-white border rounded p-4">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">AI分析レポート</h2>
+          <MarkdownContent text={selected?.summary ?? ''} />
+        </div>
+      )}
     </div>
   )
 }
