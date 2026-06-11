@@ -429,11 +429,7 @@ export default function ReservationsPage() {
       {/* 日次売上サマリー */}
       {!loading && (() => {
         const totalSales = reservations.reduce((s, r) => s + (r.total_amount ?? 0), 0)
-        const totalCastPay = reservations.reduce((s, r) => {
-          const sub = getCastSubtotal(r)
-          const misc = Math.ceil(Math.max(0, (sub - 5000) * 0.08) / 100) * 100
-          return s + (sub - misc + (r.transportation_fee ?? 0))
-        }, 0)
+        const totalCastPay = reservations.reduce((s, r) => s + getCastSubtotal(r) + (r.transportation_fee ?? 0), 0)
         const storeProft = totalSales - totalCastPay
         return (
           <div className="bg-white rounded-xl shadow-md border border-gray-100 px-5 py-3 mb-3 flex flex-wrap gap-6 items-center">
