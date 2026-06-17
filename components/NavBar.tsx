@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useTheme } from 'next-themes'
-import { STORES } from '@/lib/types'
 
 const navItems = [
   { href: '/reservations', label: '予約管理' },
@@ -15,6 +14,7 @@ const navItems = [
   { href: '/women-info', label: '女性情報' },
   { href: '/staff', label: 'スタッフ' },
   { href: '/photodiary', label: '写メ日記' },
+  { href: '/hotels', label: 'ホテル料金' },
 ]
 
 function ThemeToggle() {
@@ -49,26 +49,10 @@ function ThemeToggle() {
 
 export default function NavBar() {
   const pathname = usePathname()
-  const [storeName, setStoreName] = useState<string>('')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   useEffect(() => {
     setIsMenuOpen(false)
-  }, [pathname])
-
-  useEffect(() => {
-    const update = () => {
-      const saved = localStorage.getItem('kij_store')
-      if (saved) {
-        const store = STORES.find(s => s.id === Number(saved))
-        setStoreName(store?.name ?? '')
-      } else {
-        setStoreName('')
-      }
-    }
-    update()
-    window.addEventListener('kij_store_changed', update)
-    return () => window.removeEventListener('kij_store_changed', update)
   }, [pathname])
 
   if (pathname.startsWith('/cast') || pathname.startsWith('/photodiary') || pathname.startsWith('/chat')) return null
@@ -144,23 +128,11 @@ export default function NavBar() {
               <span className="w-1.5 h-1.5 rounded-full bg-orange-400 inline-block"></span>
               配信ルール
             </Link>
-            {storeName && (
-              <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">
-                <span className="w-2 h-2 rounded-full bg-green-400 inline-block"></span>
-                <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{storeName}</span>
-              </div>
-            )}
             <ThemeToggle />
           </div>
 
-          {/* Mobile: right side (store badge + theme toggle + hamburger) */}
+          {/* Mobile: right side (theme toggle + hamburger) */}
           <div className="ml-auto flex md:hidden items-center gap-2">
-            {storeName && (
-              <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>
-                <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{storeName}</span>
-              </div>
-            )}
             <ThemeToggle />
             <button
               onClick={() => setIsMenuOpen(true)}
