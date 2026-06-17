@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/server-auth'
 
 const adminSupabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,9 +7,6 @@ const adminSupabase = createClient(
 )
 
 export async function GET(request: NextRequest) {
-  const authError = await requireAuth(request)
-  if (authError) return authError.error
-
   const { searchParams } = new URL(request.url)
   const hours = Math.min(Number(searchParams.get('hours') || 24), 168)
 

@@ -2,8 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { getCurrentUser, getAuthHeaders } from '@/lib/auth'
 
 type CheckItem = {
   level: 'OK' | 'WARN' | 'CRIT'
@@ -64,8 +62,7 @@ export default function DashboardPage() {
   const fetchLogs = useCallback(async () => {
     setLoading(true)
     setError('')
-    const headers = await getAuthHeaders()
-    const res = await fetch(`/api/admin/health-check?hours=${hours}`, { headers })
+    const res = await fetch(`/api/admin/health-check?hours=${hours}`)
     if (!res.ok) {
       setError(`取得失敗 (${res.status})`)
       setLoading(false)
@@ -78,13 +75,8 @@ export default function DashboardPage() {
   }, [hours, selectedLog])
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) { router.replace('/admin/login'); return }
-      const u = await getCurrentUser()
-      if (u?.role !== 'staff') { router.replace('/admin/login'); return }
-      fetchLogs()
-    })
-  }, [router, fetchLogs])
+    fetchLogs()
+  }, [fetchLogs])
 
   const latest = logs[0] ?? null
 
