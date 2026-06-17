@@ -41,47 +41,82 @@ const NAME_JA: Record<string, string> = {
   'disk':                  'ディスク使用量',
 }
 
-// エラー時のガイドと復旧アクション
-const CHECK_GUIDE: Record<string, { guide: string; action?: string; actionLabel?: string }> = {
+type Category = 'SELF_RECOVERABLE' | 'RETRYABLE_BUT_ESCALATE' | 'ENGINEER_REQUIRED' | 'EXTERNAL_SERVICE_ISSUE'
+
+type CheckGuideEntry = {
+  category: Category
+  summary: string        // 店舗向け一言状態
+  operatorAction: string // 店舗が取るべき行動
+  action?: string
+  actionLabel?: string
+}
+
+// エラー時のガイドと復旧アクション（カテゴリ付き）
+const CHECK_GUIDE: Record<string, CheckGuideEntry> = {
   'approved-latest': {
-    guide: 'CS3からの出勤承認データが古くなっています。「Venrey同期を復旧」を押して、CS3への再ログインを試してください。',
+    category: 'SELF_RECOVERABLE',
+    summary: 'CS3の出勤承認データが取得できていません',
+    operatorAction: '復旧ボタンを押してください。15分後に改善しない場合は報告してください。',
     action: 'cs3_relogin_a',
     actionLabel: 'Venrey同期を復旧',
   },
   'venrey-apply': {
-    guide: 'Venreyへの出勤反映でエラーが発生しています。「Venrey同期を復旧」を押してください。改善しない場合は加藤さんに連絡してください。',
+    category: 'RETRYABLE_BUT_ESCALATE',
+    summary: 'Venreyへの出勤反映でエラーが発生しています',
+    operatorAction: '復旧ボタンを押してください。失敗したら加藤さんに報告してください。',
     action: 'cs3_relogin_a',
     actionLabel: 'Venrey同期を復旧',
   },
   'cp4-apply': {
-    guide: 'HP（CASTPRO4）への出勤反映でエラーが発生しています。「HP同期を復旧」を押してください。改善しない場合は加藤さんに連絡してください。',
+    category: 'RETRYABLE_BUT_ESCALATE',
+    summary: 'HPへの出勤反映でエラーが発生しています',
+    operatorAction: '復旧ボタンを押してください。失敗したら加藤さんに報告してください。',
     action: 'cs3_relogin_b',
     actionLabel: 'HP同期を復旧',
   },
   'cp4-clear-summary': {
-    guide: 'HP削除候補の数が異常です。自動処理は止まっていません。内容を加藤さんに報告してください。',
+    category: 'ENGINEER_REQUIRED',
+    summary: 'HP削除候補のデータに異常があります',
+    operatorAction: '店舗では対応できません。このページの報告文を加藤さんに送ってください。',
   },
   'log:venrey-sync': {
-    guide: 'Venrey同期のログにエラーが記録されています。「Venrey同期を復旧」を押してください。',
+    category: 'RETRYABLE_BUT_ESCALATE',
+    summary: 'Venrey同期のログにエラーが記録されています',
+    operatorAction: '復旧ボタンを押してください。失敗したら加藤さんに報告してください。',
     action: 'cs3_relogin_a',
     actionLabel: 'Venrey同期を復旧',
   },
   'log:cp4-apply': {
-    guide: 'HP反映のログにエラーが記録されています。「HP同期を復旧」を押してください。',
+    category: 'RETRYABLE_BUT_ESCALATE',
+    summary: 'HP反映のログにエラーが記録されています',
+    operatorAction: '復旧ボタンを押してください。失敗したら加藤さんに報告してください。',
     action: 'cs3_relogin_b',
     actionLabel: 'HP同期を復旧',
   },
   'log:new-cast-check': {
-    guide: '新規キャスト確認でエラーが出ています。「新規キャスト取得を復旧」を押してください。',
+    category: 'RETRYABLE_BUT_ESCALATE',
+    summary: '新規キャスト確認でエラーが発生しています',
+    operatorAction: '復旧ボタンを押してください。失敗したら加藤さんに報告してください。',
     action: 'cs3_relogin_c',
     actionLabel: '新規キャスト取得を復旧',
   },
   'log:retention-cleanup': {
-    guide: 'ファイル自動整理でエラーが出ています。加藤さんに連絡してください。',
+    category: 'ENGINEER_REQUIRED',
+    summary: 'ファイル自動整理でエラーが発生しています',
+    operatorAction: '店舗では対応できません。このページの報告文を加藤さんに送ってください。',
   },
   'disk': {
-    guide: 'VPSのディスク使用量が多くなっています。加藤さんに連絡してください。',
+    category: 'ENGINEER_REQUIRED',
+    summary: 'VPSのディスク使用量が上限に近づいています',
+    operatorAction: '店舗では対応できません。このページの報告文を加藤さんに送ってください。',
   },
+}
+
+const CATEGORY_LABEL: Record<Category, { label: string; bg: string; text: string }> = {
+  SELF_RECOVERABLE:        { label: '店舗で復旧可',   bg: 'bg-blue-100',   text: 'text-blue-700' },
+  RETRYABLE_BUT_ESCALATE:  { label: '復旧→失敗で報告', bg: 'bg-orange-100', text: 'text-orange-700' },
+  ENGINEER_REQUIRED:       { label: '報告のみ',        bg: 'bg-gray-200',   text: 'text-gray-700' },
+  EXTERNAL_SERVICE_ISSUE:  { label: '外部サービス障害', bg: 'bg-purple-100', text: 'text-purple-700' },
 }
 
 // アクション名の日本語
@@ -169,6 +204,59 @@ function StatusBadge({ status }: { status: 'OK' | 'WARN' | 'CRIT' }) {
   )
 }
 
+function CategoryBadge({ category }: { category: Category }) {
+  const c = CATEGORY_LABEL[category]
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${c.bg} ${c.text}`}>
+      {c.label}
+    </span>
+  )
+}
+
+function buildReportText(log: HealthLog, lastOkAt: string | null, jobs: ActionJob[]): string {
+  const jst = (iso: string) => new Date(iso).toLocaleString('ja-JP', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  })
+
+  const issues = log.checks.filter(c => c.level !== 'OK')
+  const autoJob = jobs.find(j => j.requested_by === 'auto')
+  const autoResult = autoJob
+    ? (autoJob.status === 'succeeded' ? '成功' : autoJob.status === 'failed' ? '失敗' : '実行中')
+    : 'なし'
+
+  const lines: string[] = [
+    '【障害報告】',
+    `状態: ${log.status}`,
+    `検出時刻: ${jst(log.checked_at)}`,
+    `最終正常確認: ${lastOkAt ? jst(lastOkAt) : '不明'}`,
+    '',
+  ]
+
+  for (const c of issues) {
+    const guide = CHECK_GUIDE[c.name]
+    lines.push(`■ ${translateName(c.name)}`)
+    lines.push(`  状態: ${c.level}`)
+    if (guide) {
+      lines.push(`  分類: ${CATEGORY_LABEL[guide.category].label}`)
+      lines.push(`  内容: ${guide.summary}`)
+      lines.push(`  詳細: ${translateMessage(c.name, c.message)}`)
+    } else {
+      lines.push(`  詳細: ${translateMessage(c.name, c.message)}`)
+    }
+    lines.push('')
+  }
+
+  lines.push(`自動復旧: ${autoResult}`)
+  const needsEngineer = issues.some(c => {
+    const g = CHECK_GUIDE[c.name]
+    return !g || g.category === 'ENGINEER_REQUIRED'
+  })
+  lines.push(`技術対応: ${needsEngineer ? '必要' : '不要（復旧ボタンで対応可）'}`)
+
+  return lines.join('\n')
+}
+
 function formatJst(iso: string) {
   return new Date(iso).toLocaleString('ja-JP', {
     timeZone: 'Asia/Tokyo',
@@ -198,6 +286,7 @@ export default function DashboardPage() {
   const [jobs, setJobs] = useState<ActionJob[]>([])
   const [submitting, setSubmitting] = useState<string | null>(null)
   const [submitMsg, setSubmitMsg] = useState('')
+  const [copied, setCopied] = useState(false)
 
   const fetchLogs = useCallback(async () => {
     setLoading(true)
@@ -251,6 +340,17 @@ export default function DashboardPage() {
   const timeline = [...logs].reverse()
   const detailLog = selectedLog ?? latest
 
+  const lastOkAt = logs.find(l => l.status === 'OK')?.checked_at ?? null
+
+  const copyReport = () => {
+    if (!latest) return
+    const text = buildReportText(latest, lastOkAt, jobs)
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ヘッダー */}
@@ -298,18 +398,38 @@ export default function DashboardPage() {
                   {latest.status === 'OK' ? '正常稼働中' : latest.status === 'WARN' ? '要注意' : '異常検知'}
                 </span>
               </div>
-              <div className="text-right text-sm text-gray-600">
-                <div className="font-medium">最終チェック</div>
-                <div>{formatJst(latest.checked_at)}（{minutesAgo(latest.checked_at)}）</div>
+              <div className="flex items-center gap-3">
+                {latest.status !== 'OK' && (
+                  <button
+                    onClick={copyReport}
+                    className="text-xs font-semibold bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    {copied ? '✅ コピーしました' : '📋 報告文をコピー'}
+                  </button>
+                )}
+                <div className="text-right text-sm text-gray-600">
+                  <div className="font-medium">最終チェック</div>
+                  <div>{formatJst(latest.checked_at)}（{minutesAgo(latest.checked_at)}）</div>
+                </div>
               </div>
             </div>
             {latest.status !== 'OK' && (
-              <div className="mt-4 space-y-1.5">
-                {latest.checks.filter(c => c.level !== 'OK').map((c, i) => (
-                  <div key={i} className={`text-sm px-3 py-2 rounded-lg ${STATUS_COLOR[c.level].bg} ${STATUS_COLOR[c.level].text} border ${STATUS_COLOR[c.level].border}`}>
-                    <span className="font-semibold">[{c.level}] {translateName(c.name)}:</span> {translateMessage(c.name, c.message)}
-                  </div>
-                ))}
+              <div className="mt-4 space-y-2">
+                {latest.checks.filter(c => c.level !== 'OK').map((c, i) => {
+                  const guide = CHECK_GUIDE[c.name]
+                  return (
+                    <div key={i} className={`rounded-lg border px-3 py-2.5 ${STATUS_COLOR[c.level].bg} ${STATUS_COLOR[c.level].border}`}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <StatusBadge status={c.level} />
+                        <span className={`text-sm font-semibold ${STATUS_COLOR[c.level].text}`}>{translateName(c.name)}</span>
+                        {guide && <CategoryBadge category={guide.category} />}
+                      </div>
+                      {guide && (
+                        <p className="mt-1 text-xs text-gray-700 pl-1">{guide.summary}</p>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -364,18 +484,25 @@ export default function DashboardPage() {
                       key={i}
                       className={`flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border text-sm ${STATUS_COLOR[c.level].bg} ${STATUS_COLOR[c.level].border}`}
                     >
-                      <div className="flex items-center gap-2">
+                      {/* 状態・対象・カテゴリ */}
+                      <div className="flex items-center gap-2 flex-wrap">
                         <StatusBadge status={c.level} />
                         <span className="font-medium text-gray-800">{translateName(c.name)}</span>
+                        {guide && <CategoryBadge category={guide.category} />}
                       </div>
+
+                      {/* 原因（技術詳細） */}
                       <p className={`text-xs leading-relaxed pl-1 ${STATUS_COLOR[c.level].text} break-all`}>
                         {translateMessage(c.name, c.message)}
                       </p>
+
+                      {/* 店舗対応・次の行動・ボタン */}
                       {guide && (
-                        <div className="mt-1 pl-1 space-y-1.5">
-                          <p className="text-xs text-gray-700 bg-white/70 rounded px-2 py-1.5 leading-relaxed">
-                            💡 {guide.guide}
-                          </p>
+                        <div className="mt-0.5 pl-1 space-y-1.5">
+                          <div className="text-xs bg-white/70 rounded px-2 py-2 leading-relaxed space-y-0.5">
+                            <p className="text-gray-500 font-medium">店舗の対応</p>
+                            <p className="text-gray-700">{guide.operatorAction}</p>
+                          </div>
                           {guide.action && (
                             <button
                               onClick={() => submitAction(guide.action!)}
