@@ -16,6 +16,81 @@ type HealthLog = {
   checks: CheckItem[]
 }
 
+const NAME_JA: Record<string, string> = {
+  'approved-latest':     'CS3承認データ',
+  'venrey-apply':        'Venrey反映',
+  'cp4-apply':           'HP掲載（CP4）',
+  'cp4-clear-summary':   'HP削除候補',
+  'log:venrey-sync':     'ログ：Venrey同期',
+  'log:cp4-apply':       'ログ：HP反映',
+  'log:new-cast-check':  'ログ：新規キャスト確認',
+  'log:retention-cleanup': 'ログ：ファイル整理',
+  'disk':                'ディスク使用量',
+}
+
+function translateName(name: string) {
+  return NAME_JA[name] ?? name
+}
+
+function translateMessage(name: string, msg: string) {
+  // approved-latest
+  if (name === 'approved-latest') {
+    const m = msg.match(/fresh age=(\d+)m/)
+    if (m) return `正常（${m[1]}分前に更新）`
+    const s = msg.match(/stale.*age=(\d+)m/)
+    if (s) return `データが古い（${s[1]}分前、40分超で警告）`
+    if (msg.includes('missing')) return 'ファイルが見つかりません'
+  }
+
+  // venrey-apply / cp4-apply
+  if (name === 'venrey-apply' || name === 'cp4-apply') {
+    if (msg.includes('result file not found')) return '結果ファイルなし'
+    const stale = msg.match(/stale.*age=(\d+)m/)
+    if (stale) return `結果が古い（${stale[1]}分前）`
+    const ng = msg.match(/has ng=(\d+) manual=(\d+)/)
+    if (ng) return `エラー ${ng[1]}件 / 手動対応 ${ng[2]}件`
+    const warn = msg.match(/transient site_errors=(\d+) transient_skipped=(\d+)/)
+    if (warn) return `一時エラー ${warn[1]}件 / スキップ ${warn[2]}件`
+    const ok = msg.match(/ok summary=(\{.*\})/)
+    if (ok) {
+      try {
+        const s = JSON.parse(ok[1])
+        return `正常（処理 ${s.total ?? '-'}件、エラー ${s.ng ?? 0}件）`
+      } catch { return '正常' }
+    }
+  }
+
+  // cp4-clear-summary
+  if (name === 'cp4-clear-summary') {
+    if (msg.includes('missing cp4-clear-latest-summary.json')) return 'ファイルなし'
+    const cand = msg.match(/candidates=(\d+)/)
+    if (cand && msg.includes('hard-stop')) return `異常フラグあり — ${msg}`
+    if (cand && msg.includes('exceeds max')) return `削除候補が上限超（${cand[1]}件）`
+    if (cand) return `削除候補 ${cand[1]}件（正常）`
+  }
+
+  // log:*
+  if (name.startsWith('log:')) {
+    if (msg.includes('no fatal/error markers in tail')) return 'エラーなし'
+    const errCnt = msg.match(/has (\d+) error markers/)
+    if (errCnt) {
+      const last = msg.match(/last="(.{0,100})"/)
+      return `エラー ${errCnt[1]}件 — ${last ? last[1] : ''}`
+    }
+    const stale = msg.match(/stale age=(\d+)m/)
+    if (stale) return `ログが古い（${stale[1]}分前）`
+    if (msg.includes('missing')) return 'ログファイルなし'
+  }
+
+  // disk
+  if (name === 'disk') {
+    const pct = msg.match(/disk usage (\d+)%/)
+    if (pct) return `使用率 ${pct[1]}%`
+  }
+
+  return msg
+}
+
 const STATUS_COLOR = {
   OK:   { bg: 'bg-green-100',  text: 'text-green-800',  border: 'border-green-300',  dot: 'bg-green-500'  },
   WARN: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300', dot: 'bg-yellow-500' },
@@ -151,7 +226,7 @@ export default function DashboardPage() {
                   .filter(c => c.level !== 'OK')
                   .map((c, i) => (
                     <div key={i} className={`text-sm px-3 py-2 rounded-lg ${STATUS_COLOR[c.level].bg} ${STATUS_COLOR[c.level].text} border ${STATUS_COLOR[c.level].border}`}>
-                      <span className="font-semibold">[{c.level}] {c.name}:</span> {c.message}
+                      <span className="font-semibold">[{c.level}] {translateName(c.name)}:</span> {translateMessage(c.name, c.message)}
                     </div>
                   ))}
               </div>
@@ -209,10 +284,10 @@ export default function DashboardPage() {
                   >
                     <div className="flex items-center gap-2">
                       <StatusBadge status={c.level} />
-                      <span className="font-medium text-gray-800">{c.name}</span>
+                      <span className="font-medium text-gray-800">{translateName(c.name)}</span>
                     </div>
                     <p className={`text-xs leading-relaxed pl-1 ${STATUS_COLOR[c.level].text} break-all`}>
-                      {c.message}
+                      {translateMessage(c.name, c.message)}
                     </p>
                   </div>
                 ))}
