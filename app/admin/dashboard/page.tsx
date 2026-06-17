@@ -216,6 +216,7 @@ export default function DashboardPage() {
     setJobs(json.jobs || [])
   }, [])
 
+  useEffect(() => { document.title = 'システムダッシュボード | KIJ管理' }, [])
   useEffect(() => { fetchLogs() }, [fetchLogs])
   useEffect(() => { fetchJobs() }, [fetchJobs])
 

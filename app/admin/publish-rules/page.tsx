@@ -281,6 +281,8 @@ export default function PublishRulesPage() {
   const [filter, setFilter] = useState<FilterType>('all')
   const [page, setPage] = useState(0)
 
+  useEffect(() => { document.title = '配信ルール管理 | KIJ管理' }, [])
+
   useEffect(() => {
     getAuthHeaders().then(headers =>
       fetch('/api/admin/publish-rules', { headers })
