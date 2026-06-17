@@ -16,16 +16,79 @@ type HealthLog = {
   checks: CheckItem[]
 }
 
+type ActionJob = {
+  id: string
+  action: string
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'skipped'
+  requested_at: string
+  started_at: string | null
+  finished_at: string | null
+  result: { output?: string } | null
+  error: string | null
+}
+
+// チェック名の日本語
 const NAME_JA: Record<string, string> = {
-  'approved-latest':     'CS3承認データ',
-  'venrey-apply':        'Venrey反映',
-  'cp4-apply':           'HP掲載（CP4）',
-  'cp4-clear-summary':   'HP削除候補',
-  'log:venrey-sync':     'ログ：Venrey同期',
-  'log:cp4-apply':       'ログ：HP反映',
-  'log:new-cast-check':  'ログ：新規キャスト確認',
+  'approved-latest':       'CS3承認データ',
+  'venrey-apply':          'Venrey反映',
+  'cp4-apply':             'HP掲載（CP4）',
+  'cp4-clear-summary':     'HP削除候補',
+  'log:venrey-sync':       'ログ：Venrey同期',
+  'log:cp4-apply':         'ログ：HP反映',
+  'log:new-cast-check':    'ログ：新規キャスト確認',
   'log:retention-cleanup': 'ログ：ファイル整理',
-  'disk':                'ディスク使用量',
+  'disk':                  'ディスク使用量',
+}
+
+// エラー時のガイドと復旧アクション
+const CHECK_GUIDE: Record<string, { guide: string; action?: string; actionLabel?: string }> = {
+  'approved-latest': {
+    guide: 'CS3からの出勤承認データが古くなっています。「Venrey同期を復旧」を押して、CS3への再ログインを試してください。',
+    action: 'cs3_relogin_a',
+    actionLabel: 'Venrey同期を復旧',
+  },
+  'venrey-apply': {
+    guide: 'Venreyへの出勤反映でエラーが発生しています。「Venrey同期を復旧」を押してください。改善しない場合は加藤さんに連絡してください。',
+    action: 'cs3_relogin_a',
+    actionLabel: 'Venrey同期を復旧',
+  },
+  'cp4-apply': {
+    guide: 'HP（CASTPRO4）への出勤反映でエラーが発生しています。「HP同期を復旧」を押してください。改善しない場合は加藤さんに連絡してください。',
+    action: 'cs3_relogin_b',
+    actionLabel: 'HP同期を復旧',
+  },
+  'cp4-clear-summary': {
+    guide: 'HP削除候補の数が異常です。自動処理は止まっていません。内容を加藤さんに報告してください。',
+  },
+  'log:venrey-sync': {
+    guide: 'Venrey同期のログにエラーが記録されています。「Venrey同期を復旧」を押してください。',
+    action: 'cs3_relogin_a',
+    actionLabel: 'Venrey同期を復旧',
+  },
+  'log:cp4-apply': {
+    guide: 'HP反映のログにエラーが記録されています。「HP同期を復旧」を押してください。',
+    action: 'cs3_relogin_b',
+    actionLabel: 'HP同期を復旧',
+  },
+  'log:new-cast-check': {
+    guide: '新規キャスト確認でエラーが出ています。「新規キャスト取得を復旧」を押してください。',
+    action: 'cs3_relogin_c',
+    actionLabel: '新規キャスト取得を復旧',
+  },
+  'log:retention-cleanup': {
+    guide: 'ファイル自動整理でエラーが出ています。加藤さんに連絡してください。',
+  },
+  'disk': {
+    guide: 'VPSのディスク使用量が多くなっています。加藤さんに連絡してください。',
+  },
+}
+
+// アクション名の日本語
+const ACTION_JA: Record<string, string> = {
+  cs3_relogin_a:   'Venrey同期を復旧（CS3再ログイン）',
+  cs3_relogin_b:   'HP同期を復旧（CS3再ログイン）',
+  cs3_relogin_c:   '新規キャスト取得を復旧（CS3再ログイン）',
+  health_check_now: 'ヘルスチェックを今すぐ実行',
 }
 
 function translateName(name: string) {
@@ -33,7 +96,6 @@ function translateName(name: string) {
 }
 
 function translateMessage(name: string, msg: string) {
-  // approved-latest
   if (name === 'approved-latest') {
     const m = msg.match(/fresh age=(\d+)m/)
     if (m) return `正常（${m[1]}分前に更新）`
@@ -41,8 +103,6 @@ function translateMessage(name: string, msg: string) {
     if (s) return `データが古い（${s[1]}分前、40分超で警告）`
     if (msg.includes('missing')) return 'ファイルが見つかりません'
   }
-
-  // venrey-apply / cp4-apply
   if (name === 'venrey-apply' || name === 'cp4-apply') {
     if (msg.includes('result file not found')) return '結果ファイルなし'
     const stale = msg.match(/stale.*age=(\d+)m/)
@@ -59,8 +119,6 @@ function translateMessage(name: string, msg: string) {
       } catch { return '正常' }
     }
   }
-
-  // cp4-clear-summary
   if (name === 'cp4-clear-summary') {
     if (msg.includes('missing cp4-clear-latest-summary.json')) return 'ファイルなし'
     const cand = msg.match(/candidates=(\d+)/)
@@ -68,8 +126,6 @@ function translateMessage(name: string, msg: string) {
     if (cand && msg.includes('exceeds max')) return `削除候補が上限超（${cand[1]}件）`
     if (cand) return `削除候補 ${cand[1]}件（正常）`
   }
-
-  // log:*
   if (name.startsWith('log:')) {
     if (msg.includes('no fatal/error markers in tail')) return 'エラーなし'
     const errCnt = msg.match(/has (\d+) error markers/)
@@ -81,13 +137,10 @@ function translateMessage(name: string, msg: string) {
     if (stale) return `ログが古い（${stale[1]}分前）`
     if (msg.includes('missing')) return 'ログファイルなし'
   }
-
-  // disk
   if (name === 'disk') {
     const pct = msg.match(/disk usage (\d+)%/)
     if (pct) return `使用率 ${pct[1]}%`
   }
-
   return msg
 }
 
@@ -95,6 +148,14 @@ const STATUS_COLOR = {
   OK:   { bg: 'bg-green-100',  text: 'text-green-800',  border: 'border-green-300',  dot: 'bg-green-500'  },
   WARN: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300', dot: 'bg-yellow-500' },
   CRIT: { bg: 'bg-red-100',    text: 'text-red-800',    border: 'border-red-300',    dot: 'bg-red-500'    },
+}
+
+const JOB_STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> = {
+  pending:   { bg: 'bg-gray-100',   text: 'text-gray-600',  label: '待機中' },
+  running:   { bg: 'bg-blue-100',   text: 'text-blue-700',  label: '実行中' },
+  succeeded: { bg: 'bg-green-100',  text: 'text-green-700', label: '成功' },
+  failed:    { bg: 'bg-red-100',    text: 'text-red-700',   label: '失敗' },
+  skipped:   { bg: 'bg-gray-100',   text: 'text-gray-500',  label: 'スキップ' },
 }
 
 function StatusBadge({ status }: { status: 'OK' | 'WARN' | 'CRIT' }) {
@@ -133,32 +194,59 @@ export default function DashboardPage() {
   const [error, setError] = useState('')
   const [selectedLog, setSelectedLog] = useState<HealthLog | null>(null)
   const [hours, setHours] = useState(24)
+  const [jobs, setJobs] = useState<ActionJob[]>([])
+  const [submitting, setSubmitting] = useState<string | null>(null)
+  const [submitMsg, setSubmitMsg] = useState('')
 
   const fetchLogs = useCallback(async () => {
     setLoading(true)
     setError('')
     const res = await fetch(`/api/admin/health-check?hours=${hours}`)
-    if (!res.ok) {
-      setError(`取得失敗 (${res.status})`)
-      setLoading(false)
-      return
-    }
+    if (!res.ok) { setError(`取得失敗 (${res.status})`); setLoading(false); return }
     const json = await res.json()
     setLogs(json.logs || [])
     if (json.logs?.length > 0 && !selectedLog) setSelectedLog(json.logs[0])
     setLoading(false)
   }, [hours, selectedLog])
 
+  const fetchJobs = useCallback(async () => {
+    const res = await fetch('/api/admin/actions')
+    if (!res.ok) return
+    const json = await res.json()
+    setJobs(json.jobs || [])
+  }, [])
+
+  useEffect(() => { fetchLogs() }, [fetchLogs])
+  useEffect(() => { fetchJobs() }, [fetchJobs])
+
+  // pending/running ジョブがあれば10秒ごとに自動更新
   useEffect(() => {
-    fetchLogs()
-  }, [fetchLogs])
+    const hasPending = jobs.some(j => j.status === 'pending' || j.status === 'running')
+    if (!hasPending) return
+    const timer = setInterval(fetchJobs, 10000)
+    return () => clearInterval(timer)
+  }, [jobs, fetchJobs])
+
+  const submitAction = async (action: string) => {
+    setSubmitting(action)
+    setSubmitMsg('')
+    const res = await fetch('/api/admin/actions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    })
+    const json = await res.json()
+    if (!res.ok) {
+      setSubmitMsg(json.error || 'エラーが発生しました')
+    } else {
+      setSubmitMsg('受付済み。1〜2分後に結果が反映されます。')
+      await fetchJobs()
+    }
+    setSubmitting(null)
+  }
 
   const latest = logs[0] ?? null
-
-  // 直近24hのステータスを時系列で並べる（古い順）
   const timeline = [...logs].reverse()
-
-  // 表示するチェック詳細（selectedLog か latest）
   const detailLog = selectedLog ?? latest
 
   return (
@@ -166,10 +254,7 @@ export default function DashboardPage() {
       {/* ヘッダー */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.push('/admin/publish-rules')}
-            className="text-gray-400 hover:text-gray-600 text-sm"
-          >
+          <button onClick={() => router.push('/admin/publish-rules')} className="text-gray-400 hover:text-gray-600 text-sm">
             ← 配信ルール
           </button>
           <span className="text-gray-300">/</span>
@@ -186,7 +271,7 @@ export default function DashboardPage() {
             <option value={72}>直近3日</option>
           </select>
           <button
-            onClick={() => { setSelectedLog(null); fetchLogs() }}
+            onClick={() => { setSelectedLog(null); fetchLogs(); fetchJobs() }}
             disabled={loading}
             className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg disabled:opacity-50"
           >
@@ -198,9 +283,7 @@ export default function DashboardPage() {
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
-            {error}
-          </div>
+          <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>
         )}
 
         {/* 現在のステータス */}
@@ -218,17 +301,13 @@ export default function DashboardPage() {
                 <div>{formatJst(latest.checked_at)}（{minutesAgo(latest.checked_at)}）</div>
               </div>
             </div>
-
-            {/* WARN/CRIT のメッセージをここに表示 */}
             {latest.status !== 'OK' && (
               <div className="mt-4 space-y-1.5">
-                {latest.checks
-                  .filter(c => c.level !== 'OK')
-                  .map((c, i) => (
-                    <div key={i} className={`text-sm px-3 py-2 rounded-lg ${STATUS_COLOR[c.level].bg} ${STATUS_COLOR[c.level].text} border ${STATUS_COLOR[c.level].border}`}>
-                      <span className="font-semibold">[{c.level}] {translateName(c.name)}:</span> {translateMessage(c.name, c.message)}
-                    </div>
-                  ))}
+                {latest.checks.filter(c => c.level !== 'OK').map((c, i) => (
+                  <div key={i} className={`text-sm px-3 py-2 rounded-lg ${STATUS_COLOR[c.level].bg} ${STATUS_COLOR[c.level].text} border ${STATUS_COLOR[c.level].border}`}>
+                    <span className="font-semibold">[{c.level}] {translateName(c.name)}:</span> {translateMessage(c.name, c.message)}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -243,18 +322,14 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* タイムライン */}
           <div className="md:col-span-1 bg-white rounded-xl border border-gray-200 p-4">
-            <h2 className="text-sm font-semibold text-gray-600 mb-3">
-              ステータス履歴（{logs.length}件）
-            </h2>
+            <h2 className="text-sm font-semibold text-gray-600 mb-3">ステータス履歴（{logs.length}件）</h2>
             <div className="space-y-1 overflow-y-auto max-h-[480px]">
               {timeline.map(log => (
                 <button
                   key={log.id}
                   onClick={() => setSelectedLog(log)}
                   className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors ${
-                    detailLog?.id === log.id
-                      ? 'bg-blue-50 border border-blue-200'
-                      : 'hover:bg-gray-50'
+                    detailLog?.id === log.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
                   }`}
                 >
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLOR[log.status].dot}`} />
@@ -268,34 +343,92 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* チェック詳細 */}
+          {/* チェック詳細 + エラーガイド */}
           <div className="md:col-span-2 bg-white rounded-xl border border-gray-200 p-4">
             <h2 className="text-sm font-semibold text-gray-600 mb-3">
-              {detailLog ? (
-                <>チェック詳細 — {formatJst(detailLog.checked_at)}</>
-              ) : 'チェック詳細'}
+              {detailLog ? <>チェック詳細 — {formatJst(detailLog.checked_at)}</> : 'チェック詳細'}
             </h2>
+            {submitMsg && (
+              <div className="mb-3 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700 border border-blue-200">
+                {submitMsg}
+              </div>
+            )}
             {detailLog ? (
               <div className="space-y-2">
-                {detailLog.checks.map((c, i) => (
-                  <div
-                    key={i}
-                    className={`flex flex-col gap-0.5 px-3 py-2.5 rounded-lg border text-sm ${STATUS_COLOR[c.level].bg} ${STATUS_COLOR[c.level].border}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <StatusBadge status={c.level} />
-                      <span className="font-medium text-gray-800">{translateName(c.name)}</span>
+                {detailLog.checks.map((c, i) => {
+                  const guide = c.level !== 'OK' ? CHECK_GUIDE[c.name] : null
+                  return (
+                    <div
+                      key={i}
+                      className={`flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border text-sm ${STATUS_COLOR[c.level].bg} ${STATUS_COLOR[c.level].border}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={c.level} />
+                        <span className="font-medium text-gray-800">{translateName(c.name)}</span>
+                      </div>
+                      <p className={`text-xs leading-relaxed pl-1 ${STATUS_COLOR[c.level].text} break-all`}>
+                        {translateMessage(c.name, c.message)}
+                      </p>
+                      {guide && (
+                        <div className="mt-1 pl-1 space-y-1.5">
+                          <p className="text-xs text-gray-700 bg-white/70 rounded px-2 py-1.5 leading-relaxed">
+                            💡 {guide.guide}
+                          </p>
+                          {guide.action && (
+                            <button
+                              onClick={() => submitAction(guide.action!)}
+                              disabled={submitting === guide.action}
+                              className="text-xs font-semibold bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg disabled:opacity-50 transition-colors"
+                            >
+                              {submitting === guide.action ? '送信中...' : `🔄 ${guide.actionLabel}`}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <p className={`text-xs leading-relaxed pl-1 ${STATUS_COLOR[c.level].text} break-all`}>
-                      {translateMessage(c.name, c.message)}
-                    </p>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <p className="text-sm text-gray-400 text-center py-8">左のタイムラインから選択してください</p>
             )}
           </div>
+        </div>
+
+        {/* 復旧操作履歴 */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-600">復旧操作の履歴</h2>
+            <button onClick={fetchJobs} className="text-xs text-gray-400 hover:text-gray-600">更新</button>
+          </div>
+          {jobs.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-4">操作履歴なし</p>
+          ) : (
+            <div className="space-y-2">
+              {jobs.slice(0, 10).map(job => {
+                const s = JOB_STATUS_STYLE[job.status] ?? JOB_STATUS_STYLE.skipped
+                return (
+                  <div key={job.id} className="flex items-start gap-3 text-xs border border-gray-100 rounded-lg px-3 py-2.5">
+                    <span className={`shrink-0 px-2 py-0.5 rounded-full font-semibold ${s.bg} ${s.text}`}>
+                      {s.label}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-gray-800">{ACTION_JA[job.action] ?? job.action}</div>
+                      {job.error && (
+                        <div className="text-red-600 mt-0.5 break-all">{job.error}</div>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-gray-400 text-right">
+                      <div>{formatJst(job.requested_at)}</div>
+                      {job.finished_at && (
+                        <div className="text-green-600">{minutesAgo(job.finished_at)}に完了</div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* cronスケジュール早見表 */}
@@ -312,16 +445,16 @@ export default function DashboardPage() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {[
-                  { name: 'Venrey sync', interval: '10分ごと',     log: 'sync.log' },
-                  { name: 'CP4 apply',   interval: '10分ごと（:05〜）', log: 'cp4-apply.log' },
-                  { name: 'CP4 freetext', interval: '10分ごと（:00,:10,:20...）', log: 'cp4-freetext.log' },
-                  { name: '新規キャスト確認', interval: '1時間ごと',   log: 'new-cast-check.log' },
-                  { name: 'Venrey dump', interval: '毎日 04:00 JST', log: 'venrey-dump.log' },
-                  { name: 'CP4 キャストdump', interval: '毎日 03:00 JST', log: 'cp4-cast-dump.log' },
-                  { name: 'daily cast-fill', interval: '毎日 05:00 JST', log: 'daily-cast-fill.log' },
-                  { name: 'health-check', interval: '15分ごと',     log: 'health-check.log' },
-                  { name: 'retention cleanup', interval: '毎日 03:30 JST', log: 'retention-cleanup.log' },
-                  { name: '週次レポート', interval: '月曜 08:00 JST', log: 'analytics-report.log' },
+                  { name: 'Venrey sync',      interval: '10分ごと',              log: 'sync.log' },
+                  { name: 'HP掲載（CP4）',    interval: '10分ごと（:05〜）',     log: 'cp4-apply.log' },
+                  { name: 'HPフリーテキスト', interval: '10分ごと（:00,:10...）', log: 'cp4-freetext.log' },
+                  { name: '新規キャスト確認', interval: '1時間ごと',             log: 'new-cast-check.log' },
+                  { name: 'Venreyダンプ更新', interval: '毎日 04:00 JST',        log: 'venrey-dump.log' },
+                  { name: 'HPキャストダンプ', interval: '毎日 03:00 JST',        log: 'cp4-cast-dump.log' },
+                  { name: 'キャスト一括更新', interval: '毎日 05:00 JST',        log: 'daily-cast-fill.log' },
+                  { name: 'ヘルスチェック',   interval: '15分ごと',              log: 'health-check.log' },
+                  { name: 'ファイル自動整理', interval: '毎日 03:30 JST',        log: 'retention-cleanup.log' },
+                  { name: '週次解析レポート', interval: '月曜 08:00 JST',        log: 'analytics-report.log' },
                 ].map(row => (
                   <tr key={row.name}>
                     <td className="py-2 pr-4 text-gray-800 font-medium whitespace-nowrap">{row.name}</td>
