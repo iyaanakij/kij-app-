@@ -16,7 +16,7 @@ const ALLOWED_ACTIONS = new Set([
 export async function GET(_request: NextRequest) {
   const { data, error } = await adminSupabase
     .from('system_action_jobs')
-    .select('id, action, status, requested_at, started_at, finished_at, result, error')
+    .select('id, action, status, requested_by, requested_at, started_at, finished_at, result, error')
     .order('requested_at', { ascending: false })
     .limit(20)
 
