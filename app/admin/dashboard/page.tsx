@@ -337,7 +337,7 @@ export default function DashboardPage() {
   }
 
   const latest = logs[0] ?? null
-  const timeline = [...logs].reverse()
+  const timeline = logs.slice(0, 100)
   const detailLog = selectedLog ?? latest
 
   const lastOkAt = logs.find(l => l.status === 'OK')?.checked_at ?? null
