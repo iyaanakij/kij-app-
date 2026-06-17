@@ -239,7 +239,7 @@ export default function DashboardPage() {
                 {[
                   { name: 'Venrey sync', interval: '10分ごと',     log: 'sync.log' },
                   { name: 'CP4 apply',   interval: '10分ごと（:05〜）', log: 'cp4-apply.log' },
-                  { name: 'CP4 freetext', interval: '30分ごと（:00/:30）', log: 'cp4-freetext.log' },
+                  { name: 'CP4 freetext', interval: '10分ごと（:00,:10,:20...）', log: 'cp4-freetext.log' },
                   { name: '新規キャスト確認', interval: '1時間ごと',   log: 'new-cast-check.log' },
                   { name: 'Venrey dump', interval: '毎日 04:00 JST', log: 'venrey-dump.log' },
                   { name: 'CP4 キャストdump', interval: '毎日 03:00 JST', log: 'cp4-cast-dump.log' },
