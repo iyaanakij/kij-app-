@@ -191,3 +191,86 @@ export function todayString(): string {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
+
+// ─── オンボーディング ───────────────────────────────────────────────
+
+export type OnboardingStatus = 'pending_cast' | 'submitted' | 'approved' | 'rejected'
+export type OnboardingJobType =
+  | 'create_staff'
+  | 'create_women_info'
+  | 'create_publish_rule'
+  | 'create_cp4_profile'
+  | 'create_venrey_cast'
+export type OnboardingJobStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'needs_manual'
+
+export interface NormalizedOnboardingData {
+  stage_name: string
+  real_name?: string
+  join_date?: string
+  age?: string
+  height?: string
+  bust?: string
+  zodiac?: string
+  blood_type?: string
+  ng_area?: string
+  ng_options?: string[]
+  contact_method?: string
+  request_ok?: boolean
+  tattoo?: string
+  // M性感専用
+  m_trigger?: string
+  m_personality?: string
+  m_charm?: string
+  m_preferred_type?: string
+  m_smoking?: string
+  m_stress_relief?: string
+  m_favorite_word?: string
+  m_sadist_level?: string
+  m_favorite_scenario?: string
+  m_favorite_toy?: string
+  m_specialty_play?: string
+  m_challenge_play?: string
+  m_meaning?: string
+  m_message?: string
+  // E専用
+  e_hobby?: string
+  e_personality?: string
+  e_charm?: string
+  e_smoking?: string
+  e_drinking?: string
+  e_favorite_media?: string
+  e_relationships?: string
+  e_exciting_moment?: string
+  e_massage_experience?: string
+  e_specialty_play?: string
+  e_care?: string
+  e_message?: string
+}
+
+export interface OnboardingSubmission {
+  id: number
+  token: string
+  brand: 'M' | 'E'
+  area_id: number
+  status: OnboardingStatus
+  submitted_at: string | null
+  approved_at: string | null
+  approved_by: string | null
+  staff_id: number | null
+  raw_answers: Record<string, unknown> | null
+  normalized_data: NormalizedOnboardingData | null
+  admin_notes: string | null
+  created_at: string
+}
+
+export interface OnboardingJob {
+  id: number
+  submission_id: number
+  job_type: OnboardingJobType
+  status: OnboardingJobStatus
+  attempts: number
+  error_message: string | null
+  result: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
