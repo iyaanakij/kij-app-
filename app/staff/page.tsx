@@ -4,9 +4,19 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { Staff, STORES, IYASHI_STORES, getStaffBrand, StaffBrand } from '@/lib/types'
+import PublishRuleMatrix, { RuleRow } from '@/app/components/PublishRuleMatrix'
 
 interface StaffWithStores extends Staff {
   storeIds: number[]
+}
+
+type PublishSummary = {
+  cs3_cast_id: string
+  enabled_count: number
+  has_cp4: boolean
+  has_venrey: boolean
+  warning_count: number
+  all_disabled_with_ids: boolean
 }
 
 interface DeliveryTarget {
@@ -49,6 +59,29 @@ export default function StaffPage() {
   const [newTargetDestination, setNewTargetDestination] = useState('')
   const [deliverySaving, setDeliverySaving] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [publishSummary, setPublishSummary] = useState<Map<string, PublishSummary>>(new Map())
+  const [publishRules, setPublishRules] = useState<RuleRow[] | null>(null)
+  const [publishLoading, setPublishLoading] = useState(false)
+
+  const fetchPublishSummary = useCallback(async () => {
+    const res = await fetch('/api/admin/publish-rules/summary')
+    if (!res.ok) return
+    const json = await res.json()
+    const map = new Map<string, PublishSummary>()
+    for (const s of json.summary ?? []) map.set(s.cs3_cast_id, s)
+    setPublishSummary(map)
+  }, [])
+
+  const fetchPublishRules = useCallback(async (cs3CastId: string) => {
+    setPublishLoading(true)
+    setPublishRules(null)
+    const res = await fetch(`/api/admin/publish-rules/detail?cs3_cast_id=${encodeURIComponent(cs3CastId)}`)
+    if (res.ok) {
+      const json = await res.json()
+      setPublishRules(json.rules ?? [])
+    }
+    setPublishLoading(false)
+  }, [])
 
   const fetchStaff = useCallback(async () => {
     setLoading(true)
@@ -70,6 +103,7 @@ export default function StaffPage() {
   }, [])
 
   useEffect(() => { fetchStaff() }, [fetchStaff])
+  useEffect(() => { fetchPublishSummary() }, [fetchPublishSummary])
 
   async function openEdit(s: StaffWithStores) {
     setEditing({ ...s })
@@ -81,6 +115,8 @@ export default function StaffPage() {
       .eq('staff_id', s.id)
       .order('created_at')
     setDeliveryTargets(data ?? [])
+    if (s.cs3_cast_id) fetchPublishRules(s.cs3_cast_id)
+    else setPublishRules(null)
     setModalOpen(true)
   }
 
@@ -378,11 +414,21 @@ export default function StaffPage() {
                   className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'} hover:bg-blue-50 transition-colors`}
                 >
                   <td className="px-4 py-3 font-bold text-gray-800">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {s.name}
                       {registeredStaffIds.has(s.id) && (
                         <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-medium">登録済</span>
                       )}
+                      {(() => {
+                        if (!s.cs3_cast_id) return <span className="bg-gray-100 text-gray-400 text-xs px-2 py-0.5 rounded-full">CS3未設定</span>
+                        const ps = publishSummary.get(s.cs3_cast_id)
+                        if (!ps) return null
+                        if (ps.warning_count > 0) return <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">⚠ 反映不可{ps.warning_count}件</span>
+                        if (!ps.has_cp4 && !ps.has_venrey) return <span className="bg-gray-100 text-gray-400 text-xs px-2 py-0.5 rounded-full">ID未登録</span>
+                        if (ps.all_disabled_with_ids) return <span className="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-full">確認待ち</span>
+                        if (ps.enabled_count > 0) return <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">配信{ps.enabled_count}件</span>
+                        return null
+                      })()}
                     </div>
                     {s.notes && <p className="text-xs text-gray-400 font-normal mt-0.5 truncate max-w-xs">{s.notes}</p>}
                   </td>
@@ -549,7 +595,7 @@ export default function StaffPage() {
       {/* Modal */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl flex flex-col max-h-[90vh]">
             <div className="bg-gray-900 text-white px-5 py-4 rounded-t-xl flex items-center justify-between flex-shrink-0">
               <h2 className="font-bold text-base">スタッフ編集</h2>
               <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-white text-xl leading-none transition-colors">✕</button>
@@ -667,6 +713,22 @@ export default function StaffPage() {
                   </div>
                 </div>
               )}
+
+              {/* 配信ルール */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">配信ルール（CP4 / Venrey）</label>
+                {!editing.cs3_cast_id ? (
+                  <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">CS3 ID未設定のため配信ルールなし</p>
+                ) : publishLoading ? (
+                  <p className="text-xs text-gray-400 animate-pulse px-1">読み込み中...</p>
+                ) : publishRules ? (
+                  <PublishRuleMatrix
+                    cs3CastId={editing.cs3_cast_id}
+                    rules={publishRules}
+                    onSaved={fetchPublishSummary}
+                  />
+                ) : null}
+              </div>
             </div>
             <div className="px-5 py-4 bg-gray-50 rounded-b-xl flex gap-2 justify-end border-t border-gray-200 flex-shrink-0">
               <button

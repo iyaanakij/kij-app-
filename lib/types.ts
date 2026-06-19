@@ -8,6 +8,7 @@ export interface Staff {
   name: string
   join_date: string | null
   notes: string | null
+  cs3_cast_id: string | null
   created_at: string
   stores?: Store[]
 }
