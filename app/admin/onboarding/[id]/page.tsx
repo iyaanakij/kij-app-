@@ -13,18 +13,22 @@ const JOB_LABEL: Record<OnboardingJobType, string> = {
   create_venrey_cast:  'Venreyキャスト登録',
 }
 const JOB_STATUS_LABEL: Record<OnboardingJobStatus, string> = {
-  pending:      '待機中',
-  running:      '実行中',
-  succeeded:    '完了',
-  failed:       '失敗',
-  needs_manual: '手動対応',
+  pending:          '待機中',
+  running:          '実行中',
+  succeeded:        '完了',
+  failed:           '失敗',
+  failed_retryable: 'リトライ待ち',
+  needs_manual:     '手動対応',
+  skipped:          'スキップ',
 }
 const JOB_STATUS_COLOR: Record<OnboardingJobStatus, string> = {
-  pending:      'bg-gray-100 text-gray-600',
-  running:      'bg-blue-100 text-blue-700',
-  succeeded:    'bg-green-100 text-green-700',
-  failed:       'bg-red-100 text-red-600',
-  needs_manual: 'bg-yellow-100 text-yellow-700',
+  pending:          'bg-gray-100 text-gray-600',
+  running:          'bg-blue-100 text-blue-700',
+  succeeded:        'bg-green-100 text-green-700',
+  failed:           'bg-red-100 text-red-600',
+  failed_retryable: 'bg-orange-100 text-orange-700',
+  needs_manual:     'bg-yellow-100 text-yellow-700',
+  skipped:          'bg-gray-100 text-gray-400',
 }
 
 const ND_FIELDS: { key: keyof NormalizedOnboardingData; label: string; brand?: 'M' | 'E' }[] = [
@@ -79,10 +83,13 @@ export default function OnboardingDetailPage() {
   const [jobs, setJobs] = useState<OnboardingJob[]>([])
   const [nd, setNd] = useState<NormalizedOnboardingData | null>(null)
   const [adminNotes, setAdminNotes] = useState('')
+  const [cp4GidInput, setCp4GidInput] = useState('')
+  const [venreyIdInput, setVenreyIdInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [approving, setApproving] = useState(false)
   const [rejecting, setRejecting] = useState(false)
+  const [jobActing, setJobActing] = useState<number | null>(null)
 
   useEffect(() => { document.title = '入店アンケート詳細 | KIJ管理' }, [])
 
@@ -94,6 +101,8 @@ export default function OnboardingDetailPage() {
         setJobs(d.jobs ?? [])
         setNd(d.submission?.normalized_data ?? null)
         setAdminNotes(d.submission?.admin_notes ?? '')
+        setCp4GidInput(d.submission?.cp4_gid ?? '')
+        setVenreyIdInput(d.submission?.venrey_cast_id ?? '')
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -117,6 +126,29 @@ export default function OnboardingDetailPage() {
     setApproving(false)
     if (d.error) { alert(`承認失敗: ${d.error}`); return }
     window.location.reload()
+  }
+
+  async function handleSaveExternalIds() {
+    setSaving(true)
+    await fetch(`/api/admin/onboarding/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cp4_gid: cp4GidInput, venrey_cast_id: venreyIdInput }),
+    })
+    setSaving(false)
+  }
+
+  async function handleJobAction(jobId: number, action: 'retry' | 'skip') {
+    setJobActing(jobId)
+    const res = await fetch(`/api/admin/onboarding/${id}/jobs/${jobId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    })
+    const d = await res.json()
+    setJobActing(null)
+    if (d.error) { alert(`操作失敗: ${d.error}`); return }
+    setJobs(prev => prev.map(j => j.id === jobId ? { ...j, status: d.status } : j))
   }
 
   async function handleReject() {
@@ -202,16 +234,78 @@ export default function OnboardingDetailPage() {
       {jobs.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow p-5 mb-4">
           <h2 className="font-bold text-gray-700 dark:text-gray-200 mb-3">登録状況</h2>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {jobs.map(j => (
-              <div key={j.id} className="flex items-center justify-between">
-                <span className="text-sm text-gray-700 dark:text-gray-300">{JOB_LABEL[j.job_type]}</span>
-                <span className={`text-xs px-2 py-1 rounded-full font-medium ${JOB_STATUS_COLOR[j.status]}`}>
-                  {JOB_STATUS_LABEL[j.status]}
-                </span>
+              <div key={j.id}>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{JOB_LABEL[j.job_type]}</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${JOB_STATUS_COLOR[j.status]}`}>
+                      {JOB_STATUS_LABEL[j.status]}
+                    </span>
+                    {(j.status === 'failed_retryable' || j.status === 'needs_manual' || j.status === 'failed') && (
+                      <button
+                        onClick={() => handleJobAction(j.id, 'retry')}
+                        disabled={jobActing === j.id}
+                        className="text-xs px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        再実行
+                      </button>
+                    )}
+                    {(j.status === 'pending' || j.status === 'failed_retryable' || j.status === 'needs_manual') && (
+                      <button
+                        onClick={() => handleJobAction(j.id, 'skip')}
+                        disabled={jobActing === j.id}
+                        className="text-xs px-2 py-1 bg-gray-50 hover:bg-gray-100 text-gray-600 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        スキップ
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {j.error_message && (
+                  <p className="text-xs text-red-500 mt-1 ml-0 font-mono break-all">{j.error_message.slice(0, 200)}</p>
+                )}
               </div>
             ))}
           </div>
+
+          {/* 外部ID手入力パネル */}
+          {sub.status === 'approved' && (
+            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">外部ID（手入力）</p>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600 dark:text-gray-400 w-28 shrink-0">CP4 gid</label>
+                  <input
+                    type="text"
+                    value={cp4GidInput}
+                    onChange={e => setCp4GidInput(e.target.value)}
+                    placeholder="例: 00744"
+                    className="flex-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-400 font-mono"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600 dark:text-gray-400 w-28 shrink-0">Venrey cast_id</label>
+                  <input
+                    type="text"
+                    value={venreyIdInput}
+                    onChange={e => setVenreyIdInput(e.target.value)}
+                    placeholder="例: 4335668"
+                    className="flex-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-400 font-mono"
+                  />
+                </div>
+                <button
+                  onClick={handleSaveExternalIds}
+                  disabled={saving}
+                  className="text-xs bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  {saving ? '保存中...' : '外部IDを保存'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {sub.staff_id && (
             <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
               <a

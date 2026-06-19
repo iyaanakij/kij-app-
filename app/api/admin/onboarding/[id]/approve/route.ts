@@ -108,8 +108,8 @@ export async function POST(
       updated_at: now,
     },
     { submission_id: sub.id, job_type: 'create_publish_rule', status: 'needs_manual', updated_at: now },
-    { submission_id: sub.id, job_type: 'create_cp4_profile',  status: 'needs_manual', updated_at: now },
-    { submission_id: sub.id, job_type: 'create_venrey_cast',  status: 'needs_manual', updated_at: now },
+    { submission_id: sub.id, job_type: 'create_cp4_profile',  status: 'pending',      updated_at: now },
+    { submission_id: sub.id, job_type: 'create_venrey_cast',  status: 'pending',      updated_at: now },
   ])
 
   // 5. submission更新

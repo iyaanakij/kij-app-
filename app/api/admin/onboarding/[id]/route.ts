@@ -26,11 +26,18 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const body = await request.json() as { normalized_data?: unknown; admin_notes?: string }
+  const body = await request.json() as {
+    normalized_data?: unknown
+    admin_notes?: string
+    cp4_gid?: string
+    venrey_cast_id?: string
+  }
 
   const update: Record<string, unknown> = {}
   if (body.normalized_data !== undefined) update.normalized_data = body.normalized_data
   if (body.admin_notes !== undefined) update.admin_notes = body.admin_notes
+  if (body.cp4_gid !== undefined) update.cp4_gid = body.cp4_gid || null
+  if (body.venrey_cast_id !== undefined) update.venrey_cast_id = body.venrey_cast_id || null
 
   const { error } = await sb.from('onboarding_submissions').update(update).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

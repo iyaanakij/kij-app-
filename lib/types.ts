@@ -201,7 +201,7 @@ export type OnboardingJobType =
   | 'create_publish_rule'
   | 'create_cp4_profile'
   | 'create_venrey_cast'
-export type OnboardingJobStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'needs_manual'
+export type OnboardingJobStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'failed_retryable' | 'needs_manual' | 'skipped'
 
 export interface NormalizedOnboardingData {
   stage_name: string
@@ -260,6 +260,8 @@ export interface OnboardingSubmission {
   approved_at: string | null
   approved_by: string | null
   staff_id: number | null
+  cp4_gid: string | null
+  venrey_cast_id: string | null
   raw_answers: Record<string, unknown> | null
   normalized_data: NormalizedOnboardingData | null
   admin_notes: string | null
