@@ -210,6 +210,7 @@ export interface NormalizedOnboardingData {
   age?: string
   height?: string
   bust?: string
+  bust_cm?: string
   waist?: string
   hip?: string
   zodiac?: string

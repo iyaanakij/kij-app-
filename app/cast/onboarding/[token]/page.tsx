@@ -173,7 +173,10 @@ export default function CastOnboardingPage() {
           <Field label="バストサイズ" required>
             <Select name="bust" value={str('bust')} onChange={set} options={BUST_OPTIONS} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="バスト（cm）">
+              <TextInput name="bust_cm" value={str('bust_cm')} onChange={set} placeholder="例: 85" />
+            </Field>
             <Field label="ウエスト（cm）">
               <TextInput name="waist" value={str('waist')} onChange={set} placeholder="例: 58" />
             </Field>
