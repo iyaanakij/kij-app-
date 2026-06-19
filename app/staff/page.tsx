@@ -423,7 +423,7 @@ export default function StaffPage() {
                         if (!s.cs3_cast_id) return <span className="bg-gray-100 text-gray-400 text-xs px-2 py-0.5 rounded-full">CS3未設定</span>
                         const ps = publishSummary.get(s.cs3_cast_id)
                         if (!ps) return null
-                        if (ps.warning_count > 0) return <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">⚠ 反映不可{ps.warning_count}件</span>
+                        if (ps.warning_count > 0 && ps.warning_count === ps.enabled_count) return <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">⚠ 反映不可{ps.warning_count}件</span>
                         if (!ps.has_cp4 && !ps.has_venrey) return <span className="bg-gray-100 text-gray-400 text-xs px-2 py-0.5 rounded-full">ID未登録</span>
                         if (ps.all_disabled_with_ids) return <span className="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-full">確認待ち</span>
                         if (ps.enabled_count > 0) return <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">配信{ps.enabled_count}件</span>
