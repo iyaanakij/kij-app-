@@ -23,6 +23,8 @@ export default function OnboardingListPage() {
   const [submissions, setSubmissions] = useState<OnboardingSubmission[]>([])
   const [loading, setLoading] = useState(true)
 
+  useEffect(() => { document.title = 'オンボーディング管理 | KIJ管理' }, [])
+
   useEffect(() => {
     fetch('/api/admin/onboarding')
       .then(r => r.json())

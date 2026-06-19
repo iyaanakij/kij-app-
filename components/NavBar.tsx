@@ -13,6 +13,7 @@ const navItems = [
   { href: '/dorm', label: '寮管理' },
   { href: '/women-info', label: '女性情報' },
   { href: '/staff', label: 'スタッフ' },
+  { href: '/admin/onboarding', label: 'オンボーディング' },
   { href: '/photodiary', label: '写メ日記' },
   { href: '/hotels', label: 'ホテル料金' },
 ]

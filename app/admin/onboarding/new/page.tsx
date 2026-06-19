@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { AREAS } from '@/lib/types'
 
 export default function OnboardingNewPage() {
   const router = useRouter()
+  useEffect(() => { document.title = 'アンケートURL発行 | KIJ管理' }, [])
   const [brand, setBrand] = useState<'M' | 'E' | ''>('')
   const [areaId, setAreaId] = useState<number>(0)
   const [loading, setLoading] = useState(false)
