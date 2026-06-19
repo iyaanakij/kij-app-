@@ -16,6 +16,16 @@ const SITE_GROUPS = [
   { area: '錦糸町', sites: [{ id: 'mka_kinshicho', label: 'M性感' }, { id: 'iya_kinshicho', label: '癒し' }] },
 ]
 const SITES = SITE_GROUPS.flatMap(g => g.sites)
+const SITE_TO_VENREY_GROUP: Record<string, string> = {
+  iya_narita: 'iya_narita',
+  iya_chiba: 'iya_narita',
+  iya_funabashi: 'iya_kinshicho',
+  iya_kinshicho: 'iya_kinshicho',
+  mka_narita: 'mka_narita',
+  mka_chiba: 'mka_narita',
+  mka_funabashi: 'mka_kinshicho',
+  mka_kinshicho: 'mka_kinshicho',
+}
 
 export type RuleRow = {
   cs3_cast_id: string
@@ -29,6 +39,11 @@ export type RuleRow = {
 type RuleKey = string
 function ruleKey(shopId: string, siteId: string): RuleKey { return `${shopId}:${siteId}` }
 
+type SiteCreds = {
+  cp4_gid: string | null
+  venrey_cast_id: string | null
+}
+
 export default function PublishRuleMatrix({
   cs3CastId,
   rules,
@@ -40,6 +55,16 @@ export default function PublishRuleMatrix({
 }) {
   const rowMap = new Map<RuleKey, RuleRow>()
   for (const r of rules) rowMap.set(ruleKey(r.source_shop_id, r.site_id), r)
+  const siteCredMap = new Map<string, SiteCreds>()
+  for (const site of SITES) {
+    const rows = rules.filter(r => r.site_id === site.id)
+    const venreyGroup = SITE_TO_VENREY_GROUP[site.id] ?? site.id
+    const venreyRows = rules.filter(r => (SITE_TO_VENREY_GROUP[r.site_id] ?? r.site_id) === venreyGroup)
+    siteCredMap.set(site.id, {
+      cp4_gid: rows.find(r => r.cp4_gid)?.cp4_gid ?? null,
+      venrey_cast_id: venreyRows.find(r => r.venrey_cast_id)?.venrey_cast_id ?? null,
+    })
+  }
 
   const [edits, setEdits] = useState<Record<RuleKey, boolean>>(() => {
     const init: Record<RuleKey, boolean> = {}
@@ -57,12 +82,13 @@ export default function PublishRuleMatrix({
   const enabledCount = Object.values(edits).filter(Boolean).length
   const warningCount = Object.entries(edits).filter(([k, on]) => {
     if (!on) return false
-    const row = rowMap.get(k)
-    return !row?.cp4_gid && !row?.venrey_cast_id
+    const siteId = k.split(':')[1]
+    const creds = siteCredMap.get(siteId)
+    return !creds?.cp4_gid && !creds?.venrey_cast_id
   }).length
 
-  const hasCP4 = rules.some(r => !!r.cp4_gid)
-  const hasVenrey = rules.some(r => !!r.venrey_cast_id)
+  const hasCP4 = [...siteCredMap.values()].some(r => !!r.cp4_gid)
+  const hasVenrey = [...siteCredMap.values()].some(r => !!r.venrey_cast_id)
 
   const handleSave = async () => {
     setSaving(true)
@@ -129,12 +155,12 @@ export default function PublishRuleMatrix({
                 {SITE_GROUPS.map((g, gi) =>
                   g.sites.map((site, si) => {
                     const k = ruleKey(shop.id, site.id)
-                    const row = rowMap.get(k)
+                    const siteCreds = siteCredMap.get(site.id)
                     const checked = edits[k] ?? false
-                    const hasWarning = checked && !row?.cp4_gid && !row?.venrey_cast_id
-                    const credType = row?.venrey_cast_id && row?.cp4_gid ? 'both'
-                      : row?.venrey_cast_id ? 'venrey'
-                      : row?.cp4_gid ? 'hp'
+                    const hasWarning = checked && !siteCreds?.cp4_gid && !siteCreds?.venrey_cast_id
+                    const credType = siteCreds?.venrey_cast_id && siteCreds?.cp4_gid ? 'both'
+                      : siteCreds?.venrey_cast_id ? 'venrey'
+                      : siteCreds?.cp4_gid ? 'hp'
                       : 'none'
                     const accentClass = credType === 'both' ? 'accent-green-500'
                       : credType === 'venrey' ? 'accent-blue-500'
@@ -142,8 +168,8 @@ export default function PublishRuleMatrix({
                       : 'accent-gray-400'
                     const borderClass = si === 0 && gi > 0 ? 'border-l border-gray-200' : ''
                     const tipLines = [
-                      row?.venrey_cast_id ? `Venrey: ${row.venrey_cast_id}` : 'Venrey ID: 未登録',
-                      row?.cp4_gid ? `HP: ${row.cp4_gid}` : 'HP ID: 未登録',
+                      siteCreds?.venrey_cast_id ? `Venrey: ${siteCreds.venrey_cast_id}` : 'Venrey ID: 未登録',
+                      siteCreds?.cp4_gid ? `HP: ${siteCreds.cp4_gid}` : 'HP ID: 未登録',
                     ]
                     return (
                       <td key={site.id} className={`px-2 py-2 text-center ${hasWarning ? 'bg-amber-50' : ''} ${borderClass}`}>
