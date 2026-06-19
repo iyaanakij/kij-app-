@@ -58,7 +58,7 @@ export default function PublishRuleMatrix({
   const warningCount = Object.entries(edits).filter(([k, on]) => {
     if (!on) return false
     const row = rowMap.get(k)
-    return !row?.cp4_gid || !row?.venrey_cast_id
+    return !row?.cp4_gid && !row?.venrey_cast_id
   }).length
 
   const hasCP4 = rules.some(r => !!r.cp4_gid)
@@ -131,7 +131,7 @@ export default function PublishRuleMatrix({
                     const k = ruleKey(shop.id, site.id)
                     const row = rowMap.get(k)
                     const checked = edits[k] ?? false
-                    const hasWarning = checked && (!row?.cp4_gid || !row?.venrey_cast_id)
+                    const hasWarning = checked && !row?.cp4_gid && !row?.venrey_cast_id
                     const credType = row?.venrey_cast_id && row?.cp4_gid ? 'both'
                       : row?.venrey_cast_id ? 'venrey'
                       : row?.cp4_gid ? 'hp'
