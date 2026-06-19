@@ -45,7 +45,7 @@ export async function GET() {
     if (r.enabled) s.enabled_count++
     if (r.cp4_gid) s.has_cp4 = true
     if (r.venrey_cast_id) s.has_venrey = true
-    if (r.enabled && (!r.cp4_gid || !r.venrey_cast_id)) s.warning_count++
+    if (r.enabled && !r.cp4_gid && !r.venrey_cast_id) s.warning_count++
   }
 
   // all_disabled_with_ids: IDはあるが全行 disabled
