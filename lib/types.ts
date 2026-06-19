@@ -210,6 +210,8 @@ export interface NormalizedOnboardingData {
   age?: string
   height?: string
   bust?: string
+  waist?: string
+  hip?: string
   zodiac?: string
   blood_type?: string
   ng_area?: string

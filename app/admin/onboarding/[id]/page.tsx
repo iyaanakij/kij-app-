@@ -34,6 +34,8 @@ const ND_FIELDS: { key: keyof NormalizedOnboardingData; label: string; brand?: '
   { key: 'age',                label: '年齢' },
   { key: 'height',             label: '身長' },
   { key: 'bust',               label: 'バスト' },
+  { key: 'waist',              label: 'ウエスト' },
+  { key: 'hip',                label: 'ヒップ' },
   { key: 'zodiac',             label: '星座' },
   { key: 'blood_type',         label: '血液型' },
   { key: 'tattoo',             label: 'TATTOO' },

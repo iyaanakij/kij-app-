@@ -66,6 +66,8 @@ function buildNormalizedData(brand: 'M' | 'E', r: Record<string, unknown>): Norm
     age: str('age'),
     height: str('height'),
     bust: str('bust'),
+    waist: str('waist'),
+    hip: str('hip'),
     zodiac: str('zodiac'),
     blood_type: str('blood_type'),
     ng_area: str('ng_area'),
