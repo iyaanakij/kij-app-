@@ -614,15 +614,6 @@ export default function StaffPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">入店日</label>
-                <input
-                  type="date"
-                  value={editing.join_date ?? ''}
-                  onChange={e => setEditing(p => ({ ...p, join_date: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-                />
-              </div>
-              <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">所属店舗（複数選択可）</label>
                 <p className="text-xs text-orange-600 bg-orange-50 border border-orange-100 rounded-lg px-2.5 py-1.5 mb-2">シフト表への自動反映には設定が必須です</p>
                 <div className="flex gap-2 flex-wrap">
@@ -660,17 +651,6 @@ export default function StaffPage() {
                   })}
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">メモ</label>
-                <textarea
-                  value={editing.notes ?? ''}
-                  onChange={e => setEditing(p => ({ ...p, notes: e.target.value }))}
-                  rows={3}
-                  placeholder="備考・メモ"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-                />
-              </div>
-
               {editing.id && (
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">📧 写メ日記転送先</label>
