@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { Staff, STORES, IYASHI_STORES, getStaffBrand, StaffBrand } from '@/lib/types'
@@ -318,7 +319,15 @@ export default function StaffPage() {
     <div className="p-3">
       <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4 mb-4">
         <div>
-          <h1 className="text-lg font-bold text-gray-800">スタッフ管理</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-lg font-bold text-gray-800">スタッフ管理</h1>
+            <Link
+              href="/admin/onboarding"
+              className="text-xs px-3 py-1 rounded-full bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100 transition-colors font-medium"
+            >
+              入店アンケート管理
+            </Link>
+          </div>
           <p className="text-xs text-gray-500 mt-0.5">全{staffList.length}名 / 表示{filteredStaff.length}名</p>
           {unassignedCount > 0 && (
             <p className="text-xs text-orange-600 font-medium mt-0.5">⚠ 店舗未設定 {unassignedCount}名（シフトが反映されません）</p>

@@ -23,7 +23,7 @@ export default function OnboardingListPage() {
   const [submissions, setSubmissions] = useState<OnboardingSubmission[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { document.title = 'オンボーディング管理 | KIJ管理' }, [])
+  useEffect(() => { document.title = '入店アンケート管理 | KIJ管理' }, [])
 
   useEffect(() => {
     fetch('/api/admin/onboarding')
@@ -37,7 +37,7 @@ export default function OnboardingListPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">オンボーディング管理</h1>
+        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">入店アンケート管理</h1>
         <button
           onClick={() => router.push('/admin/onboarding/new')}
           className="bg-pink-500 hover:bg-pink-600 text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors"

@@ -84,7 +84,7 @@ export default function OnboardingDetailPage() {
   const [approving, setApproving] = useState(false)
   const [rejecting, setRejecting] = useState(false)
 
-  useEffect(() => { document.title = 'オンボーディング詳細 | KIJ管理' }, [])
+  useEffect(() => { document.title = '入店アンケート詳細 | KIJ管理' }, [])
 
   useEffect(() => {
     fetch(`/api/admin/onboarding/${id}`)
