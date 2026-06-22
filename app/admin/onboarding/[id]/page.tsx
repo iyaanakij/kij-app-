@@ -32,7 +32,7 @@ const JOB_STATUS_COLOR: Record<OnboardingJobStatus, string> = {
   skipped:          'bg-gray-100 text-gray-400',
 }
 
-const ND_FIELDS: { key: keyof NormalizedOnboardingData; label: string; brand?: 'M' | 'E' }[] = [
+const ND_FIELDS: { key: keyof NormalizedOnboardingData; label: string; brand?: 'M' | 'E'; multiline?: boolean }[] = [
   { key: 'stage_name',         label: '源氏名' },
   { key: 'real_name',          label: 'お名前' },
   { key: 'join_date',          label: '入店予定日' },
@@ -48,33 +48,34 @@ const ND_FIELDS: { key: keyof NormalizedOnboardingData; label: string; brand?: '
   { key: 'ng_area',            label: 'NGエリア' },
   { key: 'contact_method',     label: '連絡方法' },
   // M専用
-  { key: 'm_personality',      label: '性格',             brand: 'M' },
-  { key: 'm_charm',            label: 'チャームポイント',  brand: 'M' },
-  { key: 'm_preferred_type',   label: '好みのM男性タイプ', brand: 'M' },
+  { key: 'm_personality',      label: '性格',             brand: 'M', multiline: true },
+  { key: 'm_charm',            label: 'チャームポイント',  brand: 'M', multiline: true },
+  { key: 'm_preferred_type',   label: '好みのM男性タイプ', brand: 'M', multiline: true },
   { key: 'm_smoking',          label: '喫煙',             brand: 'M' },
-  { key: 'm_stress_relief',    label: 'ストレス解消法',    brand: 'M' },
+  { key: 'm_stress_relief',    label: 'ストレス解消法',    brand: 'M', multiline: true },
   { key: 'm_favorite_word',    label: '好きな言葉',        brand: 'M' },
-  { key: 'm_trigger',          label: 'きっかけ',          brand: 'M' },
+  { key: 'm_trigger',          label: 'きっかけ',          brand: 'M', multiline: true },
+  { key: 'm_chijo_moment',     label: '痴女だと思う瞬間',  brand: 'M', multiline: true },
   { key: 'm_sadist_level',     label: 'S度レベル',         brand: 'M' },
-  { key: 'm_favorite_scenario', label: '好きなシチュ',     brand: 'M' },
+  { key: 'm_favorite_scenario', label: '好きなシチュ',     brand: 'M', multiline: true },
   { key: 'm_favorite_toy',     label: '好きなおもちゃ',    brand: 'M' },
-  { key: 'm_specialty_play',   label: '得意プレイ',        brand: 'M' },
-  { key: 'm_challenge_play',   label: '挑戦したいプレイ',  brand: 'M' },
-  { key: 'm_meaning',          label: 'M性感の意味',       brand: 'M' },
-  { key: 'm_message',          label: 'メッセージ',        brand: 'M' },
+  { key: 'm_specialty_play',   label: '得意プレイ',        brand: 'M', multiline: true },
+  { key: 'm_challenge_play',   label: '挑戦したいプレイ',  brand: 'M', multiline: true },
+  { key: 'm_meaning',          label: 'M性感の意味',       brand: 'M', multiline: true },
+  { key: 'm_message',          label: 'メッセージ',        brand: 'M', multiline: true },
   // E専用
-  { key: 'e_hobby',            label: '趣味・特技',        brand: 'E' },
-  { key: 'e_personality',      label: '性格',              brand: 'E' },
-  { key: 'e_charm',            label: 'チャームポイント',   brand: 'E' },
+  { key: 'e_hobby',            label: '趣味・特技',        brand: 'E', multiline: true },
+  { key: 'e_personality',      label: '性格',              brand: 'E', multiline: true },
+  { key: 'e_charm',            label: 'チャームポイント',   brand: 'E', multiline: true },
   { key: 'e_smoking',          label: '喫煙',              brand: 'E' },
   { key: 'e_drinking',         label: '飲酒',              brand: 'E' },
   { key: 'e_favorite_media',   label: '好きな映画・本',     brand: 'E' },
   { key: 'e_relationships',    label: '交際経験人数',       brand: 'E' },
-  { key: 'e_exciting_moment',  label: 'ドキッとする瞬間',   brand: 'E' },
+  { key: 'e_exciting_moment',  label: 'ドキッとする瞬間',   brand: 'E', multiline: true },
   { key: 'e_massage_experience', label: 'マッサージ経験',   brand: 'E' },
-  { key: 'e_specialty_play',   label: '得意性感プレイ',     brand: 'E' },
-  { key: 'e_care',             label: '接客の心掛け',       brand: 'E' },
-  { key: 'e_message',          label: 'メッセージ',         brand: 'E' },
+  { key: 'e_specialty_play',   label: '得意性感プレイ',     brand: 'E', multiline: true },
+  { key: 'e_care',             label: '接客の心掛け',       brand: 'E', multiline: true },
+  { key: 'e_message',          label: 'メッセージ',         brand: 'E', multiline: true },
 ]
 
 export default function OnboardingDetailPage() {
@@ -339,16 +340,24 @@ export default function OnboardingDetailPage() {
             {ND_FIELDS.filter(f => !f.brand || f.brand === sub.brand).map(f => {
               const val = ndValue(f.key)
               if (!val && !isEditable) return null
+              const fieldValue = typeof nd[f.key] === 'string' ? nd[f.key] as string : val
               return (
                 <div key={f.key}>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">{f.label}</p>
                   {isEditable ? (
                     f.key === 'ng_options' ? (
                       <p className="text-sm text-gray-800 dark:text-gray-200">{val || '—'}</p>
+                    ) : f.multiline ? (
+                      <textarea
+                        value={fieldValue}
+                        onChange={e => setNd(prev => prev ? { ...prev, [f.key]: e.target.value } : prev)}
+                        rows={3}
+                        className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-400 resize-y"
+                      />
                     ) : (
                       <input
                         type="text"
-                        value={typeof nd[f.key] === 'string' ? nd[f.key] as string : val}
+                        value={fieldValue}
                         onChange={e => setNd(prev => prev ? { ...prev, [f.key]: e.target.value } : prev)}
                         className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-pink-400"
                       />

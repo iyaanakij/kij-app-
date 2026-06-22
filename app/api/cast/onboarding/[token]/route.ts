@@ -58,7 +58,7 @@ export async function POST(
 }
 
 function buildNormalizedData(brand: 'M' | 'E', r: Record<string, unknown>): NormalizedOnboardingData {
-  const str = (k: string) => (typeof r[k] === 'string' ? (r[k] as string).trim() : undefined) || undefined
+  const str = (k: string) => (typeof r[k] === 'string' ? (r[k] as string).replace(/\r\n/g, '\n').trim() : undefined) || undefined
   const nd: NormalizedOnboardingData = {
     stage_name: String(r['stage_name'] ?? '').trim(),
     stage_name_kana: str('stage_name_kana'),
