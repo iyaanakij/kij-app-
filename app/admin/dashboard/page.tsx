@@ -276,6 +276,12 @@ function minutesAgo(iso: string) {
   return `${Math.floor(h / 24)}日前`
 }
 
+function getRecoveryLabel(job: ActionJob, latest: HealthLog | null) {
+  if (!latest || latest.status !== 'OK' || !job.finished_at) return null
+  if (new Date(latest.checked_at).getTime() < new Date(job.finished_at).getTime()) return null
+  return job.requested_by === 'auto' ? '自動復旧' : '手動復旧'
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [logs, setLogs] = useState<HealthLog[]>([])
@@ -537,15 +543,29 @@ export default function DashboardPage() {
               {jobs.slice(0, 10).map(job => {
                 const s = JOB_STATUS_STYLE[job.status] ?? JOB_STATUS_STYLE.skipped
                 const isAuto = job.requested_by === 'auto'
+                const recoveryLabel = getRecoveryLabel(job, latest)
                 return (
                   <div key={job.id} className="flex items-start gap-3 text-xs border border-gray-100 rounded-lg px-3 py-2.5">
                     <div className="flex flex-col gap-1 shrink-0 items-start">
-                      <span className={`px-2 py-0.5 rounded-full font-semibold ${s.bg} ${s.text}`}>
-                        {s.label}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-full font-semibold ${isAuto ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}`}>
-                        {isAuto ? '自動' : '手動'}
-                      </span>
+                      {recoveryLabel ? (
+                        <>
+                          <span className="px-2 py-0.5 rounded-full font-semibold bg-green-100 text-green-700">
+                            復旧済み
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full font-semibold ${isAuto ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {recoveryLabel}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className={`px-2 py-0.5 rounded-full font-semibold ${s.bg} ${s.text}`}>
+                            {s.label}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full font-semibold ${isAuto ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {isAuto ? '自動' : '手動'}
+                          </span>
+                        </>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-gray-800">{ACTION_JA[job.action] ?? job.action}</div>
