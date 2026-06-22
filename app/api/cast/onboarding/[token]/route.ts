@@ -61,6 +61,7 @@ function buildNormalizedData(brand: 'M' | 'E', r: Record<string, unknown>): Norm
   const str = (k: string) => (typeof r[k] === 'string' ? (r[k] as string).trim() : undefined) || undefined
   const nd: NormalizedOnboardingData = {
     stage_name: String(r['stage_name'] ?? '').trim(),
+    stage_name_kana: str('stage_name_kana'),
     real_name: str('real_name'),
     join_date: str('join_date'),
     age: str('age'),

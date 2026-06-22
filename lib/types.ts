@@ -206,6 +206,7 @@ export type OnboardingJobStatus = 'pending' | 'running' | 'succeeded' | 'failed'
 
 export interface NormalizedOnboardingData {
   stage_name: string
+  stage_name_kana?: string
   real_name?: string
   join_date?: string
   age?: string

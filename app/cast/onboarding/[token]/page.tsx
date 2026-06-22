@@ -121,6 +121,8 @@ export default function CastOnboardingPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!str('stage_name').trim()) { alert('源氏名は必須です'); return }
+    if (!str('stage_name_kana').trim()) { alert('ふりがなは必須です（ひらがなで入力）'); return }
+    if (!/^[ぁ-んー\s　]+$/.test(str('stage_name_kana').trim())) { alert('ふりがなはひらがなで入力してください'); return }
     setSubmitting(true)
     const res = await fetch(`/api/cast/onboarding/${token}`, {
       method: 'POST',
@@ -162,6 +164,9 @@ export default function CastOnboardingPage() {
           <SectionTitle>基本情報</SectionTitle>
           <Field label="源氏名（フルネーム）" required>
             <TextInput name="stage_name" value={str('stage_name')} onChange={set} placeholder="例: さくら りこ" />
+          </Field>
+          <Field label="ふりがな（ひらがなで入力）" required>
+            <TextInput name="stage_name_kana" value={str('stage_name_kana')} onChange={set} placeholder="例: さくら りこ" />
           </Field>
           <Field label="お名前（本名または苗字のみ）">
             <TextInput name="real_name" value={str('real_name')} onChange={set} />
