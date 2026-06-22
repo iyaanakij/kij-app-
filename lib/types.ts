@@ -201,6 +201,7 @@ export type OnboardingJobType =
   | 'create_publish_rule'
   | 'create_cp4_profile'
   | 'create_venrey_cast'
+  | 'resolve_external_ids'
 export type OnboardingJobStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'failed_retryable' | 'needs_manual' | 'skipped'
 
 export interface NormalizedOnboardingData {
