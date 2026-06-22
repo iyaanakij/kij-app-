@@ -85,6 +85,7 @@ function buildNormalizedData(brand: 'M' | 'E', r: Record<string, unknown>): Norm
     nd.m_smoking = str('m_smoking')
     nd.m_stress_relief = str('m_stress_relief')
     nd.m_favorite_word = str('m_favorite_word')
+    nd.m_chijo_moment = str('m_chijo_moment')
     nd.m_sadist_level = str('m_sadist_level')
     nd.m_favorite_scenario = str('m_favorite_scenario')
     nd.m_favorite_toy = str('m_favorite_toy')

@@ -237,6 +237,9 @@ export default function CastOnboardingPage() {
               <Field label="痴女になったきっかけ">
                 <TextArea name="m_trigger" value={str('m_trigger')} onChange={set} />
               </Field>
+              <Field label="痴女だと思う瞬間は？">
+                <TextArea name="m_chijo_moment" value={str('m_chijo_moment')} onChange={set} />
+              </Field>
               <Field label="S度レベル（自己評価）">
                 <TextInput name="m_sadist_level" value={str('m_sadist_level')} onChange={set} placeholder="例: 10段階で8" />
               </Field>

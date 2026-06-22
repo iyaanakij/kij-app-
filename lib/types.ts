@@ -229,6 +229,7 @@ export interface NormalizedOnboardingData {
   m_smoking?: string
   m_stress_relief?: string
   m_favorite_word?: string
+  m_chijo_moment?: string
   m_sadist_level?: string
   m_favorite_scenario?: string
   m_favorite_toy?: string
