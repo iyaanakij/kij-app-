@@ -6,11 +6,12 @@ import type { OnboardingSubmission, OnboardingJob, OnboardingJobType, Onboarding
 import { AREAS } from '@/lib/types'
 
 const JOB_LABEL: Record<OnboardingJobType, string> = {
-  create_staff:        'スタッフ登録',
-  create_women_info:   '女性情報登録',
-  create_publish_rule: 'publish_rules作成',
-  create_cp4_profile:  'CP4プロフィール登録',
-  create_venrey_cast:  'Venreyキャスト登録',
+  create_staff:         'スタッフ登録',
+  create_women_info:    '女性情報登録',
+  create_publish_rule:  'publish_rules作成',
+  create_cp4_profile:   'CP4プロフィール登録',
+  create_venrey_cast:   'Venreyキャスト登録',
+  resolve_external_ids: '外部ID補完',
 }
 const JOB_STATUS_LABEL: Record<OnboardingJobStatus, string> = {
   pending:          '待機中',
