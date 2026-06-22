@@ -6,13 +6,16 @@ import { useParams } from 'next/navigation'
 const BUST_OPTIONS = ['Aカップ', 'Bカップ', 'Cカップ', 'Dカップ', 'Eカップ', 'Fカップ', 'Gカップ', 'Hカップ', 'Iカップ以上']
 const ZODIAC_OPTIONS = ['おひつじ座', 'おうし座', 'ふたご座', 'かに座', 'しし座', 'おとめ座', 'てんびん座', 'さそり座', 'いて座', 'やぎ座', 'みずがめ座', 'うお座']
 const BLOOD_OPTIONS = ['A型', 'B型', 'O型', 'AB型']
-const SMOKING_OPTIONS = ['なし', 'あり']
 const DRINKING_OPTIONS = ['飲まない', 'たまに飲む', 'よく飲む']
 const RELATIONSHIPS_OPTIONS = ['0人', '1〜3人', '4〜6人', '7〜9人', '10人以上', '秘密']
-const SADIST_OPTIONS = ['1（やさしめ）', '2', '3', '4', '5（ふつう）', '6', '7', '8', '9', '10（完全S）']
 const CONTACT_OPTIONS = ['LINE・電話可', 'LINEのみ', '電話・LINE NG']
 const REQUEST_OPTIONS = ['可能', '対応不可']
 const NG_OPTION_LIST = ['聖水', '私物パンティ', 'ロープ拘束', 'コスプレ', '3P', '自宅出張', 'レンタルルーム', 'ビジネスホテル', '外国人客', 'その他']
+const AGE_OPTIONS = Array.from({ length: 43 }, (_, i) => String(i + 18))
+const HEIGHT_OPTIONS = Array.from({ length: 66 }, (_, i) => String(i + 130))
+const BUST_CM_OPTIONS = Array.from({ length: 71 }, (_, i) => String(i + 60))
+const WAIST_OPTIONS = Array.from({ length: 61 }, (_, i) => String(i + 40))
+const HIP_OPTIONS = Array.from({ length: 71 }, (_, i) => String(i + 60))
 
 const AREA_NAMES: Record<number, string> = { 1: '成田', 2: '千葉', 3: '西船橋', 4: '錦糸町' }
 
@@ -142,16 +145,8 @@ export default function CastOnboardingPage() {
     if (!str('stage_name').trim()) { alert('源氏名は必須です'); return }
     if (!str('stage_name_kana').trim()) { alert('ふりがなは必須です（ひらがなで入力）'); return }
     if (!/^[ぁ-んー\s　]+$/.test(str('stage_name_kana').trim())) { alert('ふりがなはひらがなで入力してください'); return }
-    const age = parseInt(str('age'))
-    if (!str('age') || isNaN(age) || age < 18 || age > 60) { alert('年齢を正しく入力してください（18〜60）'); return }
-    const height = parseInt(str('height'))
-    if (!str('height') || isNaN(height) || height < 130 || height > 195) { alert('身長を正しく入力してください（130〜195cm）'); return }
-    const bustCm = parseInt(str('bust_cm'))
-    if (str('bust_cm') && (isNaN(bustCm) || bustCm < 60 || bustCm > 130)) { alert('バスト(cm)を正しく入力してください（60〜130cm）'); return }
-    const waist = parseInt(str('waist'))
-    if (str('waist') && (isNaN(waist) || waist < 40 || waist > 100)) { alert('ウエストを正しく入力してください（40〜100cm）'); return }
-    const hip = parseInt(str('hip'))
-    if (str('hip') && (isNaN(hip) || hip < 60 || hip > 130)) { alert('ヒップを正しく入力してください（60〜130cm）'); return }
+    if (!str('age')) { alert('年齢を選択してください'); return }
+    if (!str('height')) { alert('身長を選択してください'); return }
     setSubmitting(true)
     const res = await fetch(`/api/cast/onboarding/${token}`, {
       method: 'POST',
@@ -201,23 +196,23 @@ export default function CastOnboardingPage() {
             <TextInput name="real_name" value={str('real_name')} onChange={set} />
           </Field>
           <Field label="年齢" required>
-            <NumberInput name="age" value={str('age')} onChange={set} min={18} max={60} placeholder="24" />
+            <Select name="age" value={str('age')} onChange={set} options={AGE_OPTIONS} />
           </Field>
           <Field label="身長（cm）" required>
-            <NumberInput name="height" value={str('height')} onChange={set} min={130} max={195} placeholder="160" />
+            <Select name="height" value={str('height')} onChange={set} options={HEIGHT_OPTIONS} />
           </Field>
           <Field label="バストサイズ" required>
             <Select name="bust" value={str('bust')} onChange={set} options={BUST_OPTIONS} />
           </Field>
           <div className="grid grid-cols-3 gap-3">
             <Field label="バスト（cm）">
-              <NumberInput name="bust_cm" value={str('bust_cm')} onChange={set} min={60} max={130} placeholder="85" />
+              <Select name="bust_cm" value={str('bust_cm')} onChange={set} options={BUST_CM_OPTIONS} />
             </Field>
             <Field label="ウエスト（cm）">
-              <NumberInput name="waist" value={str('waist')} onChange={set} min={40} max={100} placeholder="58" />
+              <Select name="waist" value={str('waist')} onChange={set} options={WAIST_OPTIONS} />
             </Field>
             <Field label="ヒップ（cm）">
-              <NumberInput name="hip" value={str('hip')} onChange={set} min={60} max={130} placeholder="84" />
+              <Select name="hip" value={str('hip')} onChange={set} options={HIP_OPTIONS} />
             </Field>
           </div>
 
@@ -258,7 +253,7 @@ export default function CastOnboardingPage() {
                 <TextArea name="m_preferred_type" value={str('m_preferred_type')} onChange={set} />
               </Field>
               <Field label="喫煙">
-                <Select name="m_smoking" value={str('m_smoking')} onChange={set} options={SMOKING_OPTIONS} />
+                <TextInput name="m_smoking" value={str('m_smoking')} onChange={set} placeholder="例: なし / あり" />
               </Field>
               <Field label="ストレス解消法">
                 <TextInput name="m_stress_relief" value={str('m_stress_relief')} onChange={set} />
@@ -275,7 +270,7 @@ export default function CastOnboardingPage() {
                 <TextArea name="m_chijo_moment" value={str('m_chijo_moment')} onChange={set} />
               </Field>
               <Field label="S度レベル（自己評価・10段階）">
-                <Select name="m_sadist_level" value={str('m_sadist_level')} onChange={set} options={SADIST_OPTIONS} />
+                <TextInput name="m_sadist_level" value={str('m_sadist_level')} onChange={set} placeholder="例: 7" />
               </Field>
               <Field label="好きなシチュエーション">
                 <TextArea name="m_favorite_scenario" value={str('m_favorite_scenario')} onChange={set} />
@@ -308,7 +303,7 @@ export default function CastOnboardingPage() {
                 <TextArea name="e_charm" value={str('e_charm')} onChange={set} />
               </Field>
               <Field label="喫煙">
-                <Select name="e_smoking" value={str('e_smoking')} onChange={set} options={SMOKING_OPTIONS} />
+                <TextInput name="e_smoking" value={str('e_smoking')} onChange={set} placeholder="例: なし / あり" />
               </Field>
               <Field label="飲酒習慣">
                 <Select name="e_drinking" value={str('e_drinking')} onChange={set} options={DRINKING_OPTIONS} />
