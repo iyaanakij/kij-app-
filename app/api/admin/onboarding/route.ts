@@ -10,7 +10,7 @@ const sb = createClient(
 export async function GET() {
   const { data, error } = await sb
     .from('onboarding_submissions')
-    .select('id, token, brand, area_id, status, submitted_at, approved_at, staff_id, admin_notes, created_at')
+    .select('id, token, brand, area_id, status, submitted_at, approved_at, staff_id, admin_notes, created_at, normalized_data')
     .order('created_at', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

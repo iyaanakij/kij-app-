@@ -22,6 +22,7 @@ export default function OnboardingListPage() {
   const router = useRouter()
   const [submissions, setSubmissions] = useState<OnboardingSubmission[]>([])
   const [loading, setLoading] = useState(true)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   useEffect(() => { document.title = '入店アンケート管理 | KIJ管理' }, [])
 
@@ -31,6 +32,15 @@ export default function OnboardingListPage() {
       .then(d => { setSubmissions(d.submissions ?? []); setLoading(false) })
       .catch(() => setLoading(false))
   }, [])
+
+  async function handleDelete(e: React.MouseEvent, id: number, name: string) {
+    e.stopPropagation()
+    if (!confirm(`「${name}」を削除します。この操作は取り消せません。`)) return
+    setDeletingId(id)
+    await fetch(`/api/admin/onboarding/${id}`, { method: 'DELETE' })
+    setSubmissions(prev => prev.filter(s => s.id !== id))
+    setDeletingId(null)
+  }
 
   const areaName = (id: number) => AREAS.find(a => a.id === id)?.name ?? id
 
@@ -77,6 +87,14 @@ export default function OnboardingListPage() {
               <span className={`shrink-0 text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLOR[s.status]}`}>
                 {STATUS_LABEL[s.status]}
               </span>
+              <button
+                onClick={e => handleDelete(e, s.id, s.normalized_data?.stage_name ?? `#${s.id}`)}
+                disabled={deletingId === s.id}
+                className="shrink-0 text-xs text-red-400 hover:text-red-600 disabled:opacity-40 px-1"
+                title="削除"
+              >
+                {deletingId === s.id ? '…' : '✕'}
+              </button>
             </button>
           ))}
         </div>

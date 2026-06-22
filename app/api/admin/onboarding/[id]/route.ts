@@ -21,6 +21,18 @@ export async function GET(
   return NextResponse.json({ submission: subRes.data, jobs: jobsRes.data ?? [] })
 }
 
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  // jobs を先に削除してから submission を削除（外部キー制約対応）
+  await sb.from('onboarding_jobs').delete().eq('submission_id', id)
+  const { error } = await sb.from('onboarding_submissions').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
