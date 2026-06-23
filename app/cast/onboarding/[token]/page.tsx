@@ -59,11 +59,12 @@ function NumberInput({ name, value, onChange, min, max, placeholder }: { name: s
   )
 }
 
-function TextArea({ name, value, onChange, placeholder }: { name: string; value: string; onChange: (n: string, v: string) => void; placeholder?: string }) {
+function TextArea({ name, value, onChange, placeholder, noNewline }: { name: string; value: string; onChange: (n: string, v: string) => void; placeholder?: string; noNewline?: boolean }) {
   return (
     <textarea
       value={value}
-      onChange={e => onChange(name, e.target.value)}
+      onChange={e => onChange(name, noNewline ? e.target.value.replace(/\n/g, '') : e.target.value)}
+      onKeyDown={noNewline ? e => { if (e.key === 'Enter') e.preventDefault() } : undefined}
       placeholder={placeholder}
       rows={4}
       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 resize-none"
@@ -244,13 +245,13 @@ export default function CastOnboardingPage() {
           {brand === 'M' ? (
             <>
               <Field label="性格">
-                <TextArea name="m_personality" value={str('m_personality')} onChange={set} />
+                <TextArea name="m_personality" value={str('m_personality')} onChange={set} noNewline />
               </Field>
               <Field label="チャームポイント">
-                <TextArea name="m_charm" value={str('m_charm')} onChange={set} />
+                <TextArea name="m_charm" value={str('m_charm')} onChange={set} noNewline />
               </Field>
               <Field label="好みのM男性のタイプ">
-                <TextArea name="m_preferred_type" value={str('m_preferred_type')} onChange={set} />
+                <TextArea name="m_preferred_type" value={str('m_preferred_type')} onChange={set} noNewline />
               </Field>
               <Field label="喫煙">
                 <TextInput name="m_smoking" value={str('m_smoking')} onChange={set} placeholder="例: なし / あり" />
@@ -264,28 +265,28 @@ export default function CastOnboardingPage() {
 
               <SectionTitle>プレイ情報</SectionTitle>
               <Field label="痴女になったきっかけ">
-                <TextArea name="m_trigger" value={str('m_trigger')} onChange={set} />
+                <TextArea name="m_trigger" value={str('m_trigger')} onChange={set} noNewline />
               </Field>
               <Field label="痴女だと思う瞬間は？">
-                <TextArea name="m_chijo_moment" value={str('m_chijo_moment')} onChange={set} />
+                <TextArea name="m_chijo_moment" value={str('m_chijo_moment')} onChange={set} noNewline />
               </Field>
               <Field label="S度レベル（自己評価・10段階）">
                 <TextInput name="m_sadist_level" value={str('m_sadist_level')} onChange={set} placeholder="例: 7" />
               </Field>
               <Field label="好きなシチュエーション">
-                <TextArea name="m_favorite_scenario" value={str('m_favorite_scenario')} onChange={set} />
+                <TextArea name="m_favorite_scenario" value={str('m_favorite_scenario')} onChange={set} noNewline />
               </Field>
               <Field label="好きなおもちゃ">
                 <TextInput name="m_favorite_toy" value={str('m_favorite_toy')} onChange={set} />
               </Field>
               <Field label="得意プレイ">
-                <TextArea name="m_specialty_play" value={str('m_specialty_play')} onChange={set} />
+                <TextArea name="m_specialty_play" value={str('m_specialty_play')} onChange={set} noNewline />
               </Field>
               <Field label="挑戦したいプレイ">
-                <TextArea name="m_challenge_play" value={str('m_challenge_play')} onChange={set} />
+                <TextArea name="m_challenge_play" value={str('m_challenge_play')} onChange={set} noNewline />
               </Field>
               <Field label="あなたにとってM性感とは">
-                <TextArea name="m_meaning" value={str('m_meaning')} onChange={set} />
+                <TextArea name="m_meaning" value={str('m_meaning')} onChange={set} noNewline />
               </Field>
               <Field label="お客様へのメッセージ">
                 <TextArea name="m_message" value={str('m_message')} onChange={set} placeholder="5行以上推奨" />
@@ -294,13 +295,13 @@ export default function CastOnboardingPage() {
           ) : (
             <>
               <Field label="趣味・特技">
-                <TextArea name="e_hobby" value={str('e_hobby')} onChange={set} />
+                <TextArea name="e_hobby" value={str('e_hobby')} onChange={set} noNewline />
               </Field>
               <Field label="性格">
-                <TextArea name="e_personality" value={str('e_personality')} onChange={set} />
+                <TextArea name="e_personality" value={str('e_personality')} onChange={set} noNewline />
               </Field>
               <Field label="チャームポイント">
-                <TextArea name="e_charm" value={str('e_charm')} onChange={set} />
+                <TextArea name="e_charm" value={str('e_charm')} onChange={set} noNewline />
               </Field>
               <Field label="喫煙">
                 <TextInput name="e_smoking" value={str('e_smoking')} onChange={set} placeholder="例: なし / あり" />
@@ -317,16 +318,16 @@ export default function CastOnboardingPage() {
 
               <SectionTitle>プレイ情報</SectionTitle>
               <Field label="ドキッとする瞬間">
-                <TextArea name="e_exciting_moment" value={str('e_exciting_moment')} onChange={set} />
+                <TextArea name="e_exciting_moment" value={str('e_exciting_moment')} onChange={set} noNewline />
               </Field>
               <Field label="マッサージ店勤務経験">
                 <TextInput name="e_massage_experience" value={str('e_massage_experience')} onChange={set} placeholder="例: なし / ○○で3ヶ月" />
               </Field>
               <Field label="得意な性感プレイ">
-                <TextArea name="e_specialty_play" value={str('e_specialty_play')} onChange={set} />
+                <TextArea name="e_specialty_play" value={str('e_specialty_play')} onChange={set} noNewline />
               </Field>
               <Field label="接客で心掛けていること">
-                <TextArea name="e_care" value={str('e_care')} onChange={set} />
+                <TextArea name="e_care" value={str('e_care')} onChange={set} noNewline />
               </Field>
               <Field label="お客様へのメッセージ">
                 <TextArea name="e_message" value={str('e_message')} onChange={set} />
