@@ -132,7 +132,7 @@ export default function NavBar() {
               チャット
             </Link>
             <Link
-              href="/admin/publish-rules"
+              href="/admin/dashboard"
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
                 pathname.startsWith('/admin')
                   ? 'bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-600/40 dark:text-orange-100 dark:border-orange-500/60'
@@ -140,7 +140,7 @@ export default function NavBar() {
               }`}
             >
               <span className="w-1.5 h-1.5 rounded-full bg-orange-400 inline-block"></span>
-              配信ルール
+              システム状態
             </Link>
             <ThemeToggle />
           </div>
@@ -245,7 +245,7 @@ export default function NavBar() {
                 チャット
               </Link>
               <Link
-                href="/admin/publish-rules"
+                href="/admin/dashboard"
                 onClick={() => setIsMenuOpen(false)}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
                   pathname.startsWith('/admin')
@@ -254,7 +254,7 @@ export default function NavBar() {
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0"></span>
-                配信ルール
+                システム状態
               </Link>
             </div>
           </div>
