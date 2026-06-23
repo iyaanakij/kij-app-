@@ -96,7 +96,11 @@ export default function OnboardingDetailPage() {
   const [cp4GidInput, setCp4GidInput] = useState('')
   const [venreyIdInput, setVenreyIdInput] = useState('')
   const [staffCandidates, setStaffCandidates] = useState<StaffCandidate[]>([])
-  const [linkStaffIdInput, setLinkStaffIdInput] = useState('')
+  const [staffSearch, setStaffSearch] = useState('')
+  const [staffSearchResults, setStaffSearchResults] = useState<StaffCandidate[]>([])
+  const [staffSearching, setStaffSearching] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [selectedStaff, setSelectedStaff] = useState<StaffCandidate | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [approving, setApproving] = useState(false)
@@ -120,6 +124,19 @@ export default function OnboardingDetailPage() {
       })
       .catch(() => setLoading(false))
   }, [id])
+
+  useEffect(() => {
+    if (!staffSearch.trim()) { setStaffSearchResults([]); setShowDropdown(false); return }
+    const timer = setTimeout(async () => {
+      setStaffSearching(true)
+      const res = await fetch(`/api/admin/staff/search?q=${encodeURIComponent(staffSearch)}`)
+      const data = await res.json()
+      setStaffSearchResults(data)
+      setShowDropdown(true)
+      setStaffSearching(false)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [staffSearch])
 
   async function handleSave() {
     setSaving(true)
@@ -259,26 +276,60 @@ export default function OnboardingDetailPage() {
               </div>
             )}
 
-            {/* 手動 staff_id 入力 */}
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                value={linkStaffIdInput}
-                onChange={e => setLinkStaffIdInput(e.target.value)}
-                placeholder="staff_id を手入力して紐付け"
-                className="flex-1 text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-400"
-              />
-              <button
-                onClick={() => {
-                  const sid = parseInt(linkStaffIdInput, 10)
-                  if (!sid) { alert('staff_id を入力してください'); return }
-                  handleApprove('link', sid)
-                }}
-                disabled={approving || !linkStaffIdInput}
-                className="text-sm bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white font-bold px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
-              >
-                紐付けて承認
-              </button>
+            {/* スタッフ検索コンボボックス */}
+            <div className="relative">
+              {selectedStaff ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 flex items-center gap-2 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg px-3 py-2">
+                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{selectedStaff.name}</span>
+                    <span className="text-xs text-gray-500">{selectedStaff.store_ids.map(sid => STORE_LABEL[sid]).join('・')}</span>
+                  </div>
+                  <button
+                    onClick={() => { setSelectedStaff(null); setStaffSearch('') }}
+                    className="text-xs text-gray-400 hover:text-gray-600 px-2"
+                  >
+                    ✕
+                  </button>
+                  <button
+                    onClick={() => handleApprove('link', selectedStaff.id)}
+                    disabled={approving}
+                    className="text-sm bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white font-bold px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+                  >
+                    {approving ? '処理中...' : '紐付けて承認'}
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={staffSearch}
+                    onChange={e => { setStaffSearch(e.target.value); setSelectedStaff(null) }}
+                    onFocus={() => { if (staffSearchResults.length > 0) setShowDropdown(true) }}
+                    onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+                    placeholder={staffSearching ? '検索中...' : 'スタッフ名で検索して紐付け'}
+                    className="w-full text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                  {showDropdown && staffSearchResults.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg overflow-hidden">
+                      {staffSearchResults.map(s => (
+                        <button
+                          key={s.id}
+                          onMouseDown={() => { setSelectedStaff(s); setStaffSearch(s.name); setShowDropdown(false) }}
+                          className="w-full text-left px-3 py-2.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 flex items-center justify-between"
+                        >
+                          <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{s.name}</span>
+                          <span className="text-xs text-gray-400">{s.store_ids.map(sid => STORE_LABEL[sid]).join('・')}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {showDropdown && staffSearchResults.length === 0 && staffSearch && !staffSearching && (
+                    <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-lg px-3 py-2.5">
+                      <span className="text-sm text-gray-400">該当なし</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* 新規作成 / 却下 */}
