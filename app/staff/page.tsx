@@ -289,7 +289,7 @@ export default function StaffPage() {
   }
 
   async function deleteStaff(id: number, name: string) {
-    if (!confirm(`${name} を削除しますか？\nこのスタッフのシフトと予約データも影響を受けます。`)) return
+    if (!confirm(`${name} を削除しますか？\nこのキャストのシフトと予約データも影響を受けます。`)) return
     const { error } = await supabase.from('staff').delete().eq('id', id)
     if (error) { alert(`削除失敗: ${error.message}`); return }
     fetchStaff()
@@ -327,7 +327,7 @@ export default function StaffPage() {
       <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4 mb-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-bold text-gray-800">スタッフ管理</h1>
+            <h1 className="text-lg font-bold text-gray-800">キャスト管理</h1>
             <Link
               href="/admin/onboarding"
               className="relative text-xs px-3 py-1 rounded-full bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100 transition-colors font-medium inline-flex items-center gap-1.5"
@@ -401,7 +401,7 @@ export default function StaffPage() {
             <p><span className="font-semibold text-green-700">HP同期</span> — City Heavenからキャスト名を自動取得して登録・更新します（重複解消も自動実行）</p>
             <p><span className="font-semibold text-purple-700">アカウント</span> — キャストがシフト・写メ日記を確認するためのログインアカウントを発行します（LINE連携も管理）</p>
             <p><span className="font-semibold text-amber-700">編集</span> — 名前・入店日・所属店舗・写メ日記転送先を変更します</p>
-            <p><span className="font-semibold text-red-600">削除</span> — スタッフを完全削除します。シフト・予約データに影響するため慎重に使用してください</p>
+            <p><span className="font-semibold text-red-600">削除</span> — キャストを完全削除します。シフト・予約データに影響するため慎重に使用してください</p>
           </div>
         </details>
       </div>
@@ -425,7 +425,7 @@ export default function StaffPage() {
               {filteredStaff.length === 0 && (
                 <tr>
                   <td colSpan={4} className="text-center py-16 text-gray-400">
-                    スタッフが登録されていません
+                    キャストが登録されていません
                   </td>
                 </tr>
               )}
@@ -493,7 +493,7 @@ export default function StaffPage() {
                       </button>
                       <button
                         onClick={() => deleteStaff(s.id, s.name)}
-                        title="スタッフを削除（シフト・予約データに影響します）"
+                        title="キャストを削除（シフト・予約データに影響します）"
                         className="px-3 py-1.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-600 text-xs font-medium transition-colors"
                       >
                         削除
@@ -618,7 +618,7 @@ export default function StaffPage() {
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl flex flex-col max-h-[90vh]">
             <div className="bg-gray-900 text-white px-5 py-4 rounded-t-xl flex items-center justify-between flex-shrink-0">
-              <h2 className="font-bold text-base">スタッフ編集</h2>
+              <h2 className="font-bold text-base">キャスト編集</h2>
               <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-white text-xl leading-none transition-colors">✕</button>
             </div>
             <div className="p-5 space-y-4 text-sm overflow-y-auto">
@@ -630,7 +630,7 @@ export default function StaffPage() {
                   type="text"
                   value={editing.name ?? ''}
                   onChange={e => setEditing(p => ({ ...p, name: e.target.value }))}
-                  placeholder="スタッフ名"
+                  placeholder="キャスト名"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
                 />
               </div>
