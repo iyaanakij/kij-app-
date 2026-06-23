@@ -59,8 +59,8 @@ export async function GET() {
     has_venrey: boolean
     warning_count: number  // enabled=true だが cp4_gid/venrey_cast_id 欠落
     all_disabled_with_ids: boolean
-    e_enabled_count: number  // iya_* サイトが enabled な数
-    m_enabled_count: number  // mka_* サイトが enabled な数
+    e_enabled_count: number  // iya_* サイトの enabled ルール行数
+    m_enabled_count: number  // mka_* サイトの enabled ルール行数
   }>()
 
   for (const r of all) {

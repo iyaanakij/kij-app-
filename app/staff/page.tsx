@@ -448,7 +448,7 @@ export default function StaffPage() {
             <tbody>
               {filteredStaff.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="text-center py-16 text-gray-400">
+                  <td colSpan={5} className="text-center py-16 text-gray-400">
                     キャストが登録されていません
                   </td>
                 </tr>
@@ -515,10 +515,10 @@ export default function StaffPage() {
                             {(ps.e_enabled_count > 0 || ps.m_enabled_count > 0) ? (
                               <>
                                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ps.e_enabled_count > 0 ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-400'}`}>
-                                  癒し {ps.e_enabled_count > 0 ? ps.e_enabled_count : '—'}
+                                  癒し {ps.e_enabled_count > 0 ? `${ps.e_enabled_count}件` : '—'}
                                 </span>
                                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ps.m_enabled_count > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'}`}>
-                                  M性感 {ps.m_enabled_count > 0 ? ps.m_enabled_count : '—'}
+                                  M性感 {ps.m_enabled_count > 0 ? `${ps.m_enabled_count}件` : '—'}
                                 </span>
                               </>
                             ) : (
