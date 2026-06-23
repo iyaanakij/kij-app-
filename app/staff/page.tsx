@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import { Staff, STORES, IYASHI_STORES, getStaffBrand, StaffBrand } from '@/lib/types'
+import { Staff, STORES, IYASHI_STORES, AREAS, getStaffBrand, StaffBrand } from '@/lib/types'
 import PublishRuleMatrix, { RuleRow } from '@/app/components/PublishRuleMatrix'
 
 interface StaffWithStores extends Staff {
@@ -27,6 +27,9 @@ type OnboardingInfo = {
   brand: string
   area_id: number
 }
+
+type OnboardingJob = { job_type: string; status: string }
+type SubmissionInfo = { id: number; brand: string; area_id: number; jobs: OnboardingJob[] }
 
 interface DeliveryTarget {
   id: string
@@ -74,6 +77,11 @@ export default function StaffPage() {
   const [publishRules, setPublishRules] = useState<RuleRow[] | null>(null)
   const [publishLoading, setPublishLoading] = useState(false)
   const [onboardingMap, setOnboardingMap] = useState<Map<number, OnboardingInfo>>(new Map())
+  const [surveyModalOpen, setSurveyModalOpen] = useState(false)
+  const [surveyModalStaff, setSurveyModalStaff] = useState<StaffWithStores | null>(null)
+  const [surveySubmissions, setSurveySubmissions] = useState<SubmissionInfo[]>([])
+  const [surveyModalLoading, setSurveyModalLoading] = useState(false)
+  const [surveyRegistering, setSurveyRegistering] = useState<string | null>(null)
 
   const fetchPublishSummary = useCallback(async () => {
     const res = await fetch('/api/admin/publish-rules/summary')
@@ -136,6 +144,39 @@ export default function StaffPage() {
         setOnboardingMap(map)
       })
   }, [])
+
+  async function openSurveyModal(s: StaffWithStores) {
+    setSurveyModalStaff(s)
+    setSurveySubmissions([])
+    setSurveyModalLoading(true)
+    setSurveyModalOpen(true)
+    const res = await fetch(`/api/admin/staff/${s.id}/onboarding`)
+    if (res.ok) {
+      const json = await res.json()
+      setSurveySubmissions(json.submissions ?? [])
+    }
+    setSurveyModalLoading(false)
+  }
+
+  async function registerArea(staffId: number, sourceSubmissionId: number, targetAreaId: number) {
+    const key = `${sourceSubmissionId}-${targetAreaId}`
+    setSurveyRegistering(key)
+    const res = await fetch(`/api/admin/staff/${staffId}/register-area`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_submission_id: sourceSubmissionId, target_area_id: targetAreaId }),
+    })
+    const json = await res.json()
+    if (!res.ok) {
+      alert(json.error ?? '登録に失敗しました')
+    } else {
+      // 最新データを再取得
+      const r2 = await fetch(`/api/admin/staff/${staffId}/onboarding`)
+      if (r2.ok) setSurveySubmissions((await r2.json()).submissions ?? [])
+      fetchStaff()
+    }
+    setSurveyRegistering(null)
+  }
 
   async function openEdit(s: StaffWithStores) {
     setEditing({ ...s })
@@ -533,13 +574,13 @@ export default function StaffPage() {
                   <td className="px-3 py-3 text-right">
                     <div className="flex gap-1.5 justify-end items-center flex-wrap">
                       {ob && (
-                        <Link
-                          href={`/admin/onboarding/${ob.id}`}
-                          title="入店アンケートを確認する"
+                        <button
+                          onClick={() => openSurveyModal(s)}
+                          title="アンケートデータをもとに他店舗へ反映"
                           className="px-3 py-1.5 rounded-lg bg-pink-100 hover:bg-pink-200 text-pink-700 text-xs font-medium transition-colors"
                         >
                           アンケート
-                        </Link>
+                        </button>
                       )}
                       <button
                         onClick={() => openEdit(s)}
@@ -575,6 +616,105 @@ export default function StaffPage() {
               {selectedStoreFilter !== null && <span className="ml-2 text-gray-400">（全{staffList.length}名中）</span>}
             </div>
           )}
+        </div>
+      )}
+
+      {/* アンケート他店舗反映モーダル */}
+      {surveyModalOpen && surveyModalStaff && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh]">
+            <div className="bg-gray-900 text-white px-5 py-4 rounded-t-xl flex items-center justify-between flex-shrink-0">
+              <div>
+                <h2 className="font-bold text-base">他店舗反映</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{surveyModalStaff.name} — アンケートデータをもとに登録</p>
+              </div>
+              <button onClick={() => setSurveyModalOpen(false)} className="text-gray-400 hover:text-white text-xl leading-none transition-colors">✕</button>
+            </div>
+            <div className="p-5 overflow-y-auto space-y-5">
+              {surveyModalLoading ? (
+                <p className="text-sm text-gray-400 animate-pulse text-center py-6">読み込み中...</p>
+              ) : surveySubmissions.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-6">承認済みアンケートがありません</p>
+              ) : (
+                (['M', 'E'] as const).map(brand => {
+                  const brandSubs = surveySubmissions.filter(s => s.brand === brand)
+                  if (brandSubs.length === 0) return null
+                  // ソースsubmission: CP4 or Venrey が succeeded のものを優先、なければ最初
+                  const sourceSub = brandSubs.find(s => s.jobs.some(j => j.status === 'succeeded')) ?? brandSubs[0]
+                  // 登録済みエリアのset
+                  const registeredAreaIds = new Set(brandSubs.map(s => s.area_id))
+                  const brandLabel = brand === 'M' ? 'M性感' : '癒したくて'
+                  const brandColor = brand === 'M' ? 'text-red-700 bg-red-50 border-red-200' : 'text-teal-700 bg-teal-50 border-teal-200'
+                  const btnColor = brand === 'M' ? 'bg-red-600 hover:bg-red-700' : 'bg-teal-600 hover:bg-teal-700'
+
+                  return (
+                    <div key={brand}>
+                      <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${brandColor} mb-3`}>
+                        {brandLabel}データ
+                      </div>
+                      <div className="space-y-2">
+                        {AREAS.map(area => {
+                          const isRegistered = registeredAreaIds.has(area.id)
+                          const key = `${sourceSub.id}-${area.id}`
+                          const isRegistering = surveyRegistering === key
+                          // 対象店舗のサブミッションがある場合、jobステータスを表示
+                          const areaSub = brandSubs.find(s => s.area_id === area.id)
+                          const cp4Job = areaSub?.jobs.find(j => j.job_type === 'create_cp4_profile')
+                          const venreyJob = areaSub?.jobs.find(j => j.job_type === 'create_venrey_cast')
+
+                          return (
+                            <div key={area.id} className={`flex items-center justify-between rounded-lg border px-3 py-2.5 ${isRegistered ? 'bg-gray-50 border-gray-200' : 'bg-white border-dashed border-gray-300'}`}>
+                              <div className="flex items-center gap-2">
+                                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${isRegistered ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                                  {isRegistered ? '✓' : '—'}
+                                </span>
+                                <span className="text-sm font-medium text-gray-800">{area.name}</span>
+                                {isRegistered && (
+                                  <div className="flex gap-1">
+                                    {cp4Job && (
+                                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                                        cp4Job.status === 'succeeded' ? 'bg-green-100 text-green-700' :
+                                        cp4Job.status === 'pending' || cp4Job.status === 'running' ? 'bg-yellow-100 text-yellow-700' :
+                                        cp4Job.status === 'failed' ? 'bg-red-100 text-red-600' :
+                                        'bg-gray-100 text-gray-500'
+                                      }`}>CP4:{cp4Job.status === 'succeeded' ? '済' : cp4Job.status === 'pending' ? '待' : cp4Job.status === 'running' ? '中' : '失'}</span>
+                                    )}
+                                    {venreyJob && (
+                                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                                        venreyJob.status === 'succeeded' ? 'bg-green-100 text-green-700' :
+                                        venreyJob.status === 'pending' || venreyJob.status === 'running' ? 'bg-yellow-100 text-yellow-700' :
+                                        venreyJob.status === 'failed' ? 'bg-red-100 text-red-600' :
+                                        'bg-gray-100 text-gray-500'
+                                      }`}>Venrey:{venreyJob.status === 'succeeded' ? '済' : venreyJob.status === 'pending' ? '待' : venreyJob.status === 'running' ? '中' : '失'}</span>
+                                    )}
+                                    {areaSub && (
+                                      <Link href={`/admin/onboarding/${areaSub.id}`} className="text-xs text-blue-500 hover:underline ml-1">詳細</Link>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              {!isRegistered && (
+                                <button
+                                  onClick={() => registerArea(surveyModalStaff.id, sourceSub.id, area.id)}
+                                  disabled={!!surveyRegistering}
+                                  className={`px-3 py-1 rounded-lg text-white text-xs font-medium transition-colors disabled:opacity-50 ${btnColor}`}
+                                >
+                                  {isRegistering ? '処理中...' : '反映する'}
+                                </button>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+            <div className="px-5 py-3 bg-gray-50 rounded-b-xl border-t border-gray-200 flex justify-end flex-shrink-0">
+              <button onClick={() => setSurveyModalOpen(false)} className="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition-colors text-sm">閉じる</button>
+            </div>
+          </div>
         </div>
       )}
 
