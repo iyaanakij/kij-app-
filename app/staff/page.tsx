@@ -131,18 +131,14 @@ export default function StaffPage() {
       .catch(() => {})
   }, [])
   useEffect(() => {
-    supabase
-      .from('onboarding_submissions')
-      .select('id, staff_id, brand, area_id')
-      .eq('status', 'approved')
-      .not('staff_id', 'is', null)
-      .then(({ data }) => {
+    fetch('/api/admin/onboarding/staff-map')
+      .then(r => r.json())
+      .then((raw: Record<string, OnboardingInfo>) => {
         const map = new Map<number, OnboardingInfo>()
-        for (const s of data ?? []) {
-          if (s.staff_id != null) map.set(s.staff_id, { id: s.id, brand: s.brand, area_id: s.area_id })
-        }
+        for (const [k, v] of Object.entries(raw)) map.set(Number(k), v)
         setOnboardingMap(map)
       })
+      .catch(() => {})
   }, [])
 
   async function openSurveyModal(s: StaffWithStores) {
