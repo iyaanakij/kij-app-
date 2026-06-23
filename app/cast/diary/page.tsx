@@ -11,6 +11,7 @@ function getImageUrl(path: string) {
 }
 
 export default function CastDiaryPage() {
+  useEffect(() => { document.title = '写メ日記 | KIJ' }, [])
   const router = useRouter()
   const [user, setUser] = useState<UserInfo | null>(null)
   const [staffName, setStaffName] = useState('')

@@ -2,6 +2,9 @@ import { createClient } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { PhotoDiary, PhotoDiaryImage, isVideo } from '@/lib/types'
 import VideoThumbnail from './VideoThumbnail'
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: '写メ日記一覧 | KIJ' }
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

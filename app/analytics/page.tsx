@@ -262,6 +262,7 @@ function MarkdownContent({ text }: { text: string }) {
 }
 
 export default function AnalyticsPage() {
+  useEffect(() => { document.title = 'Web解析レポート | KIJ管理' }, [])
   const [reports, setReports] = useState<Report[]>([])
   const [selected, setSelected] = useState<Report | null>(null)
   const [activeTab, setActiveTab] = useState<TabId>('overview')

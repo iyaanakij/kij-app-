@@ -7,6 +7,7 @@ import { Reservation, formatTime } from '@/lib/types'
 import { getCurrentUser, UserInfo } from '@/lib/auth'
 
 export default function CastReservationsPage() {
+  useEffect(() => { document.title = '予約確認 | KIJ' }, [])
   const router = useRouter()
   const [user, setUser] = useState<UserInfo | null>(null)
   const [reservations, setReservations] = useState<Reservation[]>([])

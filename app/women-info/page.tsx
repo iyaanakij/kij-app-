@@ -268,6 +268,7 @@ function resolveTextColor(value: string, darkDefault: string, isDark: boolean) {
 }
 
 export default function WomenInfoPage() {
+  useEffect(() => { document.title = '女性情報 | KIJ管理' }, [])
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const [selectedAreaId, setSelectedAreaId] = useState(getInitialAreaId)

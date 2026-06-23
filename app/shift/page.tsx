@@ -54,6 +54,7 @@ interface ShiftMarker {
 }
 
 export default function ShiftPage() {
+  useEffect(() => { document.title = 'シフト管理 | KIJ管理' }, [])
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const todayStr = todayString()

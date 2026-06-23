@@ -29,6 +29,7 @@ function AuthHandler() {
 }
 
 export default function PhotoDiaryAuthPage() {
+  useEffect(() => { document.title = '写メ日記 認証 | KIJ' }, [])
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-gradient-to-br from-pink-50 to-purple-50 flex items-center justify-center">

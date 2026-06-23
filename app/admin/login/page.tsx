@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { getCurrentUser } from '@/lib/auth'
 
 export default function AdminLoginPage() {
+  useEffect(() => { document.title = '管理ログイン | KIJ管理' }, [])
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

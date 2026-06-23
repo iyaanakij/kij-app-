@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { getCurrentUser, UserInfo } from '@/lib/auth'
 
 export default function NewDiaryPage() {
+  useEffect(() => { document.title = '日記投稿 | KIJ' }, [])
   const router = useRouter()
   const [user, setUser] = useState<UserInfo | null>(null)
   const [title, setTitle] = useState('')

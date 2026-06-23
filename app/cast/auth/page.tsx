@@ -29,6 +29,7 @@ function AuthHandler() {
 }
 
 export default function CastAuthPage() {
+  useEffect(() => { document.title = 'キャスト認証 | KIJ' }, [])
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-gradient-to-br from-pink-50 to-purple-50 flex items-center justify-center">

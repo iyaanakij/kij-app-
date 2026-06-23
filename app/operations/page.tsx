@@ -71,6 +71,7 @@ function slotToTimeLabel(slotDecimal: number): { hhmm: string; next: boolean } {
 }
 
 export default function OperationsPage() {
+  useEffect(() => { document.title = '業務管理 | KIJ管理' }, [])
   const [selectedDate, setSelectedDate] = useState(todayString())
   const [selectedAreaId, setSelectedAreaId] = useState(3) // デフォルト: 西船橋
   const [shifts, setShifts] = useState<Shift[]>([])

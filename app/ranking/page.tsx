@@ -140,6 +140,7 @@ type BatchJobStatus = 'pending' | 'running' | 'done' | 'error'
 interface BatchJob { id: number; year: number; month: number; status: BatchJobStatus; message?: string; completed_at?: string | null }
 
 export default function RankingPage() {
+  useEffect(() => { document.title = 'ランキング | KIJ管理' }, [])
   const monthOptions = getMonthOptions()
   const [month, setMonth] = useState(monthOptions[0].value)
   const [areaId, setAreaId] = useState(1)

@@ -117,6 +117,7 @@ function MemoCell({
 }
 
 export default function ReservationsPage() {
+  useEffect(() => { document.title = '予約管理 | KIJ管理' }, [])
   const [selectedDate, setSelectedDate] = useState(todayString())
   const [selectedAreaId, setSelectedAreaId] = useState<number | null>(null)
   const [reservations, setReservations] = useState<Reservation[]>([])

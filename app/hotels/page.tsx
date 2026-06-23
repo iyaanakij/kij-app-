@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 type Hotel = {
   name: string
@@ -205,6 +205,7 @@ function HotelTable({ hotels }: { hotels: Hotel[] }) {
 }
 
 export default function HotelsPage() {
+  useEffect(() => { document.title = 'ホテル一覧 | KIJ管理' }, [])
   const [activeArea, setActiveArea] = useState('narita')
   const [openChiba, setOpenChiba] = useState<string>('栄町')
 

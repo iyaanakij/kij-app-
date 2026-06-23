@@ -11,6 +11,7 @@ function getImageUrl(path: string) {
 }
 
 export default function EditDiaryPage() {
+  useEffect(() => { document.title = '日記編集 | KIJ' }, [])
   const router = useRouter()
   const { id } = useParams<{ id: string }>()
   const [user, setUser] = useState<UserInfo | null>(null)

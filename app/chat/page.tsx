@@ -67,6 +67,7 @@ const CHAT_SUGGESTIONS = [
 ]
 
 export default function ChatPage() {
+  useEffect(() => { document.title = 'チャット | KIJ' }, [])
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)

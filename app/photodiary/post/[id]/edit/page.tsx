@@ -20,6 +20,7 @@ function toLocalDatetimeValue(date: Date) {
 }
 
 export default function PhotoDiaryEditPage() {
+  useEffect(() => { document.title = '写メ日記 編集 | KIJ' }, [])
   const router = useRouter()
   const { id } = useParams<{ id: string }>()
   const [user, setUser] = useState<UserInfo | null>(null)

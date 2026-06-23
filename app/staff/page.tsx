@@ -45,6 +45,7 @@ const emptyStaff = (): Partial<StaffWithStores> => ({
 })
 
 export default function StaffPage() {
+  useEffect(() => { document.title = 'スタッフ一覧 | KIJ管理' }, [])
   const [pendingOnboardingCount, setPendingOnboardingCount] = useState(0)
   const [staffList, setStaffList] = useState<StaffWithStores[]>([])
   const [loading, setLoading] = useState(false)
