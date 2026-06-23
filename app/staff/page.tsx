@@ -37,6 +37,7 @@ const emptyStaff = (): Partial<StaffWithStores> => ({
 })
 
 export default function StaffPage() {
+  const [pendingOnboardingCount, setPendingOnboardingCount] = useState(0)
   const [staffList, setStaffList] = useState<StaffWithStores[]>([])
   const [loading, setLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
@@ -105,6 +106,12 @@ export default function StaffPage() {
 
   useEffect(() => { fetchStaff() }, [fetchStaff])
   useEffect(() => { fetchPublishSummary() }, [fetchPublishSummary])
+  useEffect(() => {
+    fetch('/api/admin/onboarding/pending-count')
+      .then(r => r.json())
+      .then(d => setPendingOnboardingCount(d.count ?? 0))
+      .catch(() => {})
+  }, [])
 
   async function openEdit(s: StaffWithStores) {
     setEditing({ ...s })
@@ -323,9 +330,14 @@ export default function StaffPage() {
             <h1 className="text-lg font-bold text-gray-800">スタッフ管理</h1>
             <Link
               href="/admin/onboarding"
-              className="text-xs px-3 py-1 rounded-full bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100 transition-colors font-medium"
+              className="relative text-xs px-3 py-1 rounded-full bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100 transition-colors font-medium inline-flex items-center gap-1.5"
             >
               入店アンケート管理
+              {pendingOnboardingCount > 0 && (
+                <span className="min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold leading-none">
+                  {pendingOnboardingCount}
+                </span>
+              )}
             </Link>
           </div>
           <p className="text-xs text-gray-500 mt-0.5">全{staffList.length}名 / 表示{filteredStaff.length}名</p>

@@ -50,10 +50,18 @@ function ThemeToggle() {
 export default function NavBar() {
   const pathname = usePathname()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
 
   useEffect(() => {
     setIsMenuOpen(false)
   }, [pathname])
+
+  useEffect(() => {
+    fetch('/api/admin/onboarding/pending-count')
+      .then(r => r.json())
+      .then(d => setPendingCount(d.count ?? 0))
+      .catch(() => {})
+  }, [])
 
   if (pathname.startsWith('/cast') || pathname.startsWith('/photodiary') || pathname.startsWith('/chat')) return null
 
@@ -72,17 +80,23 @@ export default function NavBar() {
           <div className="hidden md:flex gap-1 flex-wrap">
             {navItems.map((item) => {
               const active = pathname.startsWith(item.href)
+              const showBadge = item.href === '/staff' && pendingCount > 0
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  className={`relative px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${
                     active
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
                   }`}
                 >
                   {item.label}
+                  {showBadge && (
+                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold leading-none">
+                      {pendingCount}
+                    </span>
+                  )}
                 </Link>
               )
             })}
@@ -176,18 +190,24 @@ export default function NavBar() {
             <div className="flex flex-col px-3 py-3 gap-0.5 overflow-y-auto flex-1">
               {navItems.map((item) => {
                 const active = pathname.startsWith(item.href)
+                const showBadge = item.href === '/staff' && pendingCount > 0
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
                     onClick={() => setIsMenuOpen(false)}
-                    className={`flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                    className={`relative flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
                       active
                         ? 'bg-blue-600 text-white shadow-sm'
                         : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                     }`}
                   >
                     {item.label}
+                    {showBadge && (
+                      <span className="ml-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold leading-none">
+                        {pendingCount}
+                      </span>
+                    )}
                   </Link>
                 )
               })}
