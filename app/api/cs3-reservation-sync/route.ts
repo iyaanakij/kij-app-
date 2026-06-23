@@ -62,11 +62,6 @@ async function upsertEntries(entries: CS3Entry[]) {
       course_duration: entry.courseDuration,
       media: entry.media,
       total_amount: entry.totalAmount,
-      confirmed: true,
-      communicated: false,
-      nude: false,
-      arrival_confirmed: false,
-      checked: false,
       notes: notesKey,
     }
 
@@ -76,9 +71,18 @@ async function upsertEntries(entries: CS3Entry[]) {
       .maybeSingle()
 
     if (existing?.id) {
+      // update: confirmed/communicated/checked はスタッフが手動操作するため上書きしない
       await supabase.from('reservations').update(payload).eq('id', existing.id)
     } else {
-      await supabase.from('reservations').insert(payload)
+      // insert: 初期値は全てfalse（確電・伝達は空欄スタート）
+      await supabase.from('reservations').insert({
+        ...payload,
+        confirmed: false,
+        communicated: false,
+        nude: false,
+        arrival_confirmed: false,
+        checked: false,
+      })
     }
     synced++
   }
