@@ -6,13 +6,21 @@ import type { OnboardingSubmission, OnboardingJob, OnboardingJobType, Onboarding
 import { AREAS } from '@/lib/types'
 
 const JOB_LABEL: Record<OnboardingJobType, string> = {
-  create_staff:         'キャスト登録',
+  create_staff:         'キャスト登録（新規）',
+  link_existing_staff:  '既存スタッフへの紐付け',
   create_women_info:    '女性情報登録',
   create_publish_rule:  'publish_rules作成',
   create_cp4_profile:   'CP4プロフィール登録',
   create_venrey_cast:   'Venreyキャスト登録',
   resolve_external_ids: '外部ID補完',
 }
+
+const STORE_LABEL: Record<number, string> = {
+  1: '成田M', 2: '千葉M', 3: '西船橋M', 4: '錦糸町M',
+  5: '成田E', 6: '千葉E', 7: '西船橋E', 8: '錦糸町E',
+}
+
+type StaffCandidate = { id: number; name: string; store_ids: number[] }
 const JOB_STATUS_LABEL: Record<OnboardingJobStatus, string> = {
   pending:          '待機中',
   running:          '実行中',
@@ -87,6 +95,8 @@ export default function OnboardingDetailPage() {
   const [adminNotes, setAdminNotes] = useState('')
   const [cp4GidInput, setCp4GidInput] = useState('')
   const [venreyIdInput, setVenreyIdInput] = useState('')
+  const [staffCandidates, setStaffCandidates] = useState<StaffCandidate[]>([])
+  const [linkStaffIdInput, setLinkStaffIdInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [approving, setApproving] = useState(false)
@@ -105,6 +115,7 @@ export default function OnboardingDetailPage() {
         setAdminNotes(d.submission?.admin_notes ?? '')
         setCp4GidInput(d.submission?.cp4_gid ?? '')
         setVenreyIdInput(d.submission?.venrey_cast_id ?? '')
+        setStaffCandidates(d.staffCandidates ?? [])
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -120,10 +131,17 @@ export default function OnboardingDetailPage() {
     setSaving(false)
   }
 
-  async function handleApprove() {
-    if (!confirm('承認するとキャスト登録・CP4/Venrey登録が自動実行されます。よろしいですか？')) return
+  async function handleApprove(mode: 'create' | 'link', staffId?: number) {
+    const msg = mode === 'link'
+      ? `staff_id=${staffId} に紐付けて承認します。よろしいですか？`
+      : '新規スタッフとして承認します。よろしいですか？'
+    if (!confirm(msg)) return
     setApproving(true)
-    const res = await fetch(`/api/admin/onboarding/${id}/approve`, { method: 'POST' })
+    const res = await fetch(`/api/admin/onboarding/${id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mode === 'link' ? { mode, staff_id: staffId } : { mode }),
+    })
     const d = await res.json()
     setApproving(false)
     if (d.error) { alert(`承認失敗: ${d.error}`); return }
@@ -213,21 +231,73 @@ export default function OnboardingDetailPage() {
         )}
 
         {sub.status === 'submitted' && (
-          <div className="flex gap-2 mt-4">
-            <button
-              onClick={handleApprove}
-              disabled={approving}
-              className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold py-2.5 rounded-xl text-sm transition-colors"
-            >
-              {approving ? '処理中...' : '✅ 承認して登録する'}
-            </button>
-            <button
-              onClick={handleReject}
-              disabled={rejecting}
-              className="px-4 border border-red-300 text-red-500 hover:bg-red-50 rounded-xl text-sm transition-colors"
-            >
-              却下
-            </button>
+          <div className="mt-4 space-y-3">
+            {/* 既存スタッフ候補 */}
+            {staffCandidates.length > 0 && (
+              <div className="border border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-700 rounded-xl p-3">
+                <p className="text-xs font-medium text-yellow-700 dark:text-yellow-400 mb-2">⚠ 同名スタッフが見つかりました。重複登録に注意してください。</p>
+                <div className="space-y-2">
+                  {staffCandidates.map(c => (
+                    <div key={c.id} className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-lg px-3 py-2">
+                      <div>
+                        <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{c.name}</span>
+                        <span className="text-xs text-gray-400 ml-2">id={c.id}</span>
+                        <span className="text-xs text-gray-500 ml-2">
+                          {c.store_ids.map(sid => STORE_LABEL[sid]).join('・')}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleApprove('link', c.id)}
+                        disabled={approving}
+                        className="text-xs bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white font-bold px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        {approving ? '処理中...' : 'この人に紐付けて承認'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 手動 staff_id 入力 */}
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={linkStaffIdInput}
+                onChange={e => setLinkStaffIdInput(e.target.value)}
+                placeholder="staff_id を手入力して紐付け"
+                className="flex-1 text-sm border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              />
+              <button
+                onClick={() => {
+                  const sid = parseInt(linkStaffIdInput, 10)
+                  if (!sid) { alert('staff_id を入力してください'); return }
+                  handleApprove('link', sid)
+                }}
+                disabled={approving || !linkStaffIdInput}
+                className="text-sm bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white font-bold px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+              >
+                紐付けて承認
+              </button>
+            </div>
+
+            {/* 新規作成 / 却下 */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleApprove('create')}
+                disabled={approving}
+                className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white font-bold py-2.5 rounded-xl text-sm transition-colors"
+              >
+                {approving ? '処理中...' : '✅ 新規スタッフとして承認'}
+              </button>
+              <button
+                onClick={handleReject}
+                disabled={rejecting}
+                className="px-4 border border-red-300 text-red-500 hover:bg-red-50 rounded-xl text-sm transition-colors"
+              >
+                却下
+              </button>
+            </div>
           </div>
         )}
       </div>

@@ -18,7 +18,26 @@ export async function GET(
   ])
 
   if (subRes.error) return NextResponse.json({ error: subRes.error.message }, { status: 404 })
-  return NextResponse.json({ submission: subRes.data, jobs: jobsRes.data ?? [] })
+
+  // submitted状態のときだけ同名staff候補を返す
+  let staffCandidates: Array<{ id: number; name: string; store_ids: number[] }> = []
+  if (subRes.data?.status === 'submitted') {
+    const stageName = (subRes.data.normalized_data as Record<string, unknown> | null)?.stage_name as string | undefined
+    if (stageName) {
+      const { data: candidates } = await sb
+        .from('staff')
+        .select('id, name, staff_stores(store_id)')
+        .ilike('name', `%${stageName}%`)
+        .limit(5)
+      staffCandidates = (candidates ?? []).map((s: { id: number; name: string; staff_stores: Array<{ store_id: number }> }) => ({
+        id: s.id,
+        name: s.name,
+        store_ids: s.staff_stores.map(ss => ss.store_id),
+      }))
+    }
+  }
+
+  return NextResponse.json({ submission: subRes.data, jobs: jobsRes.data ?? [], staffCandidates })
 }
 
 export async function DELETE(

@@ -197,6 +197,7 @@ export function todayString(): string {
 export type OnboardingStatus = 'pending_cast' | 'submitted' | 'approved' | 'rejected'
 export type OnboardingJobType =
   | 'create_staff'
+  | 'link_existing_staff'
   | 'create_women_info'
   | 'create_publish_rule'
   | 'create_cp4_profile'
