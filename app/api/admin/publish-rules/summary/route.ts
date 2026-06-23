@@ -59,15 +59,21 @@ export async function GET() {
     has_venrey: boolean
     warning_count: number  // enabled=true だが cp4_gid/venrey_cast_id 欠落
     all_disabled_with_ids: boolean
+    e_enabled_count: number  // iya_* サイトが enabled な数
+    m_enabled_count: number  // mka_* サイトが enabled な数
   }>()
 
   for (const r of all) {
     const id = r.cs3_cast_id
     if (!map.has(id)) {
-      map.set(id, { enabled_count: 0, has_cp4: false, has_venrey: false, warning_count: 0, all_disabled_with_ids: false })
+      map.set(id, { enabled_count: 0, has_cp4: false, has_venrey: false, warning_count: 0, all_disabled_with_ids: false, e_enabled_count: 0, m_enabled_count: 0 })
     }
     const s = map.get(id)!
-    if (r.enabled) s.enabled_count++
+    if (r.enabled) {
+      s.enabled_count++
+      if (r.site_id.startsWith('iya_')) s.e_enabled_count++
+      if (r.site_id.startsWith('mka_')) s.m_enabled_count++
+    }
     const creds = siteCreds.get(`${r.cs3_cast_id}:${r.site_id}`)
     const venreyId = venreyCreds.get(`${r.cs3_cast_id}:${SITE_TO_VENREY_GROUP[r.site_id] ?? r.site_id}`)
     if (creds?.cp4_gid) s.has_cp4 = true

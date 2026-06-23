@@ -7,7 +7,7 @@ const { readFileSync } = require('fs')
 const { execSync } = require('child_process')
 const path = require('path')
 
-const CREDENTIALS_PATH = path.join(process.env.HOME, 'Downloads', 'client_secret_294178867207-7imh3o41bdl5uoan5j36m6vddcf653m7.apps.googleusercontent.com.json')
+const CREDENTIALS_PATH = path.join(process.env.HOME, 'Desktop', 'KIJ', 'secrets', 'client_secret_294178867207-7imh3o41bdl5uoan5j36m6vddcf653m7.apps.googleusercontent.com.json')
 
 const creds = JSON.parse(readFileSync(CREDENTIALS_PATH, 'utf8'))
 const { client_id, client_secret } = creds.installed

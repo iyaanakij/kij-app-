@@ -18,6 +18,14 @@ type PublishSummary = {
   has_venrey: boolean
   warning_count: number
   all_disabled_with_ids: boolean
+  e_enabled_count: number
+  m_enabled_count: number
+}
+
+type OnboardingInfo = {
+  id: number
+  brand: string
+  area_id: number
 }
 
 interface DeliveryTarget {
@@ -64,6 +72,7 @@ export default function StaffPage() {
   const [publishSummary, setPublishSummary] = useState<Map<string, PublishSummary>>(new Map())
   const [publishRules, setPublishRules] = useState<RuleRow[] | null>(null)
   const [publishLoading, setPublishLoading] = useState(false)
+  const [onboardingMap, setOnboardingMap] = useState<Map<number, OnboardingInfo>>(new Map())
 
   const fetchPublishSummary = useCallback(async () => {
     const res = await fetch('/api/admin/publish-rules/summary')
@@ -111,6 +120,20 @@ export default function StaffPage() {
       .then(r => r.json())
       .then(d => setPendingOnboardingCount(d.count ?? 0))
       .catch(() => {})
+  }, [])
+  useEffect(() => {
+    supabase
+      .from('onboarding_submissions')
+      .select('id, staff_id, brand, area_id')
+      .eq('status', 'approved')
+      .not('staff_id', 'is', null)
+      .then(({ data }) => {
+        const map = new Map<number, OnboardingInfo>()
+        for (const s of data ?? []) {
+          if (s.staff_id != null) map.set(s.staff_id, { id: s.id, brand: s.brand, area_id: s.area_id })
+        }
+        setOnboardingMap(map)
+      })
   }, [])
 
   async function openEdit(s: StaffWithStores) {
@@ -418,7 +441,8 @@ export default function StaffPage() {
                 <th className="px-4 py-3 text-left font-semibold">名前</th>
                 <th className="px-4 py-3 text-left font-semibold">入店日</th>
                 <th className="px-4 py-3 text-left font-semibold">所属店舗</th>
-                <th className="px-4 py-3 text-right font-semibold w-40">操作</th>
+                <th className="px-4 py-3 text-left font-semibold hidden sm:table-cell">登録状況</th>
+                <th className="px-4 py-3 text-right font-semibold">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -429,7 +453,10 @@ export default function StaffPage() {
                   </td>
                 </tr>
               )}
-              {filteredStaff.map((s, i) => (
+              {filteredStaff.map((s, i) => {
+                const ps = s.cs3_cast_id ? publishSummary.get(s.cs3_cast_id) : undefined
+                const ob = onboardingMap.get(s.id)
+                return (
                 <tr
                   key={s.id}
                   className={`border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'} hover:bg-blue-50 transition-colors`}
@@ -440,16 +467,12 @@ export default function StaffPage() {
                       {registeredStaffIds.has(s.id) && (
                         <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full font-medium">登録済</span>
                       )}
-                      {(() => {
-                        if (!s.cs3_cast_id) return <span className="bg-gray-100 text-gray-400 text-xs px-2 py-0.5 rounded-full">CS3未設定</span>
-                        const ps = publishSummary.get(s.cs3_cast_id)
-                        if (!ps) return null
-                        if (ps.warning_count > 0 && ps.warning_count === ps.enabled_count) return <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">⚠ 反映不可{ps.warning_count}件</span>
-                        if (!ps.has_cp4 && !ps.has_venrey) return <span className="bg-gray-100 text-gray-400 text-xs px-2 py-0.5 rounded-full">ID未登録</span>
-                        if (ps.all_disabled_with_ids) return <span className="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-full">確認待ち</span>
-                        if (ps.enabled_count > 0) return <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">配信{ps.enabled_count}件</span>
-                        return null
-                      })()}
+                      {!s.cs3_cast_id && (
+                        <span className="bg-gray-100 text-gray-400 text-xs px-2 py-0.5 rounded-full">CS3未設定</span>
+                      )}
+                      {ps && ps.warning_count > 0 && ps.warning_count === ps.enabled_count && (
+                        <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">⚠ 反映不可{ps.warning_count}件</span>
+                      )}
                     </div>
                     {s.notes && <p className="text-xs text-gray-400 font-normal mt-0.5 truncate max-w-xs">{s.notes}</p>}
                   </td>
@@ -475,8 +498,48 @@ export default function StaffPage() {
                       )}
                     </div>
                   </td>
+                  {/* 登録状況列: E/M別 */}
+                  <td className="px-4 py-3 hidden sm:table-cell">
+                    {!s.cs3_cast_id ? (
+                      <span className="text-xs text-gray-300">—</span>
+                    ) : !ps ? (
+                      <span className="text-xs text-gray-300">—</span>
+                    ) : (
+                      <div className="flex gap-1.5 flex-wrap">
+                        {!ps.has_cp4 && !ps.has_venrey ? (
+                          <span className="bg-gray-100 text-gray-400 text-xs px-2 py-0.5 rounded-full">ID未登録</span>
+                        ) : ps.all_disabled_with_ids ? (
+                          <span className="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-full">未反映</span>
+                        ) : (
+                          <>
+                            {(ps.e_enabled_count > 0 || ps.m_enabled_count > 0) ? (
+                              <>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ps.e_enabled_count > 0 ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-400'}`}>
+                                  癒し {ps.e_enabled_count > 0 ? ps.e_enabled_count : '—'}
+                                </span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ps.m_enabled_count > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-400'}`}>
+                                  M性感 {ps.m_enabled_count > 0 ? ps.m_enabled_count : '—'}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-full">未反映</span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-3 text-right">
-                    <div className="flex gap-1.5 justify-end items-center">
+                    <div className="flex gap-1.5 justify-end items-center flex-wrap">
+                      {ob && (
+                        <Link
+                          href={`/admin/onboarding/${ob.id}`}
+                          title="入店アンケートを確認する"
+                          className="px-3 py-1.5 rounded-lg bg-pink-100 hover:bg-pink-200 text-pink-700 text-xs font-medium transition-colors"
+                        >
+                          アンケート
+                        </Link>
+                      )}
                       <button
                         onClick={() => openEdit(s)}
                         title="名前・入店日・所属店舗・写メ日記転送先を編集"
@@ -501,7 +564,8 @@ export default function StaffPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
           {filteredStaff.length > 0 && (
@@ -715,11 +779,14 @@ export default function StaffPage() {
                 </div>
               )}
 
-              {/* 配信ルール */}
+              {/* 各店舗への登録反映 */}
               <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">配信ルール（CP4 / Venrey）</label>
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">各店舗への登録反映</label>
+                  <span className="text-xs text-gray-400">癒したくて（E）/ M性感（M）別にON/OFF</span>
+                </div>
                 {!editing.cs3_cast_id ? (
-                  <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">CS3 ID未設定のため配信ルールなし</p>
+                  <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">CS3 ID未設定のため設定不可</p>
                 ) : publishLoading ? (
                   <p className="text-xs text-gray-400 animate-pulse px-1">読み込み中...</p>
                 ) : publishRules ? (
