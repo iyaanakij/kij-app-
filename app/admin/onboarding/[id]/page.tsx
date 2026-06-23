@@ -6,7 +6,7 @@ import type { OnboardingSubmission, OnboardingJob, OnboardingJobType, Onboarding
 import { AREAS } from '@/lib/types'
 
 const JOB_LABEL: Record<OnboardingJobType, string> = {
-  create_staff:         'スタッフ登録',
+  create_staff:         'キャスト登録',
   create_women_info:    '女性情報登録',
   create_publish_rule:  'publish_rules作成',
   create_cp4_profile:   'CP4プロフィール登録',
@@ -121,7 +121,7 @@ export default function OnboardingDetailPage() {
   }
 
   async function handleApprove() {
-    if (!confirm('承認すると自動でスタッフ登録・女性情報登録が実行されます。よろしいですか？')) return
+    if (!confirm('承認するとキャスト登録・CP4/Venrey登録が自動実行されます。よろしいですか？')) return
     setApproving(true)
     const res = await fetch(`/api/admin/onboarding/${id}/approve`, { method: 'POST' })
     const d = await res.json()
@@ -314,7 +314,7 @@ export default function OnboardingDetailPage() {
                 href={`/staff`}
                 className="text-sm text-pink-600 hover:text-pink-700 font-medium"
               >
-                → スタッフページで確認する
+                → キャストページで確認する
               </a>
             </div>
           )}
