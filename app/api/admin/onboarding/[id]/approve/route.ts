@@ -58,13 +58,19 @@ export async function POST(
       { onConflict: 'staff_id,store_id' }
     )
 
-    await sb.from('onboarding_jobs').insert({
-      submission_id: sub.id,
-      job_type: 'link_existing_staff',
-      status: 'succeeded',
-      result: { staff_id: body.staff_id, staff_name: existingStaff.name },
-      updated_at: now,
-    })
+    await sb.from('onboarding_jobs').insert([
+      {
+        submission_id: sub.id,
+        job_type: 'link_existing_staff',
+        status: 'succeeded',
+        result: { staff_id: body.staff_id, staff_name: existingStaff.name },
+        updated_at: now,
+      },
+      { submission_id: sub.id, job_type: 'create_women_info',   status: 'needs_manual', updated_at: now },
+      { submission_id: sub.id, job_type: 'create_publish_rule', status: 'needs_manual', updated_at: now },
+      { submission_id: sub.id, job_type: 'create_cp4_profile',  status: 'pending',      updated_at: now },
+      { submission_id: sub.id, job_type: 'create_venrey_cast',  status: 'pending',      updated_at: now },
+    ])
 
     await sb.from('onboarding_submissions').update({
       status: 'approved',
@@ -91,7 +97,6 @@ export async function POST(
     { onConflict: 'staff_id,store_id' }
   )
 
-  // 外部登録ジョブは積まない（Step 3 で staff詳細から手動実行）
   await sb.from('onboarding_jobs').insert([
     {
       submission_id: sub.id,
@@ -102,6 +107,8 @@ export async function POST(
     },
     { submission_id: sub.id, job_type: 'create_women_info',   status: 'needs_manual', updated_at: now },
     { submission_id: sub.id, job_type: 'create_publish_rule', status: 'needs_manual', updated_at: now },
+    { submission_id: sub.id, job_type: 'create_cp4_profile',  status: 'pending',      updated_at: now },
+    { submission_id: sub.id, job_type: 'create_venrey_cast',  status: 'pending',      updated_at: now },
   ])
 
   await sb.from('onboarding_submissions').update({
