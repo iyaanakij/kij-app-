@@ -38,6 +38,8 @@ const NAME_JA: Record<string, string> = {
   'log:cp4-apply':         'ログ：HP反映',
   'log:new-cast-check':    'ログ：新規キャスト確認',
   'log:retention-cleanup': 'ログ：ファイル整理',
+  'cp4-lock-meta':         'HP反映処理の実行状態',
+  'playwright-residue':    'ブラウザプロセス残留',
   'disk':                  'ディスク使用量',
 }
 
@@ -103,6 +105,16 @@ const CHECK_GUIDE: Record<string, CheckGuideEntry> = {
   'log:retention-cleanup': {
     category: 'ENGINEER_REQUIRED',
     summary: 'ファイル自動整理でエラーが発生しています',
+    operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
+  },
+  'cp4-lock-meta': {
+    category: 'ENGINEER_REQUIRED',
+    summary: 'HP反映処理が長時間実行されたままフリーズしている可能性があります',
+    operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
+  },
+  'playwright-residue': {
+    category: 'ENGINEER_REQUIRED',
+    summary: 'ブラウザプロセスが残留しており、次回の処理に影響する可能性があります',
     operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
   },
   'disk': {
@@ -172,6 +184,28 @@ function translateMessage(name: string, msg: string) {
     const stale = msg.match(/stale age=(\d+)m/)
     if (stale) return `ログが古い（${stale[1]}分前）`
     if (msg.includes('missing')) return 'ログファイルなし'
+  }
+  if (name === 'cp4-lock-meta') {
+    if (msg === 'no active lock') return '実行中の処理なし（正常）'
+    const active = msg.match(/active: (\S+) pid=\d+ age=(\d+)m/)
+    if (active) return `${active[1]} が実行中（${active[2]}分経過）`
+    const held = msg.match(/lock held (\d+)m >= \d+m by (\S+)/)
+    if (held) return `${held[2]} が ${held[1]}分間フリーズ中（異常）`
+    const stale = msg.match(/stale meta: pid=(\d+) not alive/)
+    if (stale) return `ロックファイルが残留しています（プロセス pid=${stale[1]} は終了済み）`
+    if (msg.includes('invalid startedAt')) return 'メタデータが破損しています'
+  }
+  if (name === 'playwright-residue') {
+    if (msg.includes('procs_ok')) {
+      const mb = msg.match(/RSS total=(\d+)MB/)
+      return `正常（RSS合計 ${mb ? mb[1] : '-'}MB）`
+    }
+    const rss = msg.match(/RSS total=(\d+)MB/)
+    const residual = msg.match(/(\d+) residual procs \((.+)\)/)
+    const parts: string[] = []
+    if (rss) parts.push(`RSS合計 ${rss[1]}MB`)
+    if (residual) parts.push(`長時間残留 ${residual[1]}件: ${residual[2]}`)
+    return parts.join(' / ') || msg
   }
   if (name === 'disk') {
     const pct = msg.match(/disk usage (\d+)%/)
