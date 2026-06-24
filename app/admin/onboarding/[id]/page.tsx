@@ -358,7 +358,7 @@ export default function OnboardingDetailPage() {
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow p-5 mb-4">
           <h2 className="font-bold text-gray-700 dark:text-gray-200 mb-3">登録状況</h2>
           <div className="space-y-3">
-            {jobs.map(j => (
+            {jobs.filter(j => j.job_type !== 'resolve_external_ids').map(j => (
               <div key={j.id}>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-700 dark:text-gray-300">{JOB_LABEL[j.job_type]}</span>
