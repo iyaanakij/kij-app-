@@ -8,13 +8,25 @@ const sb = createClient(
 )
 
 export async function GET() {
-  const { data, error } = await sb
-    .from('onboarding_submissions')
-    .select('id, token, brand, area_id, status, submitted_at, approved_at, staff_id, admin_notes, created_at, normalized_data')
-    .order('created_at', { ascending: false })
+  const [subRes, jobRes] = await Promise.all([
+    sb.from('onboarding_submissions')
+      .select('id, token, brand, area_id, status, submitted_at, approved_at, staff_id, admin_notes, created_at, normalized_data, cs3_lookup_status, cs3_lookup_attempts, cs3_lookup_error')
+      .order('created_at', { ascending: false }),
+    sb.from('onboarding_jobs')
+      .select('submission_id')
+      .in('status', ['failed', 'needs_manual'])
+      .in('job_type', ['create_cp4_profile', 'create_venrey_cast']),
+  ])
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ submissions: data })
+  if (subRes.error) return NextResponse.json({ error: subRes.error.message }, { status: 500 })
+
+  const issueSubIds = new Set((jobRes.data ?? []).map(j => j.submission_id))
+  const submissions = (subRes.data ?? []).map(s => ({
+    ...s,
+    has_job_issue: issueSubIds.has(s.id),
+  }))
+
+  return NextResponse.json({ submissions })
 }
 
 export async function POST(request: NextRequest) {

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import type { OnboardingSubmission, OnboardingJob, OnboardingJobType, OnboardingJobStatus, NormalizedOnboardingData } from '@/lib/types'
+import type { OnboardingSubmission, OnboardingJob, OnboardingJobType, OnboardingJobStatus, NormalizedOnboardingData, PublishRuleSummary } from '@/lib/types'
 import { AREAS } from '@/lib/types'
 
 const JOB_LABEL: Record<OnboardingJobType, string> = {
@@ -101,6 +101,7 @@ export default function OnboardingDetailPage() {
   const [staffSearching, setStaffSearching] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
   const [selectedStaff, setSelectedStaff] = useState<StaffCandidate | null>(null)
+  const [publishRules, setPublishRules] = useState<PublishRuleSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [approving, setApproving] = useState(false)
@@ -120,6 +121,7 @@ export default function OnboardingDetailPage() {
         setCp4GidInput(d.submission?.cp4_gid ?? '')
         setVenreyIdInput(d.submission?.venrey_cast_id ?? '')
         setStaffCandidates(d.staffCandidates ?? [])
+        setPublishRules(d.publishRules ?? [])
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -438,6 +440,59 @@ export default function OnboardingDetailPage() {
                 → キャストページで確認する
               </a>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* シフト反映ステータス */}
+      {sub.status === 'approved' && (
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow p-5 mb-4">
+          <h2 className="font-bold text-gray-700 dark:text-gray-200 mb-3">シフト反映ステータス</h2>
+
+          {/* CS3 ID補完 */}
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm text-gray-600 dark:text-gray-400">CS3 ID補完</span>
+            {sub.cs3_lookup_status === 'matched' ? (
+              <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">✓ 補完済み</span>
+            ) : sub.cs3_lookup_status === 'no_match' ? (
+              <div className="text-right">
+                <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 font-medium">CS3未一致</span>
+                <p className="text-xs text-gray-400 mt-1">試行{sub.cs3_lookup_attempts ?? 0}回・CS3出勤申請待ち</p>
+              </div>
+            ) : sub.cs3_lookup_status === 'ambiguous' ? (
+              <div className="text-right">
+                <span className="text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-600 font-medium">⚠ CS3名重複</span>
+                {sub.cs3_lookup_error && <p className="text-xs text-gray-400 mt-1">{sub.cs3_lookup_error}</p>}
+              </div>
+            ) : (
+              <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500">未チェック</span>
+            )}
+          </div>
+
+          {/* publish_rules 有効化状況 */}
+          {publishRules.length > 0 ? (
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">配信ルール（{publishRules.filter(r => r.enabled).length}/{publishRules.length}件有効）</p>
+              <div className="space-y-1">
+                {publishRules.map(pr => {
+                  const hasIds = !!(pr.cp4_gid && pr.venrey_cast_id)
+                  return (
+                    <div key={pr.site_id} className="flex items-center justify-between">
+                      <span className="text-xs font-mono text-gray-500">{pr.site_id}</span>
+                      {pr.enabled ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">有効</span>
+                      ) : hasIds ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-600">ID揃い・有効化待ち</span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">ID待ち</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">配信ルールはまだ作成されていません</p>
           )}
         </div>
       )}

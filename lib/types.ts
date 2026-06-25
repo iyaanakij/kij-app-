@@ -254,6 +254,8 @@ export interface NormalizedOnboardingData {
   e_message?: string
 }
 
+export type Cs3LookupStatus = 'matched' | 'no_match' | 'ambiguous' | 'skip'
+
 export interface OnboardingSubmission {
   id: number
   token: string
@@ -270,6 +272,21 @@ export interface OnboardingSubmission {
   normalized_data: NormalizedOnboardingData | null
   admin_notes: string | null
   created_at: string
+  // CS3 ID補完状態
+  cs3_lookup_status: Cs3LookupStatus | null
+  cs3_lookup_attempts: number
+  cs3_lookup_error: string | null
+  last_cs3_lookup_at: string | null
+  // 一覧ページ向け集計フラグ（APIから付与）
+  has_job_issue?: boolean
+}
+
+export interface PublishRuleSummary {
+  site_id: string
+  enabled: boolean
+  cp4_gid: string | null
+  venrey_cast_id: string | null
+  onboarding_submission_id: number | null
 }
 
 export interface OnboardingJob {

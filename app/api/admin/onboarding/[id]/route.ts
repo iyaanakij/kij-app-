@@ -12,9 +12,13 @@ export async function GET(
 ) {
   const { id } = await params
 
-  const [subRes, jobsRes] = await Promise.all([
+  const [subRes, jobsRes, prRes] = await Promise.all([
     sb.from('onboarding_submissions').select('*').eq('id', id).single(),
     sb.from('onboarding_jobs').select('*').eq('submission_id', id).order('created_at'),
+    sb.from('publish_rules')
+      .select('site_id, enabled, cp4_gid, venrey_cast_id, onboarding_submission_id')
+      .eq('onboarding_submission_id', id)
+      .order('site_id'),
   ])
 
   if (subRes.error) return NextResponse.json({ error: subRes.error.message }, { status: 404 })
@@ -37,7 +41,7 @@ export async function GET(
     }
   }
 
-  return NextResponse.json({ submission: subRes.data, jobs: jobsRes.data ?? [], staffCandidates })
+  return NextResponse.json({ submission: subRes.data, jobs: jobsRes.data ?? [], staffCandidates, publishRules: prRes.data ?? [] })
 }
 
 export async function DELETE(

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { OnboardingSubmission, OnboardingStatus } from '@/lib/types'
+import type { OnboardingSubmission, OnboardingStatus, Cs3LookupStatus } from '@/lib/types'
 import { AREAS } from '@/lib/types'
 
 const STATUS_LABEL: Record<OnboardingStatus, string> = {
@@ -44,6 +44,15 @@ export default function OnboardingListPage() {
 
   const areaName = (id: number) => AREAS.find(a => a.id === id)?.name ?? id
 
+  function issueLabel(s: OnboardingSubmission): { text: string; color: string } | null {
+    if (s.status !== 'approved') return null
+    if (s.has_job_issue) return { text: '登録失敗', color: 'bg-red-100 text-red-600' }
+    if (s.cs3_lookup_status === 'ambiguous') return { text: 'CS3名重複', color: 'bg-orange-100 text-orange-600' }
+    if (s.cs3_lookup_status === 'no_match' && (s.cs3_lookup_attempts ?? 0) >= 3)
+      return { text: 'CS3未一致', color: 'bg-yellow-100 text-yellow-700' }
+    return null
+  }
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
@@ -84,9 +93,16 @@ export default function OnboardingListPage() {
                   {s.submitted_at && `　回答: ${new Date(s.submitted_at).toLocaleDateString('ja-JP')}`}
                 </p>
               </div>
-              <span className={`shrink-0 text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLOR[s.status]}`}>
-                {STATUS_LABEL[s.status]}
-              </span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {issueLabel(s) && (
+                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${issueLabel(s)!.color}`}>
+                    ⚠ {issueLabel(s)!.text}
+                  </span>
+                )}
+                <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLOR[s.status]}`}>
+                  {STATUS_LABEL[s.status]}
+                </span>
+              </div>
               <button
                 onClick={e => handleDelete(e, s.id, s.normalized_data?.stage_name ?? `#${s.id}`)}
                 disabled={deletingId === s.id}
