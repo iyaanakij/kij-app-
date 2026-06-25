@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { OnboardingSubmission, OnboardingStatus, Cs3LookupStatus } from '@/lib/types'
+import type { OnboardingSubmission, OnboardingStatus } from '@/lib/types'
 import { AREAS } from '@/lib/types'
 
 const STATUS_LABEL: Record<OnboardingStatus, string> = {
