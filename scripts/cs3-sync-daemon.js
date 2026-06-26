@@ -161,13 +161,12 @@ async function upsertReservationsToSupabase(entries, successfulShops) {
       extension: entry.extensionFee ?? 0,
       discount: entry.discountAmount ?? 0,
       cs3_cast_fee: entry.castFeeCs3 ?? null,
-      confirmed: true, communicated: false,
-      arrival_confirmed: false, checked: false, notes: notesKey,
+      notes: notesKey,
     }
 
     const existingId = existingMap.get(notesKey)
     if (existingId) toUpdate.push({ id: existingId, payload })
-    else toInsert.push(payload)
+    else toInsert.push({ ...payload, confirmed: false, communicated: false, arrival_confirmed: false, checked: false })
   }
 
   // 並列 update + 一括 insert
