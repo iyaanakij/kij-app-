@@ -40,6 +40,7 @@ const NAME_JA: Record<string, string> = {
   'log:retention-cleanup': 'ログ：ファイル整理',
   'cp4-lock-meta':         'HP反映処理の実行状態',
   'playwright-residue':    'ブラウザプロセス残留',
+  'memory':                'VPSメモリ',
   'disk':                  'ディスク使用量',
 }
 
@@ -115,6 +116,11 @@ const CHECK_GUIDE: Record<string, CheckGuideEntry> = {
   'playwright-residue': {
     category: 'ENGINEER_REQUIRED',
     summary: 'ブラウザプロセスが残留しており、次回の処理に影響する可能性があります',
+    operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
+  },
+  'memory': {
+    category: 'ENGINEER_REQUIRED',
+    summary: 'VPSの空きメモリが少なく、ブラウザ処理が不安定になる可能性があります',
     operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
   },
   'disk': {
@@ -201,8 +207,10 @@ function translateMessage(name: string, msg: string) {
       return `正常（RSS合計 ${mb ? mb[1] : '-'}MB）`
     }
     const rss = msg.match(/RSS total=(\d+)MB/)
+    const agedRss = msg.match(/RSS aged=(\d+)MB total=(\d+)MB/)
     const residual = msg.match(/(\d+) residual procs \((.+)\)/)
     const parts: string[] = []
+    if (agedRss) parts.push(`5分超RSS ${agedRss[1]}MB（合計 ${agedRss[2]}MB）`)
     if (rss) parts.push(`RSS合計 ${rss[1]}MB`)
     if (residual) parts.push(`長時間残留 ${residual[1]}件: ${residual[2]}`)
     return parts.join(' / ') || msg
@@ -210,6 +218,12 @@ function translateMessage(name: string, msg: string) {
   if (name === 'disk') {
     const pct = msg.match(/disk usage (\d+)%/)
     if (pct) return `使用率 ${pct[1]}%`
+  }
+  if (name === 'memory') {
+    const mem = msg.match(/available=(\d+)MB total=(\d+)MB used=(\d+)%/)
+    if (mem) return `空き ${mem[1]}MB / 合計 ${mem[2]}MB（使用率 ${mem[3]}%）`
+    if (msg.includes('/proc/meminfo not found')) return 'メモリ情報を取得できません'
+    if (msg.includes('cannot parse')) return 'メモリ情報を解析できません'
   }
   return msg
 }
@@ -379,6 +393,15 @@ export default function DashboardPage() {
   const latest = logs[0] ?? null
   const timeline = logs.slice(0, 100)
   const detailLog = selectedLog ?? latest
+  const detailIssues = detailLog?.checks.filter(c => c.level !== 'OK') ?? []
+  const detailOkChecks = detailLog?.checks.filter(c => c.level === 'OK') ?? []
+  const detailCounts = detailLog
+    ? {
+        crit: detailLog.checks.filter(c => c.level === 'CRIT').length,
+        warn: detailLog.checks.filter(c => c.level === 'WARN').length,
+        ok: detailLog.checks.filter(c => c.level === 'OK').length,
+      }
+    : { crit: 0, warn: 0, ok: 0 }
 
   const lastOkAt = logs.find(l => l.status === 'OK')?.checked_at ?? null
 
@@ -507,56 +530,94 @@ export default function DashboardPage() {
 
           {/* チェック詳細 + エラーガイド */}
           <div className="md:col-span-2 bg-white rounded-xl border border-gray-200 p-4">
-            <h2 className="text-sm font-semibold text-gray-600 mb-3">
-              {detailLog ? <>チェック詳細 — {formatJst(detailLog.checked_at)}</> : 'チェック詳細'}
-            </h2>
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-sm font-semibold text-gray-600">
+                {detailLog ? <>チェック詳細 — {formatJst(detailLog.checked_at)}</> : 'チェック詳細'}
+              </h2>
+              {detailLog && (
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="rounded-full bg-red-50 px-2 py-0.5 font-semibold text-red-700">異常 {detailCounts.crit}</span>
+                  <span className="rounded-full bg-yellow-50 px-2 py-0.5 font-semibold text-yellow-700">注意 {detailCounts.warn}</span>
+                  <span className="rounded-full bg-green-50 px-2 py-0.5 font-semibold text-green-700">正常 {detailCounts.ok}</span>
+                </div>
+              )}
+            </div>
             {submitMsg && (
               <div className="mb-3 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700 border border-blue-200">
                 {submitMsg}
               </div>
             )}
             {detailLog ? (
-              <div className="space-y-2">
-                {detailLog.checks.map((c, i) => {
-                  const guide = c.level !== 'OK' ? CHECK_GUIDE[c.name] : null
-                  return (
-                    <div
-                      key={i}
-                      className={`flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border text-sm ${STATUS_COLOR[c.level].bg} ${STATUS_COLOR[c.level].border}`}
-                    >
-                      {/* 状態・対象・カテゴリ */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <StatusBadge status={c.level} />
-                        <span className="font-medium text-gray-800">{translateName(c.name)}</span>
-                        {guide && <CategoryBadge category={guide.category} />}
-                      </div>
+              <div className="space-y-4">
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-xs font-semibold text-gray-500">対応が必要な項目</h3>
+                    <span className="text-xs text-gray-400">{detailIssues.length}件</span>
+                  </div>
+                  {detailIssues.length > 0 ? (
+                    <div className="space-y-2">
+                      {detailIssues.map((c, i) => {
+                        const guide = CHECK_GUIDE[c.name]
+                        return (
+                          <div
+                            key={`${c.name}-${i}`}
+                            className={`flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border text-sm ${STATUS_COLOR[c.level].bg} ${STATUS_COLOR[c.level].border}`}
+                          >
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <StatusBadge status={c.level} />
+                              <span className="font-medium text-gray-800">{translateName(c.name)}</span>
+                              {guide && <CategoryBadge category={guide.category} />}
+                            </div>
 
-                      {/* 原因（技術詳細） */}
-                      <p className={`text-xs leading-relaxed pl-1 ${STATUS_COLOR[c.level].text} break-all`}>
-                        {translateMessage(c.name, c.message)}
-                      </p>
+                            <p className={`text-xs leading-relaxed pl-1 ${STATUS_COLOR[c.level].text} break-all`}>
+                              {translateMessage(c.name, c.message)}
+                            </p>
 
-                      {/* 店舗対応・次の行動・ボタン */}
-                      {guide && (
-                        <div className="mt-0.5 pl-1 space-y-1.5">
-                          <div className="text-xs bg-white/70 rounded px-2 py-2 leading-relaxed space-y-0.5">
-                            <p className="text-gray-500 font-medium">店舗の対応</p>
-                            <p className="text-gray-700">{guide.operatorAction}</p>
+                            {guide && (
+                              <div className="mt-0.5 pl-1 space-y-1.5">
+                                <div className="text-xs bg-white/70 rounded px-2 py-2 leading-relaxed space-y-0.5">
+                                  <p className="text-gray-500 font-medium">店舗の対応</p>
+                                  <p className="text-gray-700">{guide.operatorAction}</p>
+                                </div>
+                                {guide.action && (
+                                  <button
+                                    onClick={() => submitAction(guide.action!)}
+                                    disabled={submitting === guide.action}
+                                    className="text-xs font-semibold bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg disabled:opacity-50 transition-colors"
+                                  >
+                                    {submitting === guide.action ? '送信中...' : `🔄 ${guide.actionLabel}`}
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          {guide.action && (
-                            <button
-                              onClick={() => submitAction(guide.action!)}
-                              disabled={submitting === guide.action}
-                              className="text-xs font-semibold bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg disabled:opacity-50 transition-colors"
-                            >
-                              {submitting === guide.action ? '送信中...' : `🔄 ${guide.actionLabel}`}
-                            </button>
-                          )}
-                        </div>
-                      )}
+                        )
+                      })}
                     </div>
-                  )
-                })}
+                  ) : (
+                    <div className="rounded-lg border border-green-100 bg-green-50 px-3 py-2 text-xs font-medium text-green-700">
+                      対応が必要な項目はありません。
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-xs font-semibold text-gray-500">正常項目</h3>
+                    <span className="text-xs text-gray-400">{detailOkChecks.length}件</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {detailOkChecks.map((c, i) => (
+                      <div key={`${c.name}-${i}`} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" />
+                          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-700">{translateName(c.name)}</span>
+                        </div>
+                        <p className="mt-1 truncate text-xs text-gray-500">{translateMessage(c.name, c.message)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             ) : (
               <p className="text-sm text-gray-400 text-center py-8">左のタイムラインから選択してください</p>
