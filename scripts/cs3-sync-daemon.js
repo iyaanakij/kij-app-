@@ -258,6 +258,10 @@ function parseReservations(html) {
     if (!cs3Id || !shopCode || !date) continue
     const storeId = SHOP_TO_STORE[shopCode]
     if (!storeId) continue
+    // CS3側でキャンセル済みの予約はreservation_list_value_typeが「キャンセル」になる。
+    // 行自体はhistory扱いで残り続けるため、ここで除外しないと同期のdeleteロジックが働かず残り続ける。
+    const typeText = extractTdText(rowHtml, 'reservation_list_value_type')
+    if (typeText.includes('キャンセル')) continue
     const datetimeStr = extractTdText(rowHtml, 'reservation_list_value_datetime')
     const times = parseDatetime(datetimeStr)
     if (!times) continue
