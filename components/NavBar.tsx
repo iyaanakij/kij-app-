@@ -10,6 +10,7 @@ const navItems = [
   { href: '/operations', label: '稼働ボード' },
   { href: '/shift', label: 'シフト管理' },
   { href: '/ranking', label: 'ランキング' },
+  { href: '/targets', label: '目標' },
   { href: '/dorm', label: '寮管理' },
   { href: '/women-info', label: '女性情報' },
   { href: '/staff', label: 'キャスト' },
