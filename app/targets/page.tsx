@@ -28,6 +28,10 @@ const [year, month, day] = today.split('-').map(Number)
 const daysInMonth = new Date(year, month, 0).getDate()
 const daysRemaining = daysInMonth - day + 1
 const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
+const yesterday = (() => {
+  const d = new Date(year, month - 1, day - 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+})()
 
 function formatCount(n: number | null): string {
   return n == null ? '—' : n.toFixed(1)
@@ -57,18 +61,35 @@ export default function TargetsPage() {
       )
     )
 
-    const actualMap: Record<number, number> = {}
+    // 過去日分: store_daily_actuals に積み上げ済みの日次スナップショットを合算
+    // （reservationsは当日+未来分しか保持されないため、過去日はここから拾う）
+    const { data: archivedRows } = await supabase
+      .from('store_daily_actuals')
+      .select('area_id, count')
+      .gte('date', monthStart)
+      .lte('date', yesterday)
+    const archivedMap: Record<number, number> = {}
+    for (const row of archivedRows ?? []) {
+      archivedMap[row.area_id] = (archivedMap[row.area_id] ?? 0) + row.count
+    }
+
+    // 当日分: reservationsのライブ件数
+    const liveMap: Record<number, number> = {}
     await Promise.all(
       AREAS.map(async area => {
         const { count } = await supabase
           .from('reservations')
           .select('id', { count: 'exact', head: true })
           .in('store_id', area.storeIds)
-          .gte('date', monthStart)
-          .lte('date', today)
-        actualMap[area.id] = count ?? 0
+          .eq('date', today)
+        liveMap[area.id] = count ?? 0
       })
     )
+
+    const actualMap: Record<number, number> = {}
+    for (const area of AREAS) {
+      actualMap[area.id] = (archivedMap[area.id] ?? 0) + (liveMap[area.id] ?? 0)
+    }
     setActuals(actualMap)
     setLoading(false)
   }, [])
@@ -82,9 +103,13 @@ export default function TargetsPage() {
     const value = raw === '' ? null : Number(raw)
     if (value !== null && Number.isNaN(value)) return
     const unitPrice = targets[areaId]?.unit_price ?? 9000
-    await supabase
+    const { error } = await supabase
       .from('store_targets')
       .upsert({ area_id: areaId, daily_target_count: value, unit_price: unitPrice })
+    if (error) {
+      alert(`保存に失敗しました: ${error.message}`)
+      return
+    }
     setTargets(prev => ({
       ...prev,
       [areaId]: { area_id: areaId, daily_target_count: value, unit_price: unitPrice },

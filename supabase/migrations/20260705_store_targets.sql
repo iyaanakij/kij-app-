@@ -15,3 +15,11 @@ INSERT INTO store_targets (area_id, daily_target_count) VALUES
   (3, 12.2), -- 西船橋
   (4, 11.1)  -- 錦糸町
 ON CONFLICT (area_id) DO NOTHING;
+
+-- このプロジェクトは新規テーブルにRLSがデフォルト有効化される設定のため、
+-- /targets 画面（anon key）から読み書きできるようポリシーを明示する。
+ALTER TABLE store_targets ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "allow all store_targets" ON store_targets;
+CREATE POLICY "allow all store_targets" ON store_targets
+  FOR ALL USING (true) WITH CHECK (true);
