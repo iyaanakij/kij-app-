@@ -21,6 +21,34 @@ interface AreaStat {
   actualRevenue: number
   remainingCount: number | null
   remainingRevenue: number | null
+  expectedPaceCount: number | null
+}
+
+type MeterState = 'achieved' | 'onPace' | 'behind'
+
+const METER_STYLES: Record<MeterState, { track: string; fill: string }> = {
+  achieved: { track: 'bg-green-100 dark:bg-green-900/30', fill: 'bg-green-500 dark:bg-green-400' },
+  onPace: { track: 'bg-blue-100 dark:bg-blue-900/30', fill: 'bg-blue-500 dark:bg-blue-400' },
+  behind: { track: 'bg-amber-100 dark:bg-amber-900/30', fill: 'bg-amber-500 dark:bg-amber-400' },
+}
+
+function TargetMeter({ percent, expectedPacePercent, state }: { percent: number; expectedPacePercent: number; state: MeterState }) {
+  const style = METER_STYLES[state]
+  const fillWidth = Math.min(100, Math.max(0, percent))
+  const paceLeft = Math.min(100, Math.max(0, expectedPacePercent))
+  return (
+    <div className="mt-3">
+      <div className={`relative h-3 rounded-full overflow-hidden ${style.track}`}>
+        <div className={`h-full rounded-full ${style.fill}`} style={{ width: `${fillWidth}%` }} />
+        <div
+          className="absolute top-0 h-full w-[2px] bg-gray-500/60 dark:bg-gray-300/60"
+          style={{ left: `${paceLeft}%` }}
+          title="本日時点のペース目安"
+        />
+      </div>
+      <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{percent.toFixed(0)}% 達成（線=本日時点のペース目安）</div>
+    </div>
+  )
 }
 
 const today = todayString()
@@ -126,6 +154,7 @@ export default function TargetsPage() {
     const monthlyTargetRevenue = monthlyTargetCount != null ? monthlyTargetCount * unitPrice : null
     const remainingCount = monthlyTargetCount != null ? monthlyTargetCount - actualCount : null
     const remainingRevenue = remainingCount != null ? remainingCount * unitPrice : null
+    const expectedPaceCount = dailyTarget != null ? dailyTarget * day : null
     return {
       areaId: area.id,
       name: area.name,
@@ -137,6 +166,7 @@ export default function TargetsPage() {
       actualRevenue,
       remainingCount,
       remainingRevenue,
+      expectedPaceCount,
     }
   })
 
@@ -195,6 +225,14 @@ export default function TargetsPage() {
                     <div className="font-medium text-gray-900 dark:text-white">{formatYen(s.actualRevenue)}</div>
                   </div>
                 </div>
+
+                {s.dailyTarget != null && s.monthlyTargetCount && (
+                  <TargetMeter
+                    percent={(s.actualCount / s.monthlyTargetCount) * 100}
+                    expectedPacePercent={((s.expectedPaceCount ?? 0) / s.monthlyTargetCount) * 100}
+                    state={achieved ? 'achieved' : s.actualCount >= (s.expectedPaceCount ?? 0) ? 'onPace' : 'behind'}
+                  />
+                )}
 
                 <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
                   {s.dailyTarget == null ? (
