@@ -173,7 +173,7 @@ export default function TargetsPage() {
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto">
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-6">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">店舗別 目標・実績</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">店舗別 損益分岐ライン・実績</h1>
         <div className="text-sm text-gray-500 dark:text-gray-400">
           {year}年{month}月・本日 {today}・月末まで残り <span className="font-semibold text-gray-700 dark:text-gray-200">{daysRemaining}</span> 日
         </div>
