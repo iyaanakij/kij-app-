@@ -193,7 +193,7 @@ export default function TargetsPage() {
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="font-semibold text-gray-900 dark:text-white">{s.name}</h2>
                   <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
-                    日次目標
+                    日次分岐
                     <input
                       type="number"
                       step="0.1"
@@ -209,11 +209,11 @@ export default function TargetsPage() {
 
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
-                    <div className="text-gray-500 dark:text-gray-400">月間目標本数</div>
+                    <div className="text-gray-500 dark:text-gray-400">月間分岐本数</div>
                     <div className="font-medium text-gray-900 dark:text-white">{formatCount(s.monthlyTargetCount)}本</div>
                   </div>
                   <div>
-                    <div className="text-gray-500 dark:text-gray-400">月間目標売上</div>
+                    <div className="text-gray-500 dark:text-gray-400">月間分岐売上</div>
                     <div className="font-medium text-gray-900 dark:text-white">{formatYen(s.monthlyTargetRevenue)}</div>
                   </div>
                   <div>
@@ -236,9 +236,9 @@ export default function TargetsPage() {
 
                 <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
                   {s.dailyTarget == null ? (
-                    <span className="text-sm text-gray-400 dark:text-gray-500">目標未設定</span>
+                    <span className="text-sm text-gray-400 dark:text-gray-500">分岐ライン未設定</span>
                   ) : achieved ? (
-                    <span className="text-sm font-semibold text-green-600 dark:text-green-400">月間目標達成 🎉</span>
+                    <span className="text-sm font-semibold text-green-600 dark:text-green-400">損益分岐ライン到達 🎉</span>
                   ) : (
                     <div className="text-sm">
                       <span className="text-gray-500 dark:text-gray-400">あと </span>
