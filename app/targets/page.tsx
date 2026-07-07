@@ -22,6 +22,7 @@ interface AreaStat {
   remainingCount: number | null
   remainingRevenue: number | null
   expectedPaceCount: number | null
+  paceGapCount: number | null
 }
 
 type MeterState = 'achieved' | 'onPace' | 'behind'
@@ -155,6 +156,7 @@ export default function TargetsPage() {
     const remainingCount = monthlyTargetCount != null ? monthlyTargetCount - actualCount : null
     const remainingRevenue = remainingCount != null ? remainingCount * unitPrice : null
     const expectedPaceCount = dailyTarget != null ? dailyTarget * day : null
+    const paceGapCount = expectedPaceCount != null ? expectedPaceCount - actualCount : null
     return {
       areaId: area.id,
       name: area.name,
@@ -167,6 +169,7 @@ export default function TargetsPage() {
       remainingCount,
       remainingRevenue,
       expectedPaceCount,
+      paceGapCount,
     }
   })
 
@@ -227,11 +230,22 @@ export default function TargetsPage() {
                 </div>
 
                 {s.dailyTarget != null && s.monthlyTargetCount && (
-                  <TargetMeter
-                    percent={(s.actualCount / s.monthlyTargetCount) * 100}
-                    expectedPacePercent={((s.expectedPaceCount ?? 0) / s.monthlyTargetCount) * 100}
-                    state={achieved ? 'achieved' : s.actualCount >= (s.expectedPaceCount ?? 0) ? 'onPace' : 'behind'}
-                  />
+                  <>
+                    <TargetMeter
+                      percent={(s.actualCount / s.monthlyTargetCount) * 100}
+                      expectedPacePercent={((s.expectedPaceCount ?? 0) / s.monthlyTargetCount) * 100}
+                      state={achieved ? 'achieved' : s.actualCount >= (s.expectedPaceCount ?? 0) ? 'onPace' : 'behind'}
+                    />
+                    <div className="mt-1 text-xs">
+                      {s.paceGapCount != null && s.paceGapCount > 0 ? (
+                        <span className="text-amber-600 dark:text-amber-400">
+                          本日時点のペース目安まで あと <span className="font-semibold">{formatCount(s.paceGapCount)}本</span>
+                        </span>
+                      ) : (
+                        <span className="text-blue-600 dark:text-blue-400 font-medium">本日時点のペース目安 達成中</span>
+                      )}
+                    </div>
+                  </>
                 )}
 
                 <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
