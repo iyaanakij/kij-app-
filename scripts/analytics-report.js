@@ -119,12 +119,14 @@ async function fetchGA4Events(propertyId, accessToken, startDate, endDate) {
   })
 }
 
-// ④ キャスト別プロフィールPV（?gid=個別キャストID込み）
+// ④ キャスト別プロフィールPV・実訪問者数（?gid=個別キャストID込み）
+// activeUsersを併記するのは、少数の高頻度アクセス（bot・タブ放置・異常な再読み込み等）に
+// PVが引っ張られていないかをチェックできるようにするため
 async function fetchGA4CastProfiles(propertyId, accessToken, startDate, endDate) {
   return ga4Report(propertyId, accessToken, {
     dateRanges: [{ startDate, endDate }],
     dimensions: [{ name: 'pagePathPlusQueryString' }],
-    metrics: [{ name: 'screenPageViews' }],
+    metrics: [{ name: 'screenPageViews' }, { name: 'activeUsers' }],
     dimensionFilter: {
       filter: { fieldName: 'pagePathPlusQueryString', stringFilter: { matchType: 'CONTAINS', value: '/profile/?gid=' } },
     },
@@ -261,18 +263,25 @@ function summarizeSC(data) {
 }
 
 // gid（5桁ゼロ埋め）ごとのPV合計。同一gidが複数行にまたがる場合は合算する
+// 戻り値: { [gid]: { views, users } }
+// 注意: 同一gidが複数のURLバリエーション（余分なクエリパラメータ付き等）で分かれて
+// 返ってきた場合、viewsは合算して問題ないがusersは重複ユーザーがいると若干過大になりうる
+// （ほぼ /profile/?gid=XXXXX 単一形式のため実運用上の誤差は小さい）
 function summarizeCastProfiles(data) {
   const rows = data?.rows || []
-  const viewsByGid = {}
+  const byGid = {}
   for (const r of rows) {
     const path = r.dimensionValues[0].value
     const match = path.match(/gid=(\d+)/)
     if (!match) continue
     const gid = match[1]
     const views = Number(r.metricValues[0].value)
-    viewsByGid[gid] = (viewsByGid[gid] || 0) + views
+    const users = Number(r.metricValues[1].value)
+    if (!byGid[gid]) byGid[gid] = { views: 0, users: 0 }
+    byGid[gid].views += views
+    byGid[gid].users += users
   }
-  return viewsByGid
+  return byGid
 }
 
 const REFERRER_CATEGORY_LABELS = {
@@ -1012,16 +1021,18 @@ async function main() {
       },
     }
 
-    // キャスト別プロフィールPV（gid → cast_name はpublish_rulesから解決。未登録キャストはcast_name: null）
-    const currViewsByGid = summarizeCastProfiles(castCurr)
-    const prevViewsByGid = summarizeCastProfiles(castPrev)
+    // キャスト別プロフィールPV・実訪問者数（gid → cast_name はpublish_rulesから解決。未登録キャストはcast_name: null）
+    const currByGid = summarizeCastProfiles(castCurr)
+    const prevByGid = summarizeCastProfiles(castPrev)
     const referrerByGid = summarizeCastProfileReferrers(castRefCurr)
     // publish_rules（正）→ CP4ダンプ（フォールバック）の優先順で名前解決
     const nameMap = { ...loadCp4FallbackNames(prop.site_id), ...(castNameMap[prop.site_id] || {}) }
-    const allGids = new Set([...Object.keys(currViewsByGid), ...Object.keys(prevViewsByGid)])
+    const allGids = new Set([...Object.keys(currByGid), ...Object.keys(prevByGid)])
     const casts = [...allGids].map(gid => {
-      const views = currViewsByGid[gid] || 0
-      const prevViews = prevViewsByGid[gid] || 0
+      const views = currByGid[gid]?.views || 0
+      const users = currByGid[gid]?.users || 0
+      const prevViews = prevByGid[gid]?.views || 0
+      const prevUsers = prevByGid[gid]?.users || 0
       const referrerCounts = referrerByGid[gid] || {}
       const referrerBreakdown = Object.entries(referrerCounts)
         .map(([category, catViews]) => ({ category, label: REFERRER_CATEGORY_LABELS[category] || category, views: catViews }))
@@ -1035,6 +1046,10 @@ async function main() {
         views,
         prev_views: prevViews,
         views_diff_pct: percentDiff(views, prevViews),
+        users,
+        prev_users: prevUsers,
+        users_diff_pct: percentDiff(users, prevUsers),
+        views_per_user: users > 0 ? round1(views / users) : null,
         listing_views: listingViews,
         listing_views_share: views > 0 ? round1(listingViews / views * 100) : 0,
         referrer_breakdown: referrerBreakdown,

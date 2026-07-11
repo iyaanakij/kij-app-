@@ -43,6 +43,10 @@ interface CastAccessItem {
   views: number
   prev_views: number | null
   views_diff_pct: number | null
+  users: number
+  prev_users: number | null
+  users_diff_pct: number | null
+  views_per_user: number | null
   listing_views: number
   listing_views_share: number
   referrer_breakdown: CastReferrerBreakdownItem[]
@@ -305,7 +309,7 @@ export default function AnalyticsPage() {
   const [selected, setSelected] = useState<Report | null>(null)
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const [loading, setLoading] = useState(true)
-  const [castSortKey, setCastSortKey] = useState<'views' | 'listing_views'>('views')
+  const [castSortKey, setCastSortKey] = useState<'views' | 'listing_views' | 'users'>('views')
 
   useEffect(() => {
     supabase
@@ -667,10 +671,18 @@ export default function AnalyticsPage() {
               >
                 一覧経由順（写真クリック）
               </button>
+              <button
+                type="button"
+                onClick={() => setCastSortKey('users')}
+                className={`rounded px-2 py-1 ${castSortKey === 'users' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
+              >
+                実訪問者数順
+              </button>
             </div>
           </div>
           <p className="mb-2 text-xs text-gray-500">
             「一覧経由」= TOPページ・キャスト一覧・出勤スケジュールのサムネイル写真からプロフィールへ遷移した回数。検索直帰や指名の直接流入を除いた、写真の訴求力に近い指標。
+            「PV/人」は総PVを実訪問者数（activeUsers）で割った値。少数の高頻度アクセス（タブ放置・繰り返しリロード等）にPVが引っ張られていないかの目安で、目立って高い場合は赤字で表示する。
           </p>
           <div className="grid gap-3 md:grid-cols-2">
             {castAccess.map(store => {
@@ -683,6 +695,8 @@ export default function AnalyticsPage() {
                       <tr>
                         <th className="py-1 pr-2 font-medium">キャスト</th>
                         <th className="py-1 pr-2 text-right font-medium">総PV</th>
+                        <th className="py-1 pr-2 text-right font-medium">人数</th>
+                        <th className="py-1 pr-2 text-right font-medium">PV/人</th>
                         <th className="py-1 pr-2 text-right font-medium">一覧経由</th>
                         <th className="py-1 pr-2 text-right font-medium">前週比</th>
                       </tr>
@@ -694,6 +708,10 @@ export default function AnalyticsPage() {
                             {c.cast_name ?? <span className="text-gray-400">gid:{c.gid}（未登録）</span>}
                           </td>
                           <td className="py-1 pr-2 text-right text-gray-700">{c.views.toLocaleString()}</td>
+                          <td className="py-1 pr-2 text-right text-gray-700">{c.users.toLocaleString()}</td>
+                          <td className={`py-1 pr-2 text-right ${c.views_per_user !== null && c.views_per_user >= 10 ? 'font-semibold text-red-600' : 'text-gray-700'}`}>
+                            {c.views_per_user ?? '-'}
+                          </td>
                           <td className="py-1 pr-2 text-right text-gray-700">
                             {c.listing_views.toLocaleString()}
                             <span className="ml-1 text-gray-400">({c.listing_views_share}%)</span>
