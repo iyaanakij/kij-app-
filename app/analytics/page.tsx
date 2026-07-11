@@ -19,6 +19,11 @@ interface Report {
       ga4?: PeriodRange
       searchConsole?: PeriodRange
       previous?: { ga4?: PeriodRange; searchConsole?: PeriodRange }
+      rolling28?: {
+        ga4?: PeriodRange
+        searchConsole?: PeriodRange
+        previous?: { ga4?: PeriodRange; searchConsole?: PeriodRange }
+      }
       // 旧形式互換
       startDate?: string
       endDate?: string
@@ -415,7 +420,15 @@ export default function AnalyticsPage() {
 
       {period && (
         <p className="text-xs text-gray-500 mb-4">
-          {period.ga4
+          {comparisonMode === 'rolling28' && period.rolling28?.ga4
+            ? (
+              <>
+                28日ローリング GA4: {formatDate(period.rolling28.ga4.startDate)} 〜 {formatDate(period.rolling28.ga4.endDate)}
+                {period.rolling28.searchConsole && <>　SC: {formatDate(period.rolling28.searchConsole.startDate)} 〜 {formatDate(period.rolling28.searchConsole.endDate)}</>}
+                {period.rolling28.previous?.ga4 && <span className="text-gray-400">（前回窓: {formatDate(period.rolling28.previous.ga4.startDate)} 〜 {formatDate(period.rolling28.previous.ga4.endDate)}）</span>}
+              </>
+            )
+            : period.ga4
             ? <>GA4: {formatDate(period.ga4.startDate)} 〜 {formatDate(period.ga4.endDate)}　SC: {formatDate(period.searchConsole!.startDate)} 〜 {formatDate(period.searchConsole!.endDate)}</>
             : <>集計期間: {formatDate(period.startDate!)} 〜 {formatDate(period.endDate!)}</>
           }
