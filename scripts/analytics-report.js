@@ -28,10 +28,10 @@ const { createClient } = require('@supabase/supabase-js')
 const DRY_RUN = process.argv.includes('--dry-run') || process.env.DRY_RUN === '1'
 
 const GA4_PROPERTIES = [
-  { id: '391961329', name: 'M性感 錦糸町', brand: 'M', area: '錦糸町' },
-  { id: '392280400', name: 'M性感 西船橋', brand: 'M', area: '西船橋' },
-  { id: '383731131', name: 'M性感 千葉',   brand: 'M', area: '千葉' },
-  { id: '383648097', name: 'M性感 成田',   brand: 'M', area: '成田' },
+  { id: '391961329', name: 'M性感 錦糸町', brand: 'M', area: '錦糸町', site_id: 'mka_kinshicho' },
+  { id: '392280400', name: 'M性感 西船橋', brand: 'M', area: '西船橋', site_id: 'mka_funabashi' },
+  { id: '383731131', name: 'M性感 千葉',   brand: 'M', area: '千葉',   site_id: 'mka_chiba' },
+  { id: '383648097', name: 'M性感 成田',   brand: 'M', area: '成田',   site_id: 'mka_narita' },
 ]
 
 const SC_SITES = [
@@ -114,6 +114,34 @@ async function fetchGA4Events(propertyId, accessToken, startDate, endDate) {
         inListFilter: { values: ['phone_click', 'reservation_click', 'request_click', 'survey_click'] },
       },
     },
+  })
+}
+
+// ④ キャスト別プロフィールPV（?gid=個別キャストID込み）
+async function fetchGA4CastProfiles(propertyId, accessToken, startDate, endDate) {
+  return ga4Report(propertyId, accessToken, {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: 'pagePathPlusQueryString' }],
+    metrics: [{ name: 'screenPageViews' }],
+    dimensionFilter: {
+      filter: { fieldName: 'pagePathPlusQueryString', stringFilter: { matchType: 'CONTAINS', value: '/profile/?gid=' } },
+    },
+    orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
+    limit: 200,
+  })
+}
+
+// ⑤ プロフィールページ（gid問わず集計）へのサイト内遷移元
+async function fetchGA4ProfileReferrers(propertyId, accessToken, startDate, endDate) {
+  return ga4Report(propertyId, accessToken, {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: 'pagePath' }, { name: 'pageReferrer' }],
+    metrics: [{ name: 'screenPageViews' }],
+    dimensionFilter: {
+      filter: { fieldName: 'pagePath', stringFilter: { matchType: 'CONTAINS', value: 'profile' } },
+    },
+    orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
+    limit: 50,
   })
 }
 
@@ -213,6 +241,81 @@ function summarizeSC(data) {
     ctr: impressions > 0 ? Math.round(clicks / impressions * 1000) / 10 : 0,
     position: impressions > 0 ? Math.round(posWeightedSum / impressions * 10) / 10 : 0,
   }
+}
+
+// gid（5桁ゼロ埋め）ごとのPV合計。同一gidが複数行にまたがる場合は合算する
+function summarizeCastProfiles(data) {
+  const rows = data?.rows || []
+  const viewsByGid = {}
+  for (const r of rows) {
+    const path = r.dimensionValues[0].value
+    const match = path.match(/gid=(\d+)/)
+    if (!match) continue
+    const gid = match[1]
+    const views = Number(r.metricValues[0].value)
+    viewsByGid[gid] = (viewsByGid[gid] || 0) + views
+  }
+  return viewsByGid
+}
+
+const REFERRER_CATEGORY_LABELS = {
+  store_top: 'TOPページ',
+  cast_list: 'キャスト一覧',
+  schedule: '出勤スケジュール',
+  profile_to_profile: '他プロフィールから回遊',
+  direct_or_app: '直接・アプリ内ブラウザ',
+  external: '外部サイト・検索',
+  other_internal: 'その他サイト内',
+}
+
+function categorizeReferrer(referrer) {
+  if (!referrer) return 'direct_or_app'
+  if (!referrer.includes('m-kairaku.com')) return 'external'
+  let path
+  try { path = new URL(referrer).pathname } catch { return 'external' }
+  if (path.includes('/profile/')) return 'profile_to_profile'
+  if (path.includes('/schedule/')) return 'schedule'
+  if (path.includes('/cast/')) return 'cast_list'
+  if (path.endsWith('/top/')) return 'store_top'
+  return 'other_internal'
+}
+
+// プロフィールページ（gid問わず集計）への遷移元をカテゴリ別に集計
+function summarizeProfileReferrers(data) {
+  const rows = data?.rows || []
+  const totals = {}
+  let totalViews = 0
+  for (const r of rows) {
+    const referrer = r.dimensionValues[1].value
+    const views = Number(r.metricValues[0].value)
+    const category = categorizeReferrer(referrer)
+    totals[category] = (totals[category] || 0) + views
+    totalViews += views
+  }
+  return Object.entries(totals)
+    .map(([category, views]) => ({
+      category,
+      label: REFERRER_CATEGORY_LABELS[category] || category,
+      views,
+      share: totalViews > 0 ? round1(views / totalViews * 100) : 0,
+    }))
+    .sort((a, b) => b.views - a.views)
+}
+
+// publish_rules: cp4_gid（GA4の?gidと同一形式） → cast_name のマップを site_id ごとに構築
+async function fetchCastNameMap(supabaseClient) {
+  const { data, error } = await supabaseClient
+    .from('publish_rules')
+    .select('site_id, cp4_gid, cast_name')
+    .not('cp4_gid', 'is', null)
+    .not('cast_name', 'is', null)
+  if (error) { console.warn('publish_rules取得エラー:', error.message); return {} }
+  const map = {}
+  for (const row of data) {
+    if (!map[row.site_id]) map[row.site_id] = {}
+    map[row.site_id][row.cp4_gid] = row.cast_name
+  }
+  return map
 }
 
 function summarizeSCRows(rows) {
@@ -783,16 +886,28 @@ async function main() {
   console.log(`GA4: ${startDate} 〜 ${endDate} / 前週: ${prevStart} 〜 ${prevEnd}`)
   console.log(`SC : ${scStartDate} 〜 ${scEndDate} / 前週: ${scPrevStartDate} 〜 ${scPrevEndDate}`)
 
+  // publish_rules から cp4_gid → cast_name マップを取得（キャスト別PVの表示名解決用）
+  let supabase = null
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  }
+  const castNameMap = supabase ? await fetchCastNameMap(supabase) : {}
+
   // GA4 M性感4店舗 × 3種レポート × 今週+前週 = 並列取得
   const ga4Results = {}
+  const castAccessByName = {}
+  const profileReferrersByName = {}
   await Promise.all(GA4_PROPERTIES.map(async prop => {
-    const [mainCurr, mainPrev, chCurr, chPrev, evCurr, evPrev] = await Promise.all([
+    const [mainCurr, mainPrev, chCurr, chPrev, evCurr, evPrev, castCurr, castPrev, refCurr] = await Promise.all([
       fetchGA4Main(prop.id, token, startDate, endDate),
       fetchGA4Main(prop.id, token, prevStart, prevEnd),
       fetchGA4Channels(prop.id, token, startDate, endDate),
       fetchGA4Channels(prop.id, token, prevStart, prevEnd),
       fetchGA4Events(prop.id, token, startDate, endDate),
       fetchGA4Events(prop.id, token, prevStart, prevEnd),
+      fetchGA4CastProfiles(prop.id, token, startDate, endDate),
+      fetchGA4CastProfiles(prop.id, token, prevStart, prevEnd),
+      fetchGA4ProfileReferrers(prop.id, token, startDate, endDate),
     ])
     const currMain = summarizeMain(mainCurr)
     const currEvents = summarizeEvents(evCurr)
@@ -826,9 +941,38 @@ async function main() {
         survey_cvr: calcCVR(prevEvents.survey_click, prevMain.sessions),
       },
     }
+
+    // キャスト別プロフィールPV（gid → cast_name はpublish_rulesから解決。未登録キャストはcast_name: null）
+    const currViewsByGid = summarizeCastProfiles(castCurr)
+    const prevViewsByGid = summarizeCastProfiles(castPrev)
+    const nameMap = castNameMap[prop.site_id] || {}
+    const allGids = new Set([...Object.keys(currViewsByGid), ...Object.keys(prevViewsByGid)])
+    const casts = [...allGids].map(gid => {
+      const views = currViewsByGid[gid] || 0
+      const prevViews = prevViewsByGid[gid] || 0
+      return {
+        gid,
+        cast_name: nameMap[gid] || null,
+        views,
+        prev_views: prevViews,
+        views_diff_pct: percentDiff(views, prevViews),
+      }
+    }).sort((a, b) => b.views - a.views)
+    castAccessByName[prop.name] = { store_name: prop.name, area: prop.area, casts }
+
+    // プロフィールページへのサイト内遷移元内訳
+    profileReferrersByName[prop.name] = {
+      store_name: prop.name,
+      area: prop.area,
+      breakdown: summarizeProfileReferrers(refCurr),
+    }
+
     process.stdout.write('.')
   }))
   console.log(' GA4完了')
+
+  const castAccess = GA4_PROPERTIES.map(p => castAccessByName[p.name])
+  const profileReferrers = GA4_PROPERTIES.map(p => profileReferrersByName[p.name])
 
   // Search Console（current + previous + クエリ差分）
   const scResults = {}
@@ -943,6 +1087,8 @@ async function main() {
   const marketing = buildMarketingInsights(ga4Results, scResults, pageSeoResults)
 
   if (DRY_RUN) {
+    console.log('--- DRY RUN: castAccess / profileReferrers プレビュー ---')
+    console.log(JSON.stringify({ castAccess, profileReferrers }, null, 2).slice(0, 4000))
     console.log('--- DRY RUN: raw_data 構造プレビュー (先頭6000文字) ---')
     console.log(JSON.stringify({ ga4: ga4Results, searchConsole: scResults, pageSeo: pageSeoResults, marketing }, null, 2).slice(0, 6000))
     console.log('\n[analytics-report] DRY RUN 完了 ✓（Claude呼び出し・Supabase保存スキップ）')
@@ -1073,10 +1219,12 @@ marketing.actionItems から優先度A/Bを中心に最大5件。各項目は以
   const summary = message.content[0].text
   console.log('Claude分析完了')
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  )
+  if (!supabase) {
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    )
+  }
   const { error } = await supabase.from('analytics_reports').upsert(
     {
       report_date: endDate,
@@ -1087,6 +1235,8 @@ marketing.actionItems から優先度A/Bを中心に最大5件。各項目は以
         searchConsole: scResults,
         pageSeo: pageSeoResults,
         marketing,
+        castAccess,
+        profileReferrers,
         period: {
           ga4: { startDate, endDate },
           searchConsole: { startDate: scStartDate, endDate: scEndDate },

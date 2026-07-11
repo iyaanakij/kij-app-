@@ -25,8 +25,37 @@ interface Report {
     }
     ga4?: Record<string, { current: GA4Summary; previous: GA4Summary }>
     marketing?: MarketingData
+    castAccess?: CastAccessStore[]
+    profileReferrers?: ProfileReferrerStore[]
   }
   created_at: string
+}
+
+interface CastAccessItem {
+  gid: string
+  cast_name: string | null
+  views: number
+  prev_views: number | null
+  views_diff_pct: number | null
+}
+
+interface CastAccessStore {
+  store_name: string
+  area: string
+  casts: CastAccessItem[]
+}
+
+interface ReferrerBreakdownItem {
+  category: string
+  label: string
+  views: number
+  share: number
+}
+
+interface ProfileReferrerStore {
+  store_name: string
+  area: string
+  breakdown: ReferrerBreakdownItem[]
 }
 
 interface GA4Summary {
@@ -178,7 +207,7 @@ interface ActionItem {
 }
 
 type Priority = 'A' | 'B' | 'C'
-type TabId = 'overview' | 'stores' | 'seo' | 'report'
+type TabId = 'overview' | 'stores' | 'seo' | 'cast' | 'report'
 
 function formatDate(d: string) {
   return d.replace(/-/g, '/').slice(2)
@@ -302,10 +331,13 @@ export default function AnalyticsPage() {
   const growthQueryOpportunities = marketing?.growthQueryOpportunities?.slice(0, 8) ?? []
   const pageSeoInsights = marketing?.pageSeoInsights?.slice(0, 6) ?? []
   const storeInsights = marketing?.storeInsights?.filter(s => s.priority !== 'C').slice(0, 6) ?? []
+  const castAccess = selected?.raw_data?.castAccess ?? []
+  const profileReferrers = selected?.raw_data?.profileReferrers ?? []
   const tabs: { id: TabId; label: string; count?: number }[] = [
     { id: 'overview', label: '概要', count: actionItems.length },
     { id: 'stores', label: '店舗', count: storeInsights.length },
     { id: 'seo', label: 'SEO', count: pageSeoInsights.length + growthQueryOpportunities.length + seoOpportunities.length },
+    { id: 'cast', label: 'キャスト', count: castAccess.reduce((sum, s) => sum + s.casts.length, 0) },
     { id: 'report', label: 'AIレポート' },
   ]
 
@@ -599,6 +631,70 @@ export default function AnalyticsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </section>
+      )}
+
+      {activeTab === 'cast' && castAccess.length > 0 && (
+        <section className="mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">キャスト別アクセス数（プロフィールPV）</h2>
+            <span className="text-xs text-gray-400">raw_data.castAccess</span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {castAccess.map(store => (
+              <div key={store.store_name} className="rounded border bg-white p-3">
+                <h3 className="mb-2 text-sm font-semibold text-gray-900">{store.store_name}</h3>
+                <table className="min-w-full text-left text-xs">
+                  <thead className="text-gray-400">
+                    <tr>
+                      <th className="py-1 pr-2 font-medium">キャスト</th>
+                      <th className="py-1 pr-2 text-right font-medium">PV</th>
+                      <th className="py-1 pr-2 text-right font-medium">前週比</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {store.casts.slice(0, 10).map(c => (
+                      <tr key={c.gid} className="border-t border-gray-100">
+                        <td className="py-1 pr-2 text-gray-800">
+                          {c.cast_name ?? <span className="text-gray-400">gid:{c.gid}（未登録）</span>}
+                        </td>
+                        <td className="py-1 pr-2 text-right text-gray-700">{c.views.toLocaleString()}</td>
+                        <td className="py-1 pr-2 text-right"><SignedValue value={c.views_diff_pct} suffix="%" /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {activeTab === 'cast' && profileReferrers.length > 0 && (
+        <section className="mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">プロフィールページ 遷移元内訳</h2>
+            <span className="text-xs text-gray-400">raw_data.profileReferrers</span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {profileReferrers.map(store => (
+              <div key={store.store_name} className="rounded border bg-white p-3">
+                <h3 className="mb-2 text-sm font-semibold text-gray-900">{store.store_name}</h3>
+                <div className="space-y-1.5">
+                  {store.breakdown.map(b => (
+                    <div key={b.category} className="flex items-center gap-2 text-xs">
+                      <span className="w-28 shrink-0 truncate text-gray-600">{b.label}</span>
+                      <div className="h-2 flex-1 rounded bg-gray-100">
+                        <div className="h-2 rounded bg-gray-400" style={{ width: `${Math.min(b.share, 100)}%` }} />
+                      </div>
+                      <span className="w-12 shrink-0 text-right text-gray-700">{b.share}%</span>
+                      <span className="w-14 shrink-0 text-right text-gray-400">{b.views.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </section>
       )}
