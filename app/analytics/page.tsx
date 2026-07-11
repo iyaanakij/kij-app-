@@ -750,7 +750,7 @@ export default function AnalyticsPage() {
                     <table className="min-w-full text-left text-xs">
                       <thead className="text-gray-400">
                         <tr>
-                          <th className="py-1 pr-2 font-medium">キャスト</th>
+                          <th className="py-1 pr-2 font-medium whitespace-nowrap">キャスト</th>
                           <th className="py-1 pr-2 text-right font-medium">総PV</th>
                           <th className="py-1 pr-2 text-right font-medium">人数</th>
                           <th className="py-1 pr-2 text-right font-medium">PV/人</th>
@@ -767,7 +767,7 @@ export default function AnalyticsPage() {
                           const diffValue = comparisonMode === 'rolling28' ? c.rolling28?.views_diff_pct ?? null : c.views_diff_pct
                           return (
                           <tr key={c.gid} className="border-t border-gray-100">
-                            <td className="py-1 pr-2 text-gray-800">
+                            <td className="py-1 pr-2 whitespace-nowrap text-gray-800">
                               {c.cast_name ?? <span className="text-gray-400">gid:{c.gid}（未登録）</span>}
                             </td>
                             <td className="py-1 pr-2 text-right text-gray-700">{c.views.toLocaleString()}</td>
