@@ -253,7 +253,7 @@ function pctChange(curr: number, prev: number) {
 
 function ComparisonModeToggle({ mode, onChange }: { mode: ComparisonMode; onChange: (m: ComparisonMode) => void }) {
   return (
-    <div className="flex items-center gap-1 rounded border bg-white p-0.5 text-xs">
+    <div className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border bg-white p-0.5 text-xs">
       <button
         type="button"
         onClick={() => onChange('isolated')}
@@ -692,51 +692,54 @@ export default function AnalyticsPage() {
 
       {activeTab === 'cast' && castAccess.length > 0 && (
         <section className="mb-6">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               <h2 className="text-sm font-semibold text-gray-700">キャスト別アクセス数（プロフィールPV）</h2>
               <span className="text-xs text-gray-400">raw_data.castAccess</span>
             </div>
-            <div className="flex items-center gap-1 rounded border bg-white p-0.5 text-xs">
-              <button
-                type="button"
-                onClick={() => setCastSortKey('views')}
-                className={`rounded px-2 py-1 ${castSortKey === 'views' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
-              >
-                総PV順
-              </button>
-              <button
-                type="button"
-                onClick={() => setCastSortKey('listing_views')}
-                className={`rounded px-2 py-1 ${castSortKey === 'listing_views' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
-              >
-                一覧経由順（写真クリック）
-              </button>
-              <button
-                type="button"
-                onClick={() => setCastSortKey('users')}
-                className={`rounded px-2 py-1 ${castSortKey === 'users' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
-              >
-                実訪問者数順
-              </button>
-              <button
-                type="button"
-                onClick={() => setCastSortKey('cta_cvr')}
-                className={`rounded px-2 py-1 ${castSortKey === 'cta_cvr' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
-              >
-                CVR順
-              </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded border bg-white p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setCastSortKey('views')}
+                  className={`rounded px-2 py-1 ${castSortKey === 'views' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
+                >
+                  総PV順
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCastSortKey('listing_views')}
+                  className={`rounded px-2 py-1 ${castSortKey === 'listing_views' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
+                >
+                  一覧経由順
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCastSortKey('users')}
+                  className={`rounded px-2 py-1 ${castSortKey === 'users' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
+                >
+                  実訪問者数順
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCastSortKey('cta_cvr')}
+                  className={`rounded px-2 py-1 ${castSortKey === 'cta_cvr' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
+                >
+                  CVR順
+                </button>
+              </div>
+              <ComparisonModeToggle mode={comparisonMode} onChange={setComparisonMode} />
             </div>
           </div>
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs text-gray-500">
+          <details className="mb-2 text-xs text-gray-500">
+            <summary className="cursor-pointer select-none text-gray-400 hover:text-gray-600">指標の説明を見る</summary>
+            <p className="mt-1 leading-relaxed">
               「一覧経由」= TOPページ・キャスト一覧・出勤スケジュールのサムネイル写真からプロフィールへ遷移した回数。検索直帰や指名の直接流入を除いた、写真の訴求力に近い指標。
               「PV/人」は総PVを実訪問者数（activeUsers）で割った値。少数の高頻度アクセス（タブ放置・繰り返しリロード等）にPVが引っ張られていないかの目安で、目立って高い場合は赤字で表示する。
               「CVR」はそのプロフィールページ上で発生した電話・WEB予約・出勤リクエスト・アンケートクリックの合計 ÷ PV。PVは多いが予約に繋がっていないキャストを見分ける指標。
-              右端の増減率は下の切り替えで「隔離7日間」（サンプルが小さいと振れやすい）と「28日ローリング」（平滑化された傾向）を切り替えられる。
+              右端の増減率は「隔離7日間」（サンプルが小さいと振れやすい）と「28日ローリング」（平滑化された傾向）を切り替えられる。
             </p>
-            <ComparisonModeToggle mode={comparisonMode} onChange={setComparisonMode} />
-          </div>
+          </details>
           <div className="grid gap-3 md:grid-cols-2">
             {castAccess.map(store => {
               const sortedCasts = [...store.casts].sort((a, b) => b[castSortKey] - a[castSortKey])
