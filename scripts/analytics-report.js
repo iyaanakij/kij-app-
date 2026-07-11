@@ -135,6 +135,27 @@ async function fetchGA4CastProfiles(propertyId, accessToken, startDate, endDate)
   })
 }
 
+// ④-b キャスト（gid）別 CTAクリック数。GA4はカスタムイベントにも
+// pagePathPlusQueryString（現在ページのフルパス+クエリ）を自動付与しているため、
+// サイト側のトラッキングタグ変更なしでキャスト別CVRが計算できる
+async function fetchGA4CastClicks(propertyId, accessToken, startDate, endDate) {
+  return ga4Report(propertyId, accessToken, {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: 'pagePathPlusQueryString' }, { name: 'eventName' }],
+    metrics: [{ name: 'eventCount' }],
+    dimensionFilter: {
+      andGroup: {
+        expressions: [
+          { filter: { fieldName: 'pagePathPlusQueryString', stringFilter: { matchType: 'CONTAINS', value: '/profile/?gid=' } } },
+          { filter: { fieldName: 'eventName', inListFilter: { values: ['phone_click', 'reservation_click', 'request_click', 'survey_click'] } } },
+        ],
+      },
+    },
+    orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
+    limit: 1000,
+  })
+}
+
 // ⑤ プロフィールページ（gid問わず集計）へのサイト内遷移元
 async function fetchGA4ProfileReferrers(propertyId, accessToken, startDate, endDate) {
   return ga4Report(propertyId, accessToken, {
@@ -280,6 +301,24 @@ function summarizeCastProfiles(data) {
     if (!byGid[gid]) byGid[gid] = { views: 0, users: 0 }
     byGid[gid].views += views
     byGid[gid].users += users
+  }
+  return byGid
+}
+
+// gid別 × イベント名（phone_click等）の件数。
+// 戻り値: { [gid]: { phone_click, reservation_click, request_click, survey_click } }
+function summarizeCastClicks(data) {
+  const rows = data?.rows || []
+  const byGid = {}
+  for (const r of rows) {
+    const path = r.dimensionValues[0].value
+    const match = path.match(/gid=(\d+)/)
+    if (!match) continue
+    const gid = match[1]
+    const eventName = r.dimensionValues[1].value
+    const count = Number(r.metricValues[0].value)
+    if (!byGid[gid]) byGid[gid] = { phone_click: 0, reservation_click: 0, request_click: 0, survey_click: 0 }
+    if (eventName in byGid[gid]) byGid[gid][eventName] += count
   }
   return byGid
 }
@@ -976,7 +1015,7 @@ async function main() {
   const castAccessByName = {}
   const profileReferrersByName = {}
   await Promise.all(GA4_PROPERTIES.map(async prop => {
-    const [mainCurr, mainPrev, chCurr, chPrev, evCurr, evPrev, castCurr, castPrev, refCurr, castRefCurr] = await Promise.all([
+    const [mainCurr, mainPrev, chCurr, chPrev, evCurr, evPrev, castCurr, castPrev, refCurr, castRefCurr, castClicksCurr] = await Promise.all([
       fetchGA4Main(prop.id, token, startDate, endDate),
       fetchGA4Main(prop.id, token, prevStart, prevEnd),
       fetchGA4Channels(prop.id, token, startDate, endDate),
@@ -987,6 +1026,7 @@ async function main() {
       fetchGA4CastProfiles(prop.id, token, prevStart, prevEnd),
       fetchGA4ProfileReferrers(prop.id, token, startDate, endDate),
       fetchGA4CastProfileReferrers(prop.id, token, startDate, endDate),
+      fetchGA4CastClicks(prop.id, token, startDate, endDate),
     ])
     const currMain = summarizeMain(mainCurr)
     const currEvents = summarizeEvents(evCurr)
@@ -1025,6 +1065,7 @@ async function main() {
     const currByGid = summarizeCastProfiles(castCurr)
     const prevByGid = summarizeCastProfiles(castPrev)
     const referrerByGid = summarizeCastProfileReferrers(castRefCurr)
+    const clicksByGid = summarizeCastClicks(castClicksCurr)
     // publish_rules（正）→ CP4ダンプ（フォールバック）の優先順で名前解決
     const nameMap = { ...loadCp4FallbackNames(prop.site_id), ...(castNameMap[prop.site_id] || {}) }
     const allGids = new Set([...Object.keys(currByGid), ...Object.keys(prevByGid)])
@@ -1040,6 +1081,8 @@ async function main() {
       const listingViews = Object.entries(referrerCounts)
         .filter(([category]) => LISTING_REFERRER_CATEGORIES.has(category))
         .reduce((sum, [, catViews]) => sum + catViews, 0)
+      const clicks = clicksByGid[gid] || { phone_click: 0, reservation_click: 0, request_click: 0, survey_click: 0 }
+      const ctaClicks = clicks.phone_click + clicks.reservation_click + clicks.request_click + clicks.survey_click
       return {
         gid,
         cast_name: nameMap[gid] || null,
@@ -1053,6 +1096,12 @@ async function main() {
         listing_views: listingViews,
         listing_views_share: views > 0 ? round1(listingViews / views * 100) : 0,
         referrer_breakdown: referrerBreakdown,
+        phone_click: clicks.phone_click,
+        reservation_click: clicks.reservation_click,
+        request_click: clicks.request_click,
+        survey_click: clicks.survey_click,
+        cta_clicks: ctaClicks,
+        cta_cvr: views > 0 ? round1(ctaClicks / views * 100) : 0,
       }
     }).sort((a, b) => b.views - a.views)
     castAccessByName[prop.name] = { store_name: prop.name, area: prop.area, casts }

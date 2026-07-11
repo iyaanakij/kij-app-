@@ -50,6 +50,12 @@ interface CastAccessItem {
   listing_views: number
   listing_views_share: number
   referrer_breakdown: CastReferrerBreakdownItem[]
+  phone_click: number
+  reservation_click: number
+  request_click: number
+  survey_click: number
+  cta_clicks: number
+  cta_cvr: number
 }
 
 interface CastAccessStore {
@@ -309,7 +315,7 @@ export default function AnalyticsPage() {
   const [selected, setSelected] = useState<Report | null>(null)
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const [loading, setLoading] = useState(true)
-  const [castSortKey, setCastSortKey] = useState<'views' | 'listing_views' | 'users'>('views')
+  const [castSortKey, setCastSortKey] = useState<'views' | 'listing_views' | 'users' | 'cta_cvr'>('views')
 
   useEffect(() => {
     supabase
@@ -678,11 +684,19 @@ export default function AnalyticsPage() {
               >
                 実訪問者数順
               </button>
+              <button
+                type="button"
+                onClick={() => setCastSortKey('cta_cvr')}
+                className={`rounded px-2 py-1 ${castSortKey === 'cta_cvr' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
+              >
+                CVR順
+              </button>
             </div>
           </div>
           <p className="mb-2 text-xs text-gray-500">
             「一覧経由」= TOPページ・キャスト一覧・出勤スケジュールのサムネイル写真からプロフィールへ遷移した回数。検索直帰や指名の直接流入を除いた、写真の訴求力に近い指標。
             「PV/人」は総PVを実訪問者数（activeUsers）で割った値。少数の高頻度アクセス（タブ放置・繰り返しリロード等）にPVが引っ張られていないかの目安で、目立って高い場合は赤字で表示する。
+            「CVR」はそのプロフィールページ上で発生した電話・WEB予約・出勤リクエスト・アンケートクリックの合計 ÷ PV。PVは多いが予約に繋がっていないキャストを見分ける指標。
           </p>
           <div className="grid gap-3 md:grid-cols-2">
             {castAccess.map(store => {
@@ -690,37 +704,45 @@ export default function AnalyticsPage() {
               return (
                 <div key={store.store_name} className="rounded border bg-white p-3">
                   <h3 className="mb-2 text-sm font-semibold text-gray-900">{store.store_name}</h3>
-                  <table className="min-w-full text-left text-xs">
-                    <thead className="text-gray-400">
-                      <tr>
-                        <th className="py-1 pr-2 font-medium">キャスト</th>
-                        <th className="py-1 pr-2 text-right font-medium">総PV</th>
-                        <th className="py-1 pr-2 text-right font-medium">人数</th>
-                        <th className="py-1 pr-2 text-right font-medium">PV/人</th>
-                        <th className="py-1 pr-2 text-right font-medium">一覧経由</th>
-                        <th className="py-1 pr-2 text-right font-medium">前週比</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sortedCasts.slice(0, 10).map(c => (
-                        <tr key={c.gid} className="border-t border-gray-100">
-                          <td className="py-1 pr-2 text-gray-800">
-                            {c.cast_name ?? <span className="text-gray-400">gid:{c.gid}（未登録）</span>}
-                          </td>
-                          <td className="py-1 pr-2 text-right text-gray-700">{c.views.toLocaleString()}</td>
-                          <td className="py-1 pr-2 text-right text-gray-700">{c.users.toLocaleString()}</td>
-                          <td className={`py-1 pr-2 text-right ${c.views_per_user !== null && c.views_per_user >= 10 ? 'font-semibold text-red-600' : 'text-gray-700'}`}>
-                            {c.views_per_user ?? '-'}
-                          </td>
-                          <td className="py-1 pr-2 text-right text-gray-700">
-                            {c.listing_views.toLocaleString()}
-                            <span className="ml-1 text-gray-400">({c.listing_views_share}%)</span>
-                          </td>
-                          <td className="py-1 pr-2 text-right"><SignedValue value={c.views_diff_pct} suffix="%" /></td>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className="text-gray-400">
+                        <tr>
+                          <th className="py-1 pr-2 font-medium">キャスト</th>
+                          <th className="py-1 pr-2 text-right font-medium">総PV</th>
+                          <th className="py-1 pr-2 text-right font-medium">人数</th>
+                          <th className="py-1 pr-2 text-right font-medium">PV/人</th>
+                          <th className="py-1 pr-2 text-right font-medium">一覧経由</th>
+                          <th className="py-1 pr-2 text-right font-medium">CTA</th>
+                          <th className="py-1 pr-2 text-right font-medium">CVR</th>
+                          <th className="py-1 pr-2 text-right font-medium">前週比</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {sortedCasts.slice(0, 10).map(c => (
+                          <tr key={c.gid} className="border-t border-gray-100">
+                            <td className="py-1 pr-2 text-gray-800">
+                              {c.cast_name ?? <span className="text-gray-400">gid:{c.gid}（未登録）</span>}
+                            </td>
+                            <td className="py-1 pr-2 text-right text-gray-700">{c.views.toLocaleString()}</td>
+                            <td className="py-1 pr-2 text-right text-gray-700">{c.users.toLocaleString()}</td>
+                            <td className={`py-1 pr-2 text-right ${c.views_per_user !== null && c.views_per_user >= 10 ? 'font-semibold text-red-600' : 'text-gray-700'}`}>
+                              {c.views_per_user ?? '-'}
+                            </td>
+                            <td className="py-1 pr-2 text-right text-gray-700">
+                              {c.listing_views.toLocaleString()}
+                              <span className="ml-1 text-gray-400">({c.listing_views_share}%)</span>
+                            </td>
+                            <td className="py-1 pr-2 text-right text-gray-700">{c.cta_clicks.toLocaleString()}</td>
+                            <td className={`py-1 pr-2 text-right ${c.cta_cvr === 0 && c.views >= 50 ? 'font-semibold text-red-600' : 'text-gray-700'}`}>
+                              {c.cta_cvr}%
+                            </td>
+                            <td className="py-1 pr-2 text-right"><SignedValue value={c.views_diff_pct} suffix="%" /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )
             })}
