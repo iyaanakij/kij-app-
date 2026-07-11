@@ -31,12 +31,21 @@ interface Report {
   created_at: string
 }
 
+interface CastReferrerBreakdownItem {
+  category: string
+  label: string
+  views: number
+}
+
 interface CastAccessItem {
   gid: string
   cast_name: string | null
   views: number
   prev_views: number | null
   views_diff_pct: number | null
+  listing_views: number
+  listing_views_share: number
+  referrer_breakdown: CastReferrerBreakdownItem[]
 }
 
 interface CastAccessStore {
@@ -296,6 +305,7 @@ export default function AnalyticsPage() {
   const [selected, setSelected] = useState<Report | null>(null)
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const [loading, setLoading] = useState(true)
+  const [castSortKey, setCastSortKey] = useState<'views' | 'listing_views'>('views')
 
   useEffect(() => {
     supabase
@@ -638,35 +648,64 @@ export default function AnalyticsPage() {
       {activeTab === 'cast' && castAccess.length > 0 && (
         <section className="mb-6">
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">キャスト別アクセス数（プロフィールPV）</h2>
-            <span className="text-xs text-gray-400">raw_data.castAccess</span>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-gray-700">キャスト別アクセス数（プロフィールPV）</h2>
+              <span className="text-xs text-gray-400">raw_data.castAccess</span>
+            </div>
+            <div className="flex items-center gap-1 rounded border bg-white p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setCastSortKey('views')}
+                className={`rounded px-2 py-1 ${castSortKey === 'views' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
+              >
+                総PV順
+              </button>
+              <button
+                type="button"
+                onClick={() => setCastSortKey('listing_views')}
+                className={`rounded px-2 py-1 ${castSortKey === 'listing_views' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
+              >
+                一覧経由順（写真クリック）
+              </button>
+            </div>
           </div>
+          <p className="mb-2 text-xs text-gray-500">
+            「一覧経由」= TOPページ・キャスト一覧・出勤スケジュールのサムネイル写真からプロフィールへ遷移した回数。検索直帰や指名の直接流入を除いた、写真の訴求力に近い指標。
+          </p>
           <div className="grid gap-3 md:grid-cols-2">
-            {castAccess.map(store => (
-              <div key={store.store_name} className="rounded border bg-white p-3">
-                <h3 className="mb-2 text-sm font-semibold text-gray-900">{store.store_name}</h3>
-                <table className="min-w-full text-left text-xs">
-                  <thead className="text-gray-400">
-                    <tr>
-                      <th className="py-1 pr-2 font-medium">キャスト</th>
-                      <th className="py-1 pr-2 text-right font-medium">PV</th>
-                      <th className="py-1 pr-2 text-right font-medium">前週比</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {store.casts.slice(0, 10).map(c => (
-                      <tr key={c.gid} className="border-t border-gray-100">
-                        <td className="py-1 pr-2 text-gray-800">
-                          {c.cast_name ?? <span className="text-gray-400">gid:{c.gid}（未登録）</span>}
-                        </td>
-                        <td className="py-1 pr-2 text-right text-gray-700">{c.views.toLocaleString()}</td>
-                        <td className="py-1 pr-2 text-right"><SignedValue value={c.views_diff_pct} suffix="%" /></td>
+            {castAccess.map(store => {
+              const sortedCasts = [...store.casts].sort((a, b) => b[castSortKey] - a[castSortKey])
+              return (
+                <div key={store.store_name} className="rounded border bg-white p-3">
+                  <h3 className="mb-2 text-sm font-semibold text-gray-900">{store.store_name}</h3>
+                  <table className="min-w-full text-left text-xs">
+                    <thead className="text-gray-400">
+                      <tr>
+                        <th className="py-1 pr-2 font-medium">キャスト</th>
+                        <th className="py-1 pr-2 text-right font-medium">総PV</th>
+                        <th className="py-1 pr-2 text-right font-medium">一覧経由</th>
+                        <th className="py-1 pr-2 text-right font-medium">前週比</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
+                    </thead>
+                    <tbody>
+                      {sortedCasts.slice(0, 10).map(c => (
+                        <tr key={c.gid} className="border-t border-gray-100">
+                          <td className="py-1 pr-2 text-gray-800">
+                            {c.cast_name ?? <span className="text-gray-400">gid:{c.gid}（未登録）</span>}
+                          </td>
+                          <td className="py-1 pr-2 text-right text-gray-700">{c.views.toLocaleString()}</td>
+                          <td className="py-1 pr-2 text-right text-gray-700">
+                            {c.listing_views.toLocaleString()}
+                            <span className="ml-1 text-gray-400">({c.listing_views_share}%)</span>
+                          </td>
+                          <td className="py-1 pr-2 text-right"><SignedValue value={c.views_diff_pct} suffix="%" /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })}
           </div>
         </section>
       )}

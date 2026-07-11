@@ -145,6 +145,21 @@ async function fetchGA4ProfileReferrers(propertyId, accessToken, startDate, endD
   })
 }
 
+// ⑥ キャスト（gid）別 × 遷移元。一覧/スケジュールのサムネイル写真クリック経由か、
+// 検索・直接流入かを見分けるため gid と pageReferrer を組み合わせて取得する
+async function fetchGA4CastProfileReferrers(propertyId, accessToken, startDate, endDate) {
+  return ga4Report(propertyId, accessToken, {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: 'pagePathPlusQueryString' }, { name: 'pageReferrer' }],
+    metrics: [{ name: 'screenPageViews' }],
+    dimensionFilter: {
+      filter: { fieldName: 'pagePathPlusQueryString', stringFilter: { matchType: 'CONTAINS', value: '/profile/?gid=' } },
+    },
+    orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
+    limit: 1000,
+  })
+}
+
 // --- Search Console API ---
 async function fetchSC(siteUrl, accessToken, body) {
   const res = await fetch(
@@ -300,6 +315,28 @@ function summarizeProfileReferrers(data) {
       share: totalViews > 0 ? round1(views / totalViews * 100) : 0,
     }))
     .sort((a, b) => b.views - a.views)
+}
+
+// 「写真クリック」寄りの遷移元（一覧・スケジュール・TOPのサムネイルからの導線）
+const LISTING_REFERRER_CATEGORIES = new Set(['store_top', 'cast_list', 'schedule'])
+
+// gid別 × 遷移元カテゴリの内訳。写真がクリックを生んでいるかを見るための中間集計
+// 戻り値: { [gid]: { [category]: views } }
+function summarizeCastProfileReferrers(data) {
+  const rows = data?.rows || []
+  const byGid = {}
+  for (const r of rows) {
+    const path = r.dimensionValues[0].value
+    const match = path.match(/gid=(\d+)/)
+    if (!match) continue
+    const gid = match[1]
+    const referrer = r.dimensionValues[1].value
+    const views = Number(r.metricValues[0].value)
+    const category = categorizeReferrer(referrer)
+    if (!byGid[gid]) byGid[gid] = {}
+    byGid[gid][category] = (byGid[gid][category] || 0) + views
+  }
+  return byGid
 }
 
 // publish_rules: cp4_gid（GA4の?gidと同一形式） → cast_name のマップを site_id ごとに構築
@@ -898,7 +935,7 @@ async function main() {
   const castAccessByName = {}
   const profileReferrersByName = {}
   await Promise.all(GA4_PROPERTIES.map(async prop => {
-    const [mainCurr, mainPrev, chCurr, chPrev, evCurr, evPrev, castCurr, castPrev, refCurr] = await Promise.all([
+    const [mainCurr, mainPrev, chCurr, chPrev, evCurr, evPrev, castCurr, castPrev, refCurr, castRefCurr] = await Promise.all([
       fetchGA4Main(prop.id, token, startDate, endDate),
       fetchGA4Main(prop.id, token, prevStart, prevEnd),
       fetchGA4Channels(prop.id, token, startDate, endDate),
@@ -908,6 +945,7 @@ async function main() {
       fetchGA4CastProfiles(prop.id, token, startDate, endDate),
       fetchGA4CastProfiles(prop.id, token, prevStart, prevEnd),
       fetchGA4ProfileReferrers(prop.id, token, startDate, endDate),
+      fetchGA4CastProfileReferrers(prop.id, token, startDate, endDate),
     ])
     const currMain = summarizeMain(mainCurr)
     const currEvents = summarizeEvents(evCurr)
@@ -945,17 +983,28 @@ async function main() {
     // キャスト別プロフィールPV（gid → cast_name はpublish_rulesから解決。未登録キャストはcast_name: null）
     const currViewsByGid = summarizeCastProfiles(castCurr)
     const prevViewsByGid = summarizeCastProfiles(castPrev)
+    const referrerByGid = summarizeCastProfileReferrers(castRefCurr)
     const nameMap = castNameMap[prop.site_id] || {}
     const allGids = new Set([...Object.keys(currViewsByGid), ...Object.keys(prevViewsByGid)])
     const casts = [...allGids].map(gid => {
       const views = currViewsByGid[gid] || 0
       const prevViews = prevViewsByGid[gid] || 0
+      const referrerCounts = referrerByGid[gid] || {}
+      const referrerBreakdown = Object.entries(referrerCounts)
+        .map(([category, catViews]) => ({ category, label: REFERRER_CATEGORY_LABELS[category] || category, views: catViews }))
+        .sort((a, b) => b.views - a.views)
+      const listingViews = Object.entries(referrerCounts)
+        .filter(([category]) => LISTING_REFERRER_CATEGORIES.has(category))
+        .reduce((sum, [, catViews]) => sum + catViews, 0)
       return {
         gid,
         cast_name: nameMap[gid] || null,
         views,
         prev_views: prevViews,
         views_diff_pct: percentDiff(views, prevViews),
+        listing_views: listingViews,
+        listing_views_share: views > 0 ? round1(listingViews / views * 100) : 0,
+        referrer_breakdown: referrerBreakdown,
       }
     }).sort((a, b) => b.views - a.views)
     castAccessByName[prop.name] = { store_name: prop.name, area: prop.area, casts }
