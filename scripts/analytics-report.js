@@ -222,6 +222,22 @@ function getPrevDateRange() {
   return { startDate: addDays(startDate, -7), endDate: addDays(endDate, -7) }
 }
 
+// 直近28日間（週次実行のたびに1週間分スライドする移動窓）。
+// 隔離7日間（getDateRange）は前週比のノイズが大きいキャスト単位の数字向けに
+// 平滑化した並行ビューとして併用する。
+function getRolling28DateRange() {
+  const end = addDays(toJSTDateStr(new Date()), -1)
+  const start = addDays(end, -27)
+  return { startDate: start, endDate: end }
+}
+
+// 1週間前を基準にした28日間（今回の28日窓と21日分重複する）。
+// 「先週時点の28日ローリング値」との比較になる。
+function getPrevRolling28DateRange() {
+  const { startDate, endDate } = getRolling28DateRange()
+  return { startDate: addDays(startDate, -7), endDate: addDays(endDate, -7) }
+}
+
 // Search Console用: データ反映遅延を避けるため endDate = 今日 -3日
 function getSearchConsoleDateRange() {
   const end = addDays(toJSTDateStr(new Date()), -3)
@@ -231,6 +247,17 @@ function getSearchConsoleDateRange() {
 
 function getPrevSearchConsoleDateRange() {
   const { startDate, endDate } = getSearchConsoleDateRange()
+  return { startDate: addDays(startDate, -7), endDate: addDays(endDate, -7) }
+}
+
+function getSCRolling28DateRange() {
+  const end = addDays(toJSTDateStr(new Date()), -3)
+  const start = addDays(end, -27)
+  return { startDate: start, endDate: end }
+}
+
+function getPrevSCRolling28DateRange() {
+  const { startDate, endDate } = getSCRolling28DateRange()
   return { startDate: addDays(startDate, -7), endDate: addDays(endDate, -7) }
 }
 
@@ -999,9 +1026,15 @@ async function main() {
   const { startDate: prevStart, endDate: prevEnd } = getPrevDateRange()
   const { startDate: scStartDate, endDate: scEndDate } = getSearchConsoleDateRange()
   const { startDate: scPrevStartDate, endDate: scPrevEndDate } = getPrevSearchConsoleDateRange()
+  const { startDate: r28Start, endDate: r28End } = getRolling28DateRange()
+  const { startDate: r28PrevStart, endDate: r28PrevEnd } = getPrevRolling28DateRange()
+  const { startDate: scR28Start, endDate: scR28End } = getSCRolling28DateRange()
+  const { startDate: scR28PrevStart, endDate: scR28PrevEnd } = getPrevSCRolling28DateRange()
 
   console.log(`GA4: ${startDate} 〜 ${endDate} / 前週: ${prevStart} 〜 ${prevEnd}`)
   console.log(`SC : ${scStartDate} 〜 ${scEndDate} / 前週: ${scPrevStartDate} 〜 ${scPrevEndDate}`)
+  console.log(`GA4 28日ローリング: ${r28Start} 〜 ${r28End} / 前回: ${r28PrevStart} 〜 ${r28PrevEnd}`)
+  console.log(`SC  28日ローリング: ${scR28Start} 〜 ${scR28End} / 前回: ${scR28PrevStart} 〜 ${scR28PrevEnd}`)
 
   // publish_rules から cp4_gid → cast_name マップを取得（キャスト別PVの表示名解決用）
   let supabase = null
@@ -1015,7 +1048,12 @@ async function main() {
   const castAccessByName = {}
   const profileReferrersByName = {}
   await Promise.all(GA4_PROPERTIES.map(async prop => {
-    const [mainCurr, mainPrev, chCurr, chPrev, evCurr, evPrev, castCurr, castPrev, refCurr, castRefCurr, castClicksCurr] = await Promise.all([
+    const [
+      mainCurr, mainPrev, chCurr, chPrev, evCurr, evPrev,
+      castCurr, castPrev, refCurr, castRefCurr, castClicksCurr,
+      mainR28Curr, mainR28Prev, chR28Curr, chR28Prev, evR28Curr, evR28Prev,
+      castR28Curr, castR28Prev,
+    ] = await Promise.all([
       fetchGA4Main(prop.id, token, startDate, endDate),
       fetchGA4Main(prop.id, token, prevStart, prevEnd),
       fetchGA4Channels(prop.id, token, startDate, endDate),
@@ -1027,53 +1065,66 @@ async function main() {
       fetchGA4ProfileReferrers(prop.id, token, startDate, endDate),
       fetchGA4CastProfileReferrers(prop.id, token, startDate, endDate),
       fetchGA4CastClicks(prop.id, token, startDate, endDate),
+      // 28日ローリング（隔離7日間と並行して同じ指標を取得）
+      fetchGA4Main(prop.id, token, r28Start, r28End),
+      fetchGA4Main(prop.id, token, r28PrevStart, r28PrevEnd),
+      fetchGA4Channels(prop.id, token, r28Start, r28End),
+      fetchGA4Channels(prop.id, token, r28PrevStart, r28PrevEnd),
+      fetchGA4Events(prop.id, token, r28Start, r28End),
+      fetchGA4Events(prop.id, token, r28PrevStart, r28PrevEnd),
+      fetchGA4CastProfiles(prop.id, token, r28Start, r28End),
+      fetchGA4CastProfiles(prop.id, token, r28PrevStart, r28PrevEnd),
     ])
     const currMain = summarizeMain(mainCurr)
     const currEvents = summarizeEvents(evCurr)
     const prevMain = summarizeMain(mainPrev)
     const prevEvents = summarizeEvents(evPrev)
+    const r28CurrMain = summarizeMain(mainR28Curr)
+    const r28CurrEvents = summarizeEvents(evR28Curr)
+    const r28PrevMain = summarizeMain(mainR28Prev)
+    const r28PrevEvents = summarizeEvents(evR28Prev)
 
     const calcCVR = (count, sessions) => sessions > 0 ? Math.round(count / sessions * 1000) / 10 : 0
+    const buildPeriod = (main, events, channelsData) => ({
+      ...main,
+      channels: summarizeChannels(channelsData),
+      phone_click: events.phone_click,
+      reservation_click: events.reservation_click,
+      request_click: events.request_click,
+      survey_click: events.survey_click,
+      phone_cvr: calcCVR(events.phone_click, main.sessions),
+      reservation_cvr: calcCVR(events.reservation_click, main.sessions),
+      request_cvr: calcCVR(events.request_click, main.sessions),
+      survey_cvr: calcCVR(events.survey_click, main.sessions),
+    })
     ga4Results[prop.name] = {
-      current: {
-        ...currMain,
-        channels: summarizeChannels(chCurr),
-        phone_click: currEvents.phone_click,
-        reservation_click: currEvents.reservation_click,
-        request_click: currEvents.request_click,
-        survey_click: currEvents.survey_click,
-        phone_cvr: calcCVR(currEvents.phone_click, currMain.sessions),
-        reservation_cvr: calcCVR(currEvents.reservation_click, currMain.sessions),
-        request_cvr: calcCVR(currEvents.request_click, currMain.sessions),
-        survey_cvr: calcCVR(currEvents.survey_click, currMain.sessions),
-      },
-      previous: {
-        ...prevMain,
-        channels: summarizeChannels(chPrev),
-        phone_click: prevEvents.phone_click,
-        reservation_click: prevEvents.reservation_click,
-        request_click: prevEvents.request_click,
-        survey_click: prevEvents.survey_click,
-        phone_cvr: calcCVR(prevEvents.phone_click, prevMain.sessions),
-        reservation_cvr: calcCVR(prevEvents.reservation_click, prevMain.sessions),
-        request_cvr: calcCVR(prevEvents.request_click, prevMain.sessions),
-        survey_cvr: calcCVR(prevEvents.survey_click, prevMain.sessions),
+      current: buildPeriod(currMain, currEvents, chCurr),
+      previous: buildPeriod(prevMain, prevEvents, chPrev),
+      rolling28: {
+        current: buildPeriod(r28CurrMain, r28CurrEvents, chR28Curr),
+        previous: buildPeriod(r28PrevMain, r28PrevEvents, chR28Prev),
       },
     }
 
     // キャスト別プロフィールPV・実訪問者数（gid → cast_name はpublish_rulesから解決。未登録キャストはcast_name: null）
     const currByGid = summarizeCastProfiles(castCurr)
     const prevByGid = summarizeCastProfiles(castPrev)
+    const r28CurrByGid = summarizeCastProfiles(castR28Curr)
+    const r28PrevByGid = summarizeCastProfiles(castR28Prev)
     const referrerByGid = summarizeCastProfileReferrers(castRefCurr)
     const clicksByGid = summarizeCastClicks(castClicksCurr)
     // publish_rules（正）→ CP4ダンプ（フォールバック）の優先順で名前解決
     const nameMap = { ...loadCp4FallbackNames(prop.site_id), ...(castNameMap[prop.site_id] || {}) }
-    const allGids = new Set([...Object.keys(currByGid), ...Object.keys(prevByGid)])
+    const allGids = new Set([...Object.keys(currByGid), ...Object.keys(prevByGid), ...Object.keys(r28CurrByGid)])
     const casts = [...allGids].map(gid => {
       const views = currByGid[gid]?.views || 0
       const users = currByGid[gid]?.users || 0
       const prevViews = prevByGid[gid]?.views || 0
       const prevUsers = prevByGid[gid]?.users || 0
+      const r28Views = r28CurrByGid[gid]?.views || 0
+      const r28Users = r28CurrByGid[gid]?.users || 0
+      const r28PrevViews = r28PrevByGid[gid]?.views || 0
+      const r28PrevUsers = r28PrevByGid[gid]?.users || 0
       const referrerCounts = referrerByGid[gid] || {}
       const referrerBreakdown = Object.entries(referrerCounts)
         .map(([category, catViews]) => ({ category, label: REFERRER_CATEGORY_LABELS[category] || category, views: catViews }))
@@ -1102,6 +1153,14 @@ async function main() {
         survey_click: clicks.survey_click,
         cta_clicks: ctaClicks,
         cta_cvr: views > 0 ? round1(ctaClicks / views * 100) : 0,
+        rolling28: {
+          views: r28Views,
+          prev_views: r28PrevViews,
+          views_diff_pct: percentDiff(r28Views, r28PrevViews),
+          users: r28Users,
+          prev_users: r28PrevUsers,
+          users_diff_pct: percentDiff(r28Users, r28PrevUsers),
+        },
       }
     }).sort((a, b) => b.views - a.views)
     castAccessByName[prop.name] = { store_name: prop.name, area: prop.area, casts }
@@ -1120,14 +1179,16 @@ async function main() {
   const castAccess = GA4_PROPERTIES.map(p => castAccessByName[p.name])
   const profileReferrers = GA4_PROPERTIES.map(p => profileReferrersByName[p.name])
 
-  // Search Console（current + previous + クエリ差分）
+  // Search Console（current + previous + クエリ差分 + 28日ローリングサマリー）
   const scResults = {}
   await Promise.all(SC_SITES.map(async site => {
-    const [queries, summary, prevQueries, prevSummary] = await Promise.all([
+    const [queries, summary, prevQueries, prevSummary, r28Summary, r28PrevSummary] = await Promise.all([
       fetchSC(site.url, token, { dimensions: ['query'], rowLimit: 20, startDate: scStartDate, endDate: scEndDate }),
       fetchSC(site.url, token, { dimensions: ['date'], rowLimit: 7, startDate: scStartDate, endDate: scEndDate }),
       fetchSC(site.url, token, { dimensions: ['query'], rowLimit: 20, startDate: scPrevStartDate, endDate: scPrevEndDate }),
       fetchSC(site.url, token, { dimensions: ['date'], rowLimit: 7, startDate: scPrevStartDate, endDate: scPrevEndDate }),
+      fetchSC(site.url, token, { dimensions: ['date'], rowLimit: 28, startDate: scR28Start, endDate: scR28End }),
+      fetchSC(site.url, token, { dimensions: ['date'], rowLimit: 28, startDate: scR28PrevStart, endDate: scR28PrevEnd }),
     ])
 
     const prevQueryMap = {}
@@ -1172,6 +1233,11 @@ async function main() {
           position: Math.round(r.position * 10) / 10,
         })),
       },
+      // 28日ローリングはサマリーのみ（topQueriesは隔離7日間のみ提供）
+      rolling28: {
+        current: summarizeSC(r28Summary),
+        previous: summarizeSC(r28PrevSummary),
+      },
     }
     process.stdout.write('.')
   }))
@@ -1200,9 +1266,14 @@ async function main() {
         ],
       }],
     }
-    const [current, previous] = await Promise.all([
+    // 28日ローリングはpage+query行までは持たず、サマリー（clicks/impressions/ctr/position）のみ
+    const summaryBody = { dimensions: ['date'], rowLimit: 28, dimensionFilterGroups: body.dimensionFilterGroups }
+
+    const [current, previous, r28Summary, r28PrevSummary] = await Promise.all([
       fetchSC(page.siteUrl, token, { ...body, startDate: scStartDate, endDate: scEndDate }),
       fetchSC(page.siteUrl, token, { ...body, startDate: scPrevStartDate, endDate: scPrevEndDate }),
+      fetchSC(page.siteUrl, token, { ...summaryBody, startDate: scR28Start, endDate: scR28End }),
+      fetchSC(page.siteUrl, token, { ...summaryBody, startDate: scR28PrevStart, endDate: scR28PrevEnd }),
     ])
 
     const prevMap = {}
@@ -1224,6 +1295,10 @@ async function main() {
           ctr: Math.round(r.ctr * 1000) / 10,
           position: Math.round(r.position * 10) / 10,
         })),
+      },
+      rolling28: {
+        current: summarizeSC(r28Summary),
+        previous: summarizeSC(r28PrevSummary),
       },
     })
     process.stdout.write('.')
@@ -1389,6 +1464,14 @@ marketing.actionItems から優先度A/Bを中心に最大5件。各項目は以
           previous: {
             ga4: { startDate: prevStart, endDate: prevEnd },
             searchConsole: { startDate: scPrevStartDate, endDate: scPrevEndDate },
+          },
+          rolling28: {
+            ga4: { startDate: r28Start, endDate: r28End },
+            searchConsole: { startDate: scR28Start, endDate: scR28End },
+            previous: {
+              ga4: { startDate: r28PrevStart, endDate: r28PrevEnd },
+              searchConsole: { startDate: scR28PrevStart, endDate: scR28PrevEnd },
+            },
           },
         },
       },

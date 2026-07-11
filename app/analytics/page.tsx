@@ -23,7 +23,7 @@ interface Report {
       startDate?: string
       endDate?: string
     }
-    ga4?: Record<string, { current: GA4Summary; previous: GA4Summary }>
+    ga4?: Record<string, { current: GA4Summary; previous: GA4Summary; rolling28?: { current: GA4Summary; previous: GA4Summary } }>
     marketing?: MarketingData
     castAccess?: CastAccessStore[]
     profileReferrers?: ProfileReferrerStore[]
@@ -35,6 +35,15 @@ interface CastReferrerBreakdownItem {
   category: string
   label: string
   views: number
+}
+
+interface CastRolling28 {
+  views: number
+  prev_views: number | null
+  views_diff_pct: number | null
+  users: number
+  prev_users: number | null
+  users_diff_pct: number | null
 }
 
 interface CastAccessItem {
@@ -56,7 +65,11 @@ interface CastAccessItem {
   survey_click: number
   cta_clicks: number
   cta_cvr: number
+  rolling28: CastRolling28
 }
+
+// 表示モード: isolated=隔離7日間の前週比 / rolling28=直近28日の移動窓（1週間分スライド）比較
+type ComparisonMode = 'isolated' | 'rolling28'
 
 interface CastAccessStore {
   store_name: string
@@ -238,6 +251,27 @@ function pctChange(curr: number, prev: number) {
   return p
 }
 
+function ComparisonModeToggle({ mode, onChange }: { mode: ComparisonMode; onChange: (m: ComparisonMode) => void }) {
+  return (
+    <div className="flex items-center gap-1 rounded border bg-white p-0.5 text-xs">
+      <button
+        type="button"
+        onClick={() => onChange('isolated')}
+        className={`rounded px-2 py-1 ${mode === 'isolated' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
+      >
+        隔離7日間
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('rolling28')}
+        className={`rounded px-2 py-1 ${mode === 'rolling28' ? 'bg-gray-900 text-white' : 'text-gray-500'}`}
+      >
+        28日ローリング
+      </button>
+    </div>
+  )
+}
+
 function PctBadge({ curr, prev }: { curr: number; prev: number }) {
   const p = pctChange(curr, prev)
   if (p === null) return null
@@ -316,6 +350,7 @@ export default function AnalyticsPage() {
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const [loading, setLoading] = useState(true)
   const [castSortKey, setCastSortKey] = useState<'views' | 'listing_views' | 'users' | 'cta_cvr'>('views')
+  const [comparisonMode, setComparisonMode] = useState<ComparisonMode>('isolated')
 
   useEffect(() => {
     supabase
@@ -693,11 +728,15 @@ export default function AnalyticsPage() {
               </button>
             </div>
           </div>
-          <p className="mb-2 text-xs text-gray-500">
-            「一覧経由」= TOPページ・キャスト一覧・出勤スケジュールのサムネイル写真からプロフィールへ遷移した回数。検索直帰や指名の直接流入を除いた、写真の訴求力に近い指標。
-            「PV/人」は総PVを実訪問者数（activeUsers）で割った値。少数の高頻度アクセス（タブ放置・繰り返しリロード等）にPVが引っ張られていないかの目安で、目立って高い場合は赤字で表示する。
-            「CVR」はそのプロフィールページ上で発生した電話・WEB予約・出勤リクエスト・アンケートクリックの合計 ÷ PV。PVは多いが予約に繋がっていないキャストを見分ける指標。
-          </p>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs text-gray-500">
+              「一覧経由」= TOPページ・キャスト一覧・出勤スケジュールのサムネイル写真からプロフィールへ遷移した回数。検索直帰や指名の直接流入を除いた、写真の訴求力に近い指標。
+              「PV/人」は総PVを実訪問者数（activeUsers）で割った値。少数の高頻度アクセス（タブ放置・繰り返しリロード等）にPVが引っ張られていないかの目安で、目立って高い場合は赤字で表示する。
+              「CVR」はそのプロフィールページ上で発生した電話・WEB予約・出勤リクエスト・アンケートクリックの合計 ÷ PV。PVは多いが予約に繋がっていないキャストを見分ける指標。
+              右端の増減率は下の切り替えで「隔離7日間」（サンプルが小さいと振れやすい）と「28日ローリング」（平滑化された傾向）を切り替えられる。
+            </p>
+            <ComparisonModeToggle mode={comparisonMode} onChange={setComparisonMode} />
+          </div>
           <div className="grid gap-3 md:grid-cols-2">
             {castAccess.map(store => {
               const sortedCasts = [...store.casts].sort((a, b) => b[castSortKey] - a[castSortKey])
@@ -715,11 +754,15 @@ export default function AnalyticsPage() {
                           <th className="py-1 pr-2 text-right font-medium">一覧経由</th>
                           <th className="py-1 pr-2 text-right font-medium">CTA</th>
                           <th className="py-1 pr-2 text-right font-medium">CVR</th>
-                          <th className="py-1 pr-2 text-right font-medium">前週比</th>
+                          <th className="py-1 pr-2 text-right font-medium">
+                            {comparisonMode === 'rolling28' ? '28日ローリング比' : '前週比'}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {sortedCasts.slice(0, 10).map(c => (
+                        {sortedCasts.slice(0, 10).map(c => {
+                          const diffValue = comparisonMode === 'rolling28' ? c.rolling28?.views_diff_pct ?? null : c.views_diff_pct
+                          return (
                           <tr key={c.gid} className="border-t border-gray-100">
                             <td className="py-1 pr-2 text-gray-800">
                               {c.cast_name ?? <span className="text-gray-400">gid:{c.gid}（未登録）</span>}
@@ -737,9 +780,10 @@ export default function AnalyticsPage() {
                             <td className={`py-1 pr-2 text-right ${c.cta_cvr === 0 && c.views >= 50 ? 'font-semibold text-red-600' : 'text-gray-700'}`}>
                               {c.cta_cvr}%
                             </td>
-                            <td className="py-1 pr-2 text-right"><SignedValue value={c.views_diff_pct} suffix="%" /></td>
+                            <td className="py-1 pr-2 text-right"><SignedValue value={diffValue} suffix="%" /></td>
                           </tr>
-                        ))}
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -781,18 +825,27 @@ export default function AnalyticsPage() {
       {/* GA4 店舗別サマリー */}
       {activeTab === 'overview' && ga4 && (
         <div className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">店舗別セッション数</h2>
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">店舗別セッション数</h2>
+            <ComparisonModeToggle mode={comparisonMode} onChange={setComparisonMode} />
+          </div>
+          <p className="mb-2 text-xs text-gray-500">
+            「隔離7日間」は今週と前週を完全に分けて比較（変化検知向け・サンプルが小さいと振れやすい）。「28日ローリング」は直近28日を毎週スライドさせた移動窓での比較（トレンド把握向け・平滑化される）。
+          </p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {Object.entries(ga4).map(([name, data]) => (
-              <div key={name} className="bg-white border rounded p-3">
-                <div className="text-xs text-gray-500 mb-1 truncate">{name}</div>
-                <div className="text-xl font-bold">{data.current.sessions.toLocaleString()}</div>
-                <PctBadge curr={data.current.sessions} prev={data.previous.sessions} />
-                <div className="text-xs text-gray-400 mt-1">
-                  直帰 {data.current.bounceRate}%
+            {Object.entries(ga4).map(([name, data]) => {
+              const period = comparisonMode === 'rolling28' && data.rolling28 ? data.rolling28 : data
+              return (
+                <div key={name} className="bg-white border rounded p-3">
+                  <div className="text-xs text-gray-500 mb-1 truncate">{name}</div>
+                  <div className="text-xl font-bold">{period.current.sessions.toLocaleString()}</div>
+                  <PctBadge curr={period.current.sessions} prev={period.previous.sessions} />
+                  <div className="text-xs text-gray-400 mt-1">
+                    直帰 {period.current.bounceRate}%
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
