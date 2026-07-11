@@ -24,6 +24,8 @@ try {
 
 const Anthropic = require('@anthropic-ai/sdk')
 const { createClient } = require('@supabase/supabase-js')
+const fs = require('node:fs')
+const path = require('node:path')
 
 const DRY_RUN = process.argv.includes('--dry-run') || process.env.DRY_RUN === '1'
 
@@ -337,6 +339,36 @@ function summarizeCastProfileReferrers(data) {
     byGid[gid][category] = (byGid[gid][category] || 0) + views
   }
   return byGid
+}
+
+// CP4のコース/プラン枠（実在キャストではない）を名前解決から除外するためのパターン
+const NON_CAST_NAME_PATTERNS = [/新人.*3P/, /新人.*限定/, /早得/, /ナイトコース/, /^体験/, /コース[（(]/]
+function isRealCastName(name) {
+  return typeof name === 'string' && name.length > 0 && !NON_CAST_NAME_PATTERNS.some(p => p.test(name))
+}
+
+// publish_rulesに未登録のgidを埋めるフォールバック。shift-sync が毎日更新している
+// data/cast/cp4-casts-{site_id}.json（gid, name のダンプ）をそのまま流用する。
+// publish_rulesは「CS3×site_idの配信ルール」という別の意味を持つテーブルなので書き込みはせず、
+// あくまで表示名解決のためだけにここで読む。
+function loadCp4FallbackNames(siteId) {
+  const candidatePaths = [
+    path.join('/opt/shift-sync/data/cast', `cp4-casts-${siteId}.json`),
+    path.join(__dirname, '..', '..', 'shift-sync', 'data', 'cast', `cp4-casts-${siteId}.json`),
+  ]
+  for (const p of candidatePaths) {
+    try {
+      const data = JSON.parse(fs.readFileSync(p, 'utf8'))
+      const map = {}
+      for (const c of data.casts || []) {
+        if (isRealCastName(c.name)) map[c.gid] = c.name
+      }
+      return map
+    } catch {
+      // 次の候補パスを試す
+    }
+  }
+  return {}
 }
 
 // publish_rules: cp4_gid（GA4の?gidと同一形式） → cast_name のマップを site_id ごとに構築
@@ -984,7 +1016,8 @@ async function main() {
     const currViewsByGid = summarizeCastProfiles(castCurr)
     const prevViewsByGid = summarizeCastProfiles(castPrev)
     const referrerByGid = summarizeCastProfileReferrers(castRefCurr)
-    const nameMap = castNameMap[prop.site_id] || {}
+    // publish_rules（正）→ CP4ダンプ（フォールバック）の優先順で名前解決
+    const nameMap = { ...loadCp4FallbackNames(prop.site_id), ...(castNameMap[prop.site_id] || {}) }
     const allGids = new Set([...Object.keys(currViewsByGid), ...Object.keys(prevViewsByGid)])
     const casts = [...allGids].map(gid => {
       const views = currViewsByGid[gid] || 0
