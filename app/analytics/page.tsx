@@ -777,24 +777,38 @@ export default function AnalyticsPage() {
                       </thead>
                       <tbody>
                         {sortedCasts.slice(0, 10).map(c => {
-                          const diffValue = comparisonMode === 'rolling28' ? c.rolling28?.views_diff_pct ?? null : c.views_diff_pct
+                          const isR28 = comparisonMode === 'rolling28'
+                          const diffValue = isR28 ? c.rolling28?.views_diff_pct ?? null : c.views_diff_pct
+                          // 総PV・人数・PV/人は28日ローリング分もバックエンドで取得済みなので切り替える。
+                          // 一覧経由・CTA・CVRは28日ローリング分を未取得のため、隔離7日間の値のまま「未対応」表示にする。
+                          const views = isR28 ? c.rolling28?.views ?? c.views : c.views
+                          const users = isR28 ? c.rolling28?.users ?? c.users : c.users
+                          const viewsPerUser = users > 0 ? Math.round(views / users * 10) / 10 : null
                           return (
                           <tr key={c.gid} className="border-t border-gray-100">
                             <td className="py-1 pr-2 whitespace-nowrap text-gray-800">
                               {c.cast_name ?? <span className="text-gray-400">gid:{c.gid}（未登録）</span>}
                             </td>
-                            <td className="py-1 pr-2 text-right text-gray-700">{c.views.toLocaleString()}</td>
-                            <td className="py-1 pr-2 text-right text-gray-700">{c.users.toLocaleString()}</td>
-                            <td className={`py-1 pr-2 text-right ${c.views_per_user !== null && c.views_per_user >= 10 ? 'font-semibold text-red-600' : 'text-gray-700'}`}>
-                              {c.views_per_user ?? '-'}
+                            <td className="py-1 pr-2 text-right text-gray-700">{views.toLocaleString()}</td>
+                            <td className="py-1 pr-2 text-right text-gray-700">{users.toLocaleString()}</td>
+                            <td className={`py-1 pr-2 text-right ${viewsPerUser !== null && viewsPerUser >= 10 ? 'font-semibold text-red-600' : 'text-gray-700'}`}>
+                              {viewsPerUser ?? '-'}
                             </td>
                             <td className="py-1 pr-2 text-right text-gray-700">
-                              {c.listing_views.toLocaleString()}
-                              <span className="ml-1 text-gray-400">({c.listing_views_share}%)</span>
+                              {isR28 ? (
+                                <span className="text-gray-300">未対応</span>
+                              ) : (
+                                <>
+                                  {c.listing_views.toLocaleString()}
+                                  <span className="ml-1 text-gray-400">({c.listing_views_share}%)</span>
+                                </>
+                              )}
                             </td>
-                            <td className="py-1 pr-2 text-right text-gray-700">{c.cta_clicks.toLocaleString()}</td>
-                            <td className={`py-1 pr-2 text-right ${c.cta_cvr === 0 && c.views >= 50 ? 'font-semibold text-red-600' : 'text-gray-700'}`}>
-                              {c.cta_cvr}%
+                            <td className="py-1 pr-2 text-right text-gray-700">
+                              {isR28 ? <span className="text-gray-300">未対応</span> : c.cta_clicks.toLocaleString()}
+                            </td>
+                            <td className={`py-1 pr-2 text-right ${!isR28 && c.cta_cvr === 0 && c.views >= 50 ? 'font-semibold text-red-600' : 'text-gray-700'}`}>
+                              {isR28 ? <span className="text-gray-300">未対応</span> : `${c.cta_cvr}%`}
                             </td>
                             <td className="py-1 pr-2 text-right"><SignedValue value={diffValue} suffix="%" /></td>
                           </tr>
