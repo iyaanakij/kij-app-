@@ -121,8 +121,6 @@ export default function CastOnboardingPage() {
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => { document.title = 'プロフィールアンケート | KIJ' }, [])
-
   useEffect(() => {
     fetch(`/api/cast/onboarding/${token}`)
       .then(r => r.json())
