@@ -192,13 +192,14 @@ async function fetchGA4CastClicks(propertyId, accessToken, startDate, endDate) {
 async function fetchGA4ProfileReferrers(propertyId, accessToken, startDate, endDate) {
   return ga4Report(propertyId, accessToken, {
     dateRanges: [{ startDate, endDate }],
-    dimensions: [{ name: 'pagePath' }, { name: 'pageReferrer' }],
+    // gidを含むpagePathPlusQueryStringで取得（自己リファラー＝同一プロフィール再訪問の判定に必要）
+    dimensions: [{ name: 'pagePathPlusQueryString' }, { name: 'pageReferrer' }],
     metrics: [{ name: 'screenPageViews' }],
     dimensionFilter: {
-      filter: { fieldName: 'pagePath', stringFilter: { matchType: 'CONTAINS', value: 'profile' } },
+      filter: { fieldName: 'pagePathPlusQueryString', stringFilter: { matchType: 'CONTAINS', value: 'profile' } },
     },
     orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
-    limit: 50,
+    limit: 1000,
   })
 }
 
@@ -387,17 +388,28 @@ const REFERRER_CATEGORY_LABELS = {
   cast_list: 'キャスト一覧',
   schedule: '出勤スケジュール',
   profile_to_profile: '他プロフィールから回遊',
+  same_profile_revisit: '同一プロフィール再訪問（リロード等）',
   direct_or_app: '直接・アプリ内ブラウザ',
   external: '外部サイト・検索',
   other_internal: 'その他サイト内',
 }
 
-function categorizeReferrer(referrer) {
+// currentGidを渡すと、referrerが「同じプロフィール（自己リファラー＝リロード等）」か
+// 「別のプロフィール（本当の回遊）」かを区別できる。全プロフィールページのpathnameは
+// `/profile/`で共通のため、gidの一致比較なしには区別不能（2026-07-13修正）。
+function categorizeReferrer(referrer, currentGid) {
   if (!referrer) return 'direct_or_app'
   if (!referrer.includes('m-kairaku.com')) return 'external'
-  let path
-  try { path = new URL(referrer).pathname } catch { return 'external' }
-  if (path.includes('/profile/')) return 'profile_to_profile'
+  let url
+  try { url = new URL(referrer) } catch { return 'external' }
+  const path = url.pathname
+  if (path.includes('/profile/')) {
+    if (currentGid) {
+      const refGidMatch = url.search.match(/gid=(\d+)/)
+      if (refGidMatch && refGidMatch[1] === currentGid) return 'same_profile_revisit'
+    }
+    return 'profile_to_profile'
+  }
   if (path.includes('/schedule/')) return 'schedule'
   if (path.includes('/cast/')) return 'cast_list'
   if (path.endsWith('/top/')) return 'store_top'
@@ -410,9 +422,12 @@ function summarizeProfileReferrers(data) {
   const totals = {}
   let totalViews = 0
   for (const r of rows) {
+    const currentPath = r.dimensionValues[0].value
+    const gidMatch = currentPath.match(/gid=(\d+)/)
+    const currentGid = gidMatch ? gidMatch[1] : null
     const referrer = r.dimensionValues[1].value
     const views = Number(r.metricValues[0].value)
-    const category = categorizeReferrer(referrer)
+    const category = categorizeReferrer(referrer, currentGid)
     totals[category] = (totals[category] || 0) + views
     totalViews += views
   }
@@ -441,7 +456,7 @@ function summarizeCastProfileReferrers(data) {
     const gid = match[1]
     const referrer = r.dimensionValues[1].value
     const views = Number(r.metricValues[0].value)
-    const category = categorizeReferrer(referrer)
+    const category = categorizeReferrer(referrer, gid)
     if (!byGid[gid]) byGid[gid] = {}
     byGid[gid][category] = (byGid[gid][category] || 0) + views
   }
