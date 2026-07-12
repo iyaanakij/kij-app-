@@ -1,44 +1,34 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
-import { getCurrentUser } from '@/lib/auth'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function AdminLoginPage() {
+function AdminLoginForm() {
   useEffect(() => { document.title = '管理ログイン | KIJ管理' }, [])
   const router = useRouter()
-  const [email, setEmail] = useState('')
+  const searchParams = useSearchParams()
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) return
-      const u = await getCurrentUser()
-      if (u?.role === 'staff') router.replace('/admin/publish-rules')
-    })
-  }, [router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
-    if (authError) {
-      setError('メールアドレスまたはパスワードが正しくありません')
+    const res = await fetch('/api/admin/session-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setError(data.error || 'ログインに失敗しました')
       setLoading(false)
       return
     }
-    const u = await getCurrentUser()
-    if (u?.role !== 'staff') {
-      await supabase.auth.signOut()
-      setError('管理者アカウントではありません')
-      setLoading(false)
-      return
-    }
-    router.replace('/admin/publish-rules')
+    const next = searchParams.get('next') || '/reservations'
+    router.replace(next)
+    router.refresh()
   }
 
   return (
@@ -46,21 +36,10 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="text-2xl font-bold text-gray-800">KIJ 管理画面</div>
-          <div className="text-gray-500 text-sm mt-1">管理者ログイン</div>
+          <div className="text-gray-500 text-sm mt-1">パスワードを入力してください</div>
         </div>
         <div className="bg-white rounded-xl shadow p-6 space-y-4">
           <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 mb-1.5">メールアドレス</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                placeholder="admin@example.com"
-              />
-            </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1.5">パスワード</label>
               <input
@@ -68,6 +47,7 @@ export default function AdminLoginPage() {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
+                autoFocus
                 className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
               />
             </div>
@@ -87,5 +67,13 @@ export default function AdminLoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminLoginForm />
+    </Suspense>
   )
 }
