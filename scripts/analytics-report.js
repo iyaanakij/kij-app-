@@ -1052,7 +1052,7 @@ async function main() {
       mainCurr, mainPrev, chCurr, chPrev, evCurr, evPrev,
       castCurr, castPrev, refCurr, castRefCurr, castClicksCurr,
       mainR28Curr, mainR28Prev, chR28Curr, chR28Prev, evR28Curr, evR28Prev,
-      castR28Curr, castR28Prev,
+      castR28Curr, castR28Prev, castRefR28Curr, castClicksR28Curr,
     ] = await Promise.all([
       fetchGA4Main(prop.id, token, startDate, endDate),
       fetchGA4Main(prop.id, token, prevStart, prevEnd),
@@ -1074,6 +1074,8 @@ async function main() {
       fetchGA4Events(prop.id, token, r28PrevStart, r28PrevEnd),
       fetchGA4CastProfiles(prop.id, token, r28Start, r28End),
       fetchGA4CastProfiles(prop.id, token, r28PrevStart, r28PrevEnd),
+      fetchGA4CastProfileReferrers(prop.id, token, r28Start, r28End),
+      fetchGA4CastClicks(prop.id, token, r28Start, r28End),
     ])
     const currMain = summarizeMain(mainCurr)
     const currEvents = summarizeEvents(evCurr)
@@ -1113,6 +1115,8 @@ async function main() {
     const r28PrevByGid = summarizeCastProfiles(castR28Prev)
     const referrerByGid = summarizeCastProfileReferrers(castRefCurr)
     const clicksByGid = summarizeCastClicks(castClicksCurr)
+    const r28ReferrerByGid = summarizeCastProfileReferrers(castRefR28Curr)
+    const r28ClicksByGid = summarizeCastClicks(castClicksR28Curr)
     // publish_rules（正）→ CP4ダンプ（フォールバック）の優先順で名前解決
     const nameMap = { ...loadCp4FallbackNames(prop.site_id), ...(castNameMap[prop.site_id] || {}) }
     const allGids = new Set([...Object.keys(currByGid), ...Object.keys(prevByGid), ...Object.keys(r28CurrByGid)])
@@ -1134,6 +1138,15 @@ async function main() {
         .reduce((sum, [, catViews]) => sum + catViews, 0)
       const clicks = clicksByGid[gid] || { phone_click: 0, reservation_click: 0, request_click: 0, survey_click: 0 }
       const ctaClicks = clicks.phone_click + clicks.reservation_click + clicks.request_click + clicks.survey_click
+
+      // 28日ローリング分の一覧経由・CTA（隔離7日間と同じロジック）
+      const r28ReferrerCounts = r28ReferrerByGid[gid] || {}
+      const r28ListingViews = Object.entries(r28ReferrerCounts)
+        .filter(([category]) => LISTING_REFERRER_CATEGORIES.has(category))
+        .reduce((sum, [, catViews]) => sum + catViews, 0)
+      const r28Clicks = r28ClicksByGid[gid] || { phone_click: 0, reservation_click: 0, request_click: 0, survey_click: 0 }
+      const r28CtaClicks = r28Clicks.phone_click + r28Clicks.reservation_click + r28Clicks.request_click + r28Clicks.survey_click
+
       return {
         gid,
         cast_name: nameMap[gid] || null,
@@ -1160,6 +1173,11 @@ async function main() {
           users: r28Users,
           prev_users: r28PrevUsers,
           users_diff_pct: percentDiff(r28Users, r28PrevUsers),
+          views_per_user: r28Users > 0 ? round1(r28Views / r28Users) : null,
+          listing_views: r28ListingViews,
+          listing_views_share: r28Views > 0 ? round1(r28ListingViews / r28Views * 100) : 0,
+          cta_clicks: r28CtaClicks,
+          cta_cvr: r28Views > 0 ? round1(r28CtaClicks / r28Views * 100) : 0,
         },
       }
     }).sort((a, b) => b.views - a.views)
