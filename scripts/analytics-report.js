@@ -26,6 +26,7 @@ const Anthropic = require('@anthropic-ai/sdk')
 const { createClient } = require('@supabase/supabase-js')
 const fs = require('node:fs')
 const path = require('node:path')
+const crypto = require('node:crypto')
 
 const DRY_RUN = process.argv.includes('--dry-run') || process.env.DRY_RUN === '1'
 
@@ -48,15 +49,46 @@ const M_STORE_PAGES = [
 ]
 
 // --- OAuth2 ---
+// サービスアカウント認証（2026-07-12〜）。OAuthユーザー認証は「テスト」公開ステータスだと
+// リフレッシュトークンが7日で失効し、隔週の週次cronが度々止まっていたため恒久対応として切替。
+function loadServiceAccountKey() {
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    return JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
+  }
+  const keyPath = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH
+  if (keyPath && fs.existsSync(keyPath)) {
+    return JSON.parse(fs.readFileSync(keyPath, 'utf8'))
+  }
+  throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON または GOOGLE_SERVICE_ACCOUNT_KEY_PATH が必要です')
+}
+
+function base64url(input) {
+  return Buffer.from(input).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
 async function getAccessToken() {
-  const res = await fetch('https://oauth2.googleapis.com/token', {
+  const key = loadServiceAccountKey()
+  const tokenUri = key.token_uri || 'https://oauth2.googleapis.com/token'
+  const now = Math.floor(Date.now() / 1000)
+  const header = { alg: 'RS256', typ: 'JWT' }
+  const claim = {
+    iss: key.client_email,
+    scope: 'https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/webmasters.readonly',
+    aud: tokenUri,
+    exp: now + 3600,
+    iat: now,
+  }
+  const unsigned = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(claim))}`
+  const signature = crypto.sign('RSA-SHA256', Buffer.from(unsigned), key.private_key)
+    .toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  const jwt = `${unsigned}.${signature}`
+
+  const res = await fetch(tokenUri, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id:     process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET,
-      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
-      grant_type:    'refresh_token',
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
     }),
   })
   const data = await res.json()
@@ -1015,11 +1047,9 @@ function requireEnv(names) {
 async function main() {
   console.log('[analytics-report] 開始:', new Date().toLocaleString('ja-JP'))
 
-  requireEnv([
-    'GOOGLE_CLIENT_ID',
-    'GOOGLE_CLIENT_SECRET',
-    'GOOGLE_REFRESH_TOKEN',
-  ])
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON && !process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH) {
+    throw new Error('Missing env: GOOGLE_SERVICE_ACCOUNT_JSON または GOOGLE_SERVICE_ACCOUNT_KEY_PATH')
+  }
 
   const token = await getAccessToken()
   const { startDate, endDate } = getDateRange()
