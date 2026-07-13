@@ -844,24 +844,40 @@ export default function AnalyticsPage() {
             <h2 className="text-sm font-semibold text-gray-700">プロフィールページ 遷移元内訳</h2>
             <span className="text-xs text-gray-400">raw_data.profileReferrers</span>
           </div>
+          <p className="mb-2 text-xs text-gray-500">
+            「同一プロフィール再訪問」はbot等の自動アクセスによる同一ページの繰り返し閲覧が主因と判明したため、下記の内訳・%からは除外し、件数のみ注記で表示している。
+          </p>
           <div className="grid gap-3 md:grid-cols-2">
-            {profileReferrers.map(store => (
-              <div key={store.store_name} className="rounded border bg-white p-3">
-                <h3 className="mb-2 text-sm font-semibold text-gray-900">{store.store_name}</h3>
-                <div className="space-y-1.5">
-                  {store.breakdown.map(b => (
-                    <div key={b.category} className="flex items-center gap-2 text-xs">
-                      <span className="w-28 shrink-0 truncate text-gray-600">{b.label}</span>
-                      <div className="h-2 flex-1 rounded bg-gray-100">
-                        <div className="h-2 rounded bg-gray-400" style={{ width: `${Math.min(b.share, 100)}%` }} />
-                      </div>
-                      <span className="w-12 shrink-0 text-right text-gray-700">{b.share}%</span>
-                      <span className="w-14 shrink-0 text-right text-gray-400">{b.views.toLocaleString()}</span>
-                    </div>
-                  ))}
+            {profileReferrers.map(store => {
+              const revisit = store.breakdown.find(b => b.category === 'same_profile_revisit')
+              const visibleBreakdown = store.breakdown.filter(b => b.category !== 'same_profile_revisit')
+              const visibleTotal = visibleBreakdown.reduce((sum, b) => sum + b.views, 0)
+              return (
+                <div key={store.store_name} className="rounded border bg-white p-3">
+                  <h3 className="mb-2 text-sm font-semibold text-gray-900">{store.store_name}</h3>
+                  <div className="space-y-1.5">
+                    {visibleBreakdown.map(b => {
+                      const share = visibleTotal > 0 ? Math.round(b.views / visibleTotal * 1000) / 10 : 0
+                      return (
+                        <div key={b.category} className="flex items-center gap-2 text-xs">
+                          <span className="w-28 shrink-0 truncate text-gray-600">{b.label}</span>
+                          <div className="h-2 flex-1 rounded bg-gray-100">
+                            <div className="h-2 rounded bg-gray-400" style={{ width: `${Math.min(share, 100)}%` }} />
+                          </div>
+                          <span className="w-12 shrink-0 text-right text-gray-700">{share}%</span>
+                          <span className="w-14 shrink-0 text-right text-gray-400">{b.views.toLocaleString()}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {revisit && revisit.views > 0 && (
+                    <p className="mt-2 text-[11px] text-gray-400">
+                      ※同一プロフィール再訪問（bot等の疑い・集計から除外）: {revisit.views.toLocaleString()}件
+                    </p>
+                  )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </section>
       )}
