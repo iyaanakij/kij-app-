@@ -31,6 +31,19 @@ type OnboardingInfo = {
 type OnboardingJob = { job_type: string; status: string }
 type SubmissionInfo = { id: number; brand: string; area_id: number; jobs: OnboardingJob[] }
 
+type Cs3CastCandidate = {
+  cs3_cast_id: string
+  cast_name: string
+  shopIds: string[]
+}
+
+const CS3_SHOP_ID_TO_AREA: Record<string, string> = {
+  '111701': '西船橋',
+  '111702': '成田',
+  '111703': '千葉',
+  '111704': '錦糸町',
+}
+
 interface DeliveryTarget {
   id: string
   staff_id: number
@@ -68,6 +81,11 @@ export default function StaffPage() {
   const [registeredStaffIds, setRegisteredStaffIds] = useState<Set<number>>(new Set())
   const [selectedStoreFilter, setSelectedStoreFilter] = useState<number | null>(null)
   const [selectedBrandFilter, setSelectedBrandFilter] = useState<StaffBrand | null>(null)
+  const [cs3SearchQuery, setCs3SearchQuery] = useState('')
+  const [cs3SearchResults, setCs3SearchResults] = useState<Cs3CastCandidate[]>([])
+  const [cs3Searching, setCs3Searching] = useState(false)
+  const [cs3Linking, setCs3Linking] = useState(false)
+  const [cs3LinkError, setCs3LinkError] = useState<string | null>(null)
   const [deliveryTargets, setDeliveryTargets] = useState<DeliveryTarget[]>([])
   const [newTargetMediaName, setNewTargetMediaName] = useState('')
   const [newTargetDestination, setNewTargetDestination] = useState('')
@@ -186,6 +204,9 @@ export default function StaffPage() {
     setDeliveryTargets(data ?? [])
     if (s.cs3_cast_id) fetchPublishRules(s.cs3_cast_id)
     else setPublishRules(null)
+    setCs3SearchQuery('')
+    setCs3SearchResults([])
+    setCs3LinkError(null)
     setModalOpen(true)
   }
 
@@ -235,6 +256,65 @@ export default function StaffPage() {
 
     setSaving(false)
     setModalOpen(false)
+    fetchStaff()
+  }
+
+  // CS3キャストID 手動紐付け: publish_rules（cast-list-latest.jsonから1時間毎に補完される全CS3在籍キャストのミラー）を名前検索
+  async function searchCs3Casts() {
+    const q = cs3SearchQuery.trim()
+    if (!q) { setCs3SearchResults([]); return }
+    setCs3Searching(true)
+    setCs3LinkError(null)
+    const { data, error } = await supabase
+      .from('publish_rules')
+      .select('cs3_cast_id, cast_name, source_shop_id')
+      .ilike('cast_name', `%${q}%`)
+      .limit(300)
+    setCs3Searching(false)
+    if (error) { setCs3LinkError(`検索失敗: ${error.message}`); return }
+    const byId = new Map<string, Cs3CastCandidate>()
+    for (const row of data ?? []) {
+      const existing = byId.get(row.cs3_cast_id)
+      if (existing) {
+        if (!existing.shopIds.includes(row.source_shop_id)) existing.shopIds.push(row.source_shop_id)
+      } else {
+        byId.set(row.cs3_cast_id, { cs3_cast_id: row.cs3_cast_id, cast_name: row.cast_name, shopIds: [row.source_shop_id] })
+      }
+    }
+    setCs3SearchResults(Array.from(byId.values()))
+  }
+
+  async function linkCs3Cast(castId: string, castName: string) {
+    if (!editing.id) return
+    setCs3Linking(true)
+    setCs3LinkError(null)
+    const { error } = await supabase.from('staff').update({ cs3_cast_id: castId }).eq('id', editing.id)
+    setCs3Linking(false)
+    if (error) {
+      if (error.code === '23505') {
+        setCs3LinkError(`このCS3 ID(${castId} / ${castName})は既に別のキャストに紐付いています`)
+      } else {
+        setCs3LinkError(`紐付け失敗: ${error.message}`)
+      }
+      return
+    }
+    setEditing(p => ({ ...p, cs3_cast_id: castId }))
+    setCs3SearchQuery('')
+    setCs3SearchResults([])
+    fetchPublishRules(castId)
+    fetchStaff()
+  }
+
+  async function unlinkCs3Cast() {
+    if (!editing.id) return
+    if (!confirm('CS3 IDの紐付けを解除しますか？')) return
+    setCs3Linking(true)
+    setCs3LinkError(null)
+    const { error } = await supabase.from('staff').update({ cs3_cast_id: null }).eq('id', editing.id)
+    setCs3Linking(false)
+    if (error) { setCs3LinkError(`解除失敗: ${error.message}`); return }
+    setEditing(p => ({ ...p, cs3_cast_id: undefined }))
+    setPublishRules(null)
     fetchStaff()
   }
 
@@ -873,6 +953,74 @@ export default function StaffPage() {
                   })}
                 </div>
               </div>
+              {editing.id && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">CS3キャストID紐付け</label>
+                  {editing.cs3_cast_id ? (
+                    <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs">
+                      <span className="text-green-700 font-medium">紐付け済み: {editing.cs3_cast_id}</span>
+                      <button
+                        onClick={unlinkCs3Cast}
+                        disabled={cs3Linking}
+                        className="ml-auto text-red-500 hover:text-red-700 font-medium disabled:opacity-40"
+                      >
+                        解除
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2">
+                        自動マッチングで解決できなかった場合、CS3名で検索して手動で紐付けられます（同名重複・未一致などのケース向け）
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={cs3SearchQuery}
+                          onChange={e => setCs3SearchQuery(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') searchCs3Casts() }}
+                          placeholder="CS3上の源氏名で検索"
+                          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <button
+                          onClick={searchCs3Casts}
+                          disabled={cs3Searching || !cs3SearchQuery.trim()}
+                          className="px-3 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-lg text-xs font-medium disabled:opacity-40 transition-colors"
+                        >
+                          {cs3Searching ? '検索中...' : '検索'}
+                        </button>
+                      </div>
+                      {cs3LinkError && (
+                        <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">{cs3LinkError}</p>
+                      )}
+                      {cs3SearchResults.length > 0 && (
+                        <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-40 overflow-y-auto">
+                          {cs3SearchResults.map(c => (
+                            <div key={c.cs3_cast_id} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-blue-50">
+                              <span className="font-medium text-gray-700">{c.cast_name}</span>
+                              <span className="text-gray-400">ID:{c.cs3_cast_id}</span>
+                              <span className="text-gray-400">
+                                {c.shopIds.map(sid => CS3_SHOP_ID_TO_AREA[sid] ?? sid).join('/')}
+                              </span>
+                              <button
+                                onClick={() => linkCs3Cast(c.cs3_cast_id, c.cast_name)}
+                                disabled={cs3Linking}
+                                className="ml-auto px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium disabled:opacity-40 transition-colors"
+                              >
+                                紐付ける
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {!cs3Searching && cs3SearchQuery.trim() && cs3SearchResults.length === 0 && (
+                        <p className="text-xs text-gray-400">
+                          該当なし（CS3に未登録、または表記ゆれの可能性。1時間ごとのCS3同期後に反映されます）
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               {editing.id && (
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">📧 写メ日記転送先</label>
