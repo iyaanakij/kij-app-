@@ -44,6 +44,12 @@ const CS3_SHOP_ID_TO_AREA: Record<string, string> = {
   '111704': '錦糸町',
 }
 
+type MergeCandidate = {
+  id: number
+  name: string
+  store_ids: number[]
+}
+
 interface DeliveryTarget {
   id: string
   staff_id: number
@@ -86,6 +92,11 @@ export default function StaffPage() {
   const [cs3Searching, setCs3Searching] = useState(false)
   const [cs3Linking, setCs3Linking] = useState(false)
   const [cs3LinkError, setCs3LinkError] = useState<string | null>(null)
+  const [mergeSearchQuery, setMergeSearchQuery] = useState('')
+  const [mergeSearchResults, setMergeSearchResults] = useState<MergeCandidate[]>([])
+  const [mergeSearching, setMergeSearching] = useState(false)
+  const [mergeSaving, setMergeSaving] = useState(false)
+  const [mergeError, setMergeError] = useState<string | null>(null)
   const [deliveryTargets, setDeliveryTargets] = useState<DeliveryTarget[]>([])
   const [newTargetMediaName, setNewTargetMediaName] = useState('')
   const [newTargetDestination, setNewTargetDestination] = useState('')
@@ -207,6 +218,9 @@ export default function StaffPage() {
     setCs3SearchQuery('')
     setCs3SearchResults([])
     setCs3LinkError(null)
+    setMergeSearchQuery('')
+    setMergeSearchResults([])
+    setMergeError(null)
     setModalOpen(true)
   }
 
@@ -315,6 +329,44 @@ export default function StaffPage() {
     if (error) { setCs3LinkError(`解除失敗: ${error.message}`); return }
     setEditing(p => ({ ...p, cs3_cast_id: undefined }))
     setPublishRules(null)
+    fetchStaff()
+  }
+
+  // 重複staff統合: 同一人物が別々にオンボーディング等で2件のstaffとして作成されてしまった場合に1件へまとめる
+  async function searchMergeCandidates() {
+    const q = mergeSearchQuery.trim()
+    if (!q) { setMergeSearchResults([]); return }
+    setMergeSearching(true)
+    setMergeError(null)
+    const res = await fetch(`/api/admin/staff/search?q=${encodeURIComponent(q)}`)
+    const data = await res.json().catch(() => [])
+    setMergeSearching(false)
+    setMergeSearchResults((data as MergeCandidate[]).filter(c => c.id !== editing.id))
+  }
+
+  async function mergeStaff(sourceId: number, sourceName: string) {
+    if (!editing.id) return
+    if (!confirm(`「${sourceName}」(id=${sourceId}) を現在編集中の「${editing.name}」に統合します。\n統合元のシフト・予約・写メ日記等はすべて統合先へ移り、統合元staffは削除されます。元に戻せません。よろしいですか？`)) return
+    setMergeSaving(true)
+    setMergeError(null)
+    const res = await fetch('/api/admin/staff/merge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_id: sourceId, target_id: editing.id }),
+    })
+    const data = await res.json().catch(() => ({}))
+    setMergeSaving(false)
+    if (!res.ok) { setMergeError(data.error ?? '統合に失敗しました'); return }
+    setMergeSearchQuery('')
+    setMergeSearchResults([])
+    alert('統合が完了しました')
+    const [{ data: fresh }, { data: freshStores }] = await Promise.all([
+      supabase.from('staff').select('*').eq('id', editing.id).single(),
+      supabase.from('staff_stores').select('store_id').eq('staff_id', editing.id),
+    ])
+    if (fresh) {
+      await openEdit({ ...(fresh as StaffWithStores), storeIds: (freshStores ?? []).map(s => s.store_id) })
+    }
     fetchStaff()
   }
 
@@ -1017,6 +1069,52 @@ export default function StaffPage() {
                           該当なし（CS3に未登録、または表記ゆれの可能性。1時間ごとのCS3同期後に反映されます）
                         </p>
                       )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {editing.id && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wide">重複キャストの統合</label>
+                  <p className="text-xs text-gray-400 bg-gray-50 rounded-lg px-3 py-2 mb-2">
+                    同一人物が別々に登録されてしまった場合、検索して選んだキャストを現在編集中の「{editing.name}」へ統合します（シフト・予約・写メ日記等をすべて移した上で統合元を削除）
+                  </p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={mergeSearchQuery}
+                      onChange={e => setMergeSearchQuery(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') searchMergeCandidates() }}
+                      placeholder="統合元にするキャスト名で検索"
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      onClick={searchMergeCandidates}
+                      disabled={mergeSearching || !mergeSearchQuery.trim()}
+                      className="px-3 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-lg text-xs font-medium disabled:opacity-40 transition-colors"
+                    >
+                      {mergeSearching ? '検索中...' : '検索'}
+                    </button>
+                  </div>
+                  {mergeError && (
+                    <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5 mt-2 whitespace-pre-wrap">{mergeError}</p>
+                  )}
+                  {mergeSearchResults.length > 0 && (
+                    <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-40 overflow-y-auto mt-2">
+                      {mergeSearchResults.map(c => (
+                        <div key={c.id} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-blue-50">
+                          <span className="font-medium text-gray-700">{c.name}</span>
+                          <span className="text-gray-400">id:{c.id}</span>
+                          <span className="text-gray-400">{c.store_ids.length}店舗</span>
+                          <button
+                            onClick={() => mergeStaff(c.id, c.name)}
+                            disabled={mergeSaving}
+                            className="ml-auto px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium disabled:opacity-40 transition-colors"
+                          >
+                            この人をこちらへ統合
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
