@@ -56,20 +56,21 @@ const SITE_LABELS: Record<string, string> = {
   mka_kinshicho: '快楽M性感倶楽部 錦糸町',
 }
 
-// CP4フリーテキスト欄は10分単位での表示が慣例のため、入力もそれに揃える
+// CP4フリーテキスト欄は10分単位での表示が慣例のため、入力もそれに揃える。
+// ネイティブ<input type="time">はstep指定があってもブラウザによっては1分単位の直接入力を許すため、
+// プルダウン選択（時×10分刻みの分）にして確実に10分単位へ固定する。
+const FREETEXT_HOUR_OPTIONS = Array.from({ length: 30 }, (_, i) => i) // 0〜29時（CS3の24〜29時=翌0〜5時表記に合わせる）
+const FREETEXT_MINUTE_OPTIONS = [0, 10, 20, 30, 40, 50]
+
+function formatFreetextHourOption(h: number): string {
+  return h >= 24 ? `翌${String(h - 24).padStart(2, '0')}時` : `${String(h).padStart(2, '0')}時`
+}
+
 function roundUpToTenMinutes(date: Date): string {
   const totalMin = Math.ceil((date.getHours() * 60 + date.getMinutes()) / 10) * 10
   const h = Math.floor(totalMin / 60) % 24
   const m = totalMin % 60
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-}
-function roundToTenMinutes(hhmm: string): string {
-  const [h, m] = hhmm.split(':').map(Number)
-  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm
-  const totalMin = h * 60 + Math.round(m / 10) * 10
-  const rh = Math.floor(totalMin / 60) % 24
-  const rm = totalMin % 60
-  return `${String(rh).padStart(2, '0')}:${String(rm).padStart(2, '0')}`
 }
 
 interface FreetextTarget { site_id: string; cp4_gid: string | null }
@@ -702,13 +703,29 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">次回受付時刻（10分単位）</label>
-                  <input
-                    type="time"
-                    step={600}
-                    value={freetextValue}
-                    onChange={e => setFreetextValue(roundToTenMinutes(e.target.value))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  {(() => {
+                    const [hStr, mStr] = freetextValue.split(':')
+                    const hVal = Number(hStr) || 0
+                    const mVal = Number(mStr) || 0
+                    return (
+                      <div className="flex gap-2">
+                        <select
+                          value={hVal}
+                          onChange={e => setFreetextValue(`${e.target.value.padStart(2, '0')}:${String(mVal).padStart(2, '0')}`)}
+                          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          {FREETEXT_HOUR_OPTIONS.map(h => <option key={h} value={h}>{formatFreetextHourOption(h)}</option>)}
+                        </select>
+                        <select
+                          value={mVal}
+                          onChange={e => setFreetextValue(`${String(hVal).padStart(2, '0')}:${e.target.value.padStart(2, '0')}`)}
+                          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          {FREETEXT_MINUTE_OPTIONS.map(m => <option key={m} value={m}>{String(m).padStart(2, '0')}分</option>)}
+                        </select>
+                      </div>
+                    )
+                  })()}
                   <p className="text-xs text-gray-400 mt-1">実時刻がこの時刻に追いつくまでは自動更新に上書きされません。</p>
                 </div>
 
