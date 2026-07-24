@@ -55,6 +55,22 @@ const SITE_LABELS: Record<string, string> = {
   mka_kinshicho: '快楽M性感倶楽部 錦糸町',
 }
 
+// CP4フリーテキスト欄は10分単位での表示が慣例のため、入力もそれに揃える
+function roundUpToTenMinutes(date: Date): string {
+  const totalMin = Math.ceil((date.getHours() * 60 + date.getMinutes()) / 10) * 10
+  const h = Math.floor(totalMin / 60) % 24
+  const m = totalMin % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+function roundToTenMinutes(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm
+  const totalMin = h * 60 + Math.round(m / 10) * 10
+  const rh = Math.floor(totalMin / 60) % 24
+  const rm = totalMin % 60
+  return `${String(rh).padStart(2, '0')}:${String(rm).padStart(2, '0')}`
+}
+
 interface FreetextTarget { site_id: string; cp4_gid: string | null }
 interface FreetextJob {
   id: number
@@ -153,8 +169,7 @@ export default function OperationsPage() {
     setFreetextError(null)
     setFreetextJob(null)
     setFreetextTargets([])
-    const now = new Date()
-    setFreetextValue(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`)
+    setFreetextValue(roundUpToTenMinutes(new Date()))
     setFreetextLoading(true)
     await loadFreetextState(staffId)
     setFreetextLoading(false)
@@ -423,13 +438,13 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
               {hiddenCount}名を非表示中 — 全表示
             </button>
           )}
-          <div className={`${hiddenCount > 0 ? '' : 'ml-auto'} flex gap-4 text-xs flex-wrap`}>
-            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-blue-200 border border-blue-300 inline-block"></span><span className="text-gray-600">空き</span></span>
-            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-red-400 border border-red-500 inline-block"></span><span className="text-gray-600">対応中</span></span>
-            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-yellow-200 border border-yellow-300 inline-block"></span><span className="text-gray-600">メモ</span></span>
-            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-gray-100 inline-block border border-gray-200"></span><span className="text-gray-600">範囲外</span></span>
-            {isToday && <span className="flex items-center gap-1.5"><span className="w-0.5 h-4 bg-red-500 inline-block"></span><span className="text-gray-600">現在時刻</span></span>}
-            <span className="text-gray-400 italic">ドラッグで範囲選択 → メモ追加</span>
+          <div className={`${hiddenCount > 0 ? '' : 'ml-auto'} flex items-center gap-4 text-xs flex-wrap bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5`}>
+            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-blue-200 border border-blue-300 inline-block"></span><span className="text-gray-700 font-medium">空き</span></span>
+            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-red-400 border border-red-500 inline-block"></span><span className="text-gray-700 font-medium">対応中</span></span>
+            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-yellow-200 border border-yellow-300 inline-block"></span><span className="text-gray-700 font-medium">メモ</span></span>
+            <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-gray-100 inline-block border border-gray-200"></span><span className="text-gray-700 font-medium">範囲外</span></span>
+            {isToday && <span className="flex items-center gap-1.5"><span className="w-0.5 h-4 bg-red-500 inline-block"></span><span className="text-gray-700 font-medium">現在時刻</span></span>}
+            <span className="text-gray-400 italic border-l border-gray-300 pl-3">ドラッグで範囲選択 → メモ追加</span>
           </div>
         </div>
       </div>
@@ -474,34 +489,34 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                     <tr><td colSpan={TOTAL_SLOTS+1} className="text-center py-10 text-gray-400">{staffRows.length > 0 ? '全員非表示中' : 'シフトデータなし'}</td></tr>
                   )}
                   {visibleRows.map(({ staff, shift }) => (
-                    <tr key={staff.id} className="border-b border-gray-100">
-                      <td className="sticky left-0 z-10 bg-white border-r border-gray-200 py-1.5" style={{ width: STAFF_COL_WIDTH, minWidth: STAFF_COL_WIDTH, paddingLeft:8, paddingRight:8 }}>
+                    <tr key={staff.id} className="border-b border-gray-100 hover:bg-blue-50/40 group">
+                      <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50/40 border-r border-gray-200 py-1.5 transition-colors" style={{ width: STAFF_COL_WIDTH, minWidth: STAFF_COL_WIDTH, paddingLeft:8, paddingRight:8 }}>
                         <div className="flex items-center justify-between gap-1">
-                          <div className="font-semibold text-gray-800 truncate" style={{ maxWidth: STAFF_COL_WIDTH-48 }}>{staff.name}</div>
-                          <div className="flex gap-0.5 flex-shrink-0">
+                          <div className="font-semibold text-gray-800 truncate" style={{ maxWidth: STAFF_COL_WIDTH-80 }}>{staff.name}</div>
+                          <div className="flex gap-1 flex-shrink-0">
                             <button
                               onClick={e => { e.stopPropagation(); openFreetextModal(staff.id, staff.name) }}
-                              className="text-gray-300 hover:text-blue-600 transition-colors"
+                              className="w-5 h-5 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
                               title="CP4フリーテキスト一括反映"
-                              style={{ fontSize: 12, lineHeight: 1 }}
+                              style={{ fontSize: 11 }}
                             >⏱</button>
                             <button
                               onClick={e => { e.stopPropagation(); toggleHidden(staff.id) }}
-                              className="text-gray-300 hover:text-gray-600 transition-colors"
+                              className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-300 hover:text-gray-700 transition-colors"
                               title="非表示"
-                              style={{ fontSize: 12, lineHeight: 1 }}
+                              style={{ fontSize: 11 }}
                             >✕</button>
                             <button
                               onClick={e => { e.stopPropagation(); deleteShift(staff.id) }}
-                              className="text-gray-300 hover:text-red-500 transition-colors"
+                              className="w-5 h-5 flex items-center justify-center rounded-full bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
                               title="シフト削除"
-                              style={{ fontSize: 12, lineHeight: 1 }}
+                              style={{ fontSize: 11 }}
                             >🗑</button>
                           </div>
                         </div>
                         {shift
-                          ? <div className="text-gray-500" style={{ fontSize:10 }}>{formatShiftTime(shift.start_time)} 〜 {formatShiftTime(shift.end_time)}</div>
-                          : <div className="text-gray-400" style={{ fontSize:10 }}>シフトなし</div>
+                          ? <div className="text-gray-600 font-medium" style={{ fontSize:11 }}>{formatShiftTime(shift.start_time)} 〜 {formatShiftTime(shift.end_time)}</div>
+                          : <div className="text-gray-400" style={{ fontSize:11 }}>シフトなし</div>
                         }
                       </td>
                       {slots.map(slotIdx => {
@@ -671,12 +686,13 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">次回受付時刻</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">次回受付時刻（10分単位）</label>
                   <input
                     type="time"
+                    step={600}
                     value={freetextValue}
-                    onChange={e => setFreetextValue(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onChange={e => setFreetextValue(roundToTenMinutes(e.target.value))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="text-xs text-gray-400 mt-1">実時刻がこの時刻に追いつくまでは自動更新に上書きされません。</p>
                 </div>
