@@ -773,7 +773,6 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                           </div>
                         )
                       })()}
-                      <p className="text-xs text-gray-400 mt-1">実時刻がこの時刻に追いつくまでは自動更新に上書きされません。Venreyの終了時刻は出勤シフト終了時刻までしか選択できません。</p>
                     </>
                   )}
                 </div>
