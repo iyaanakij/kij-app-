@@ -38,6 +38,8 @@ const NAME_JA: Record<string, string> = {
   'log:cp4-apply':         'ログ：HP反映',
   'log:new-cast-check':    'ログ：新規キャスト確認',
   'log:retention-cleanup': 'ログ：ファイル整理',
+  'log:manual-freetext':        'ログ：CP4フリーテキスト手動反映',
+  'log:manual-freetext-venrey': 'ログ：Venreyフリーテキスト手動反映',
   'cp4-lock-meta':         'HP反映処理の実行状態',
   'playwright-residue':    'ブラウザプロセス残留',
   'memory':                'VPSメモリ',
@@ -106,6 +108,16 @@ const CHECK_GUIDE: Record<string, CheckGuideEntry> = {
   'log:retention-cleanup': {
     category: 'ENGINEER_REQUIRED',
     summary: 'ファイル自動整理でエラーが発生しています',
+    operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
+  },
+  'log:manual-freetext': {
+    category: 'ENGINEER_REQUIRED',
+    summary: '/operationsのCP4フリーテキスト一括反映でエラーが発生しています',
+    operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
+  },
+  'log:manual-freetext-venrey': {
+    category: 'ENGINEER_REQUIRED',
+    summary: '/operationsのVenreyフリーテキスト一括反映でエラーが発生しています',
     operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
   },
   'cp4-lock-meta': {
