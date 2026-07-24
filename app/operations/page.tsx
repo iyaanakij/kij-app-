@@ -659,6 +659,8 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                               }}
                             >
                               {(startText || endText) && (
+                                // flex-shrink-0必須: overflow-hiddenを付けたflex子要素はブラウザ側の自動最小サイズ計算が0扱いになり、
+                                // justify-betweenの下でこの10px幅td内に押し潰されてしまうため
                                 <div className={`flex items-center h-full pointer-events-none ${startText && endText ? 'justify-between' : startText ? 'justify-start' : 'justify-end'}`} style={{ fontSize: 11, paddingLeft: startText ? 4 : 0, paddingRight: endText ? 4 : 0, overflow: 'visible', position: 'relative', zIndex: 5 }}>
                                   {startText && (
                                     <span
