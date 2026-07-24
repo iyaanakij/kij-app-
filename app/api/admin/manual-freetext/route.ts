@@ -94,12 +94,16 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ staff, targets, venrey_targets: venreyTargets, latest_job: latestJob ?? null })
 }
 
+// CP4側77番スクリプトの「終了60分以内→ご予約満了」と同じ文言。この値ならVenrey側は接客中ではなく受付終了にする
+const GOYO_TEXT = 'ご予約満了'
+
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { staff_id, hhmm } = body as { staff_id?: number; hhmm?: string }
-  if (!staff_id || !hhmm) return NextResponse.json({ error: 'staff_id / hhmm は必須です' }, { status: 400 })
+  const { staff_id, hhmm, fully_booked } = body as { staff_id?: number; hhmm?: string; fully_booked?: boolean }
+  if (!staff_id) return NextResponse.json({ error: 'staff_id は必須です' }, { status: 400 })
+  if (!fully_booked && !hhmm) return NextResponse.json({ error: 'hhmm は必須です' }, { status: 400 })
 
-  const freetextValue = formatFreetextValue(hhmm)
+  const freetextValue = fully_booked ? GOYO_TEXT : formatFreetextValue(hhmm!)
   if (!freetextValue) return NextResponse.json({ error: '時刻の形式が不正です' }, { status: 400 })
 
   const { data: staff, error: staffErr } = await adminSupabase

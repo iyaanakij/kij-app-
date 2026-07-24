@@ -151,6 +151,7 @@ export default function OperationsPage() {
   const [freetextTargets, setFreetextTargets] = useState<FreetextTarget[]>([])
   const [freetextVenreyTargets, setFreetextVenreyTargets] = useState<VenreyFreetextTarget[]>([])
   const [freetextValue, setFreetextValue] = useState('')
+  const [freetextFullyBooked, setFreetextFullyBooked] = useState(false)
   const [freetextJob, setFreetextJob] = useState<FreetextJob | null>(null)
   const [freetextLoading, setFreetextLoading] = useState(false)
   const [freetextSubmitting, setFreetextSubmitting] = useState(false)
@@ -179,6 +180,7 @@ export default function OperationsPage() {
     setFreetextTargets([])
     setFreetextVenreyTargets([])
     setFreetextValue(roundUpToTenMinutes(new Date()))
+    setFreetextFullyBooked(false)
     setFreetextLoading(true)
     await loadFreetextState(staffId)
     setFreetextLoading(false)
@@ -196,7 +198,9 @@ export default function OperationsPage() {
     const res = await fetch('/api/admin/manual-freetext', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ staff_id: freetextModal.staffId, hhmm: freetextValue }),
+      body: JSON.stringify(freetextFullyBooked
+        ? { staff_id: freetextModal.staffId, fully_booked: true }
+        : { staff_id: freetextModal.staffId, hhmm: freetextValue }),
     })
     const json = await res.json()
     setFreetextSubmitting(false)
@@ -734,31 +738,50 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">次回受付時刻（10分単位）</label>
-                  {(() => {
-                    const [hStr, mStr] = freetextValue.split(':')
-                    const hVal = Number(hStr) || 0
-                    const mVal = Number(mStr) || 0
-                    return (
-                      <div className="flex gap-2">
-                        <select
-                          value={hVal}
-                          onChange={e => setFreetextValue(`${e.target.value.padStart(2, '0')}:${String(mVal).padStart(2, '0')}`)}
-                          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          {FREETEXT_HOUR_OPTIONS.map(h => <option key={h} value={h}>{formatFreetextHourOption(h)}</option>)}
-                        </select>
-                        <select
-                          value={mVal}
-                          onChange={e => setFreetextValue(`${String(hVal).padStart(2, '0')}:${e.target.value.padStart(2, '0')}`)}
-                          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          {FREETEXT_MINUTE_OPTIONS.map(m => <option key={m} value={m}>{String(m).padStart(2, '0')}分</option>)}
-                        </select>
-                      </div>
-                    )
-                  })()}
-                  <p className="text-xs text-gray-400 mt-1">実時刻がこの時刻に追いつくまでは自動更新に上書きされません。</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700">次回受付時刻（10分単位）</label>
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={freetextFullyBooked}
+                        onChange={e => setFreetextFullyBooked(e.target.checked)}
+                        className="rounded"
+                      />
+                      ご予約満了にする
+                    </label>
+                  </div>
+                  {freetextFullyBooked ? (
+                    <div className="text-xs text-gray-600 bg-gray-100 rounded-lg px-3 py-2">
+                      CP4は「ご予約満了」表示、Venreyは「受付終了」ステータスに変更します。
+                    </div>
+                  ) : (
+                    <>
+                      {(() => {
+                        const [hStr, mStr] = freetextValue.split(':')
+                        const hVal = Number(hStr) || 0
+                        const mVal = Number(mStr) || 0
+                        return (
+                          <div className="flex gap-2">
+                            <select
+                              value={hVal}
+                              onChange={e => setFreetextValue(`${e.target.value.padStart(2, '0')}:${String(mVal).padStart(2, '0')}`)}
+                              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              {FREETEXT_HOUR_OPTIONS.map(h => <option key={h} value={h}>{formatFreetextHourOption(h)}</option>)}
+                            </select>
+                            <select
+                              value={mVal}
+                              onChange={e => setFreetextValue(`${String(hVal).padStart(2, '0')}:${e.target.value.padStart(2, '0')}`)}
+                              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              {FREETEXT_MINUTE_OPTIONS.map(m => <option key={m} value={m}>{String(m).padStart(2, '0')}分</option>)}
+                            </select>
+                          </div>
+                        )
+                      })()}
+                      <p className="text-xs text-gray-400 mt-1">実時刻がこの時刻に追いつくまでは自動更新に上書きされません。Venreyの終了時刻は出勤シフト終了時刻までしか選択できません。</p>
+                    </>
+                  )}
                 </div>
 
                 {freetextError && <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{freetextError}</div>}
