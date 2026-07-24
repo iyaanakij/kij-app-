@@ -8,7 +8,8 @@ const TIME_START = 10
 const TIME_END = 30
 const SLOT_MINUTES = 10
 const TOTAL_SLOTS = ((TIME_END - TIME_START) * 60) / SLOT_MINUTES
-const CELL_WIDTH = 10
+const MIN_CELL_WIDTH = 10
+const STAFF_COL_WIDTH = 160
 
 function getSlotIndex(decimalTime: number): number {
   return (decimalTime - TIME_START) / (SLOT_MINUTES / 60)
@@ -205,6 +206,22 @@ export default function OperationsPage() {
 const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null)
   const [currentTimeLabel, setCurrentTimeLabel] = useState<string>('')
   const containerRef = useRef<HTMLDivElement>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  // PC版で画面幅いっぱいまでセルを広げる（最小幅はMIN_CELL_WIDTHで下限）
+  const [cellWidth, setCellWidth] = useState(MIN_CELL_WIDTH)
+  useEffect(() => {
+    const el = cardRef.current
+    if (!el) return
+    const update = () => {
+      const available = el.clientWidth - STAFF_COL_WIDTH
+      setCellWidth(Math.max(MIN_CELL_WIDTH, Math.floor(available / TOTAL_SLOTS)))
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   useEffect(() => {
     const update = () => {
@@ -323,8 +340,8 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
   const currentTimeSlotOffset = useMemo(() => {
     if (!isToday || currentTimeDecimal === null) return null
     if (currentTimeDecimal < TIME_START || currentTimeDecimal >= TIME_END) return null
-    return (currentTimeDecimal - TIME_START) * (60 / SLOT_MINUTES) * CELL_WIDTH
-  }, [isToday, currentTimeDecimal])
+    return (currentTimeDecimal - TIME_START) * (60 / SLOT_MINUTES) * cellWidth
+  }, [isToday, currentTimeDecimal, cellWidth])
 
   useEffect(() => {
     if (!isToday || currentTimeSlotOffset === null) return
@@ -332,8 +349,6 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
     if (!el) return
     el.scrollLeft = Math.max(0, STAFF_COL_WIDTH + currentTimeSlotOffset - el.clientWidth / 2)
   }, [isToday, currentTimeSlotOffset, loading])
-
-  const STAFF_COL_WIDTH = 160
 
   const openAnnotationModal = () => {
     if (drag) {
@@ -407,7 +422,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
   }
 
   return (
-    <div className="p-3">
+    <div className="p-3" style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)' }}>
       {/* Controls */}
       <div className="bg-white rounded-xl shadow-md border border-gray-100 p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -452,9 +467,9 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
       {loading ? (
         <div className="flex items-center justify-center py-20"><div className="text-gray-500 animate-pulse">読み込み中...</div></div>
       ) : (
-        <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
+        <div ref={cardRef} className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto" ref={containerRef}>
-            <div style={{ position: 'relative', minWidth: `${STAFF_COL_WIDTH + TOTAL_SLOTS * CELL_WIDTH}px` }}>
+            <div style={{ position: 'relative', minWidth: `${STAFF_COL_WIDTH + TOTAL_SLOTS * cellWidth}px` }}>
               {isToday && currentTimeSlotOffset !== null && (
                 <div style={{ position:'absolute', top:0, bottom:0, left: STAFF_COL_WIDTH + currentTimeSlotOffset, width:2, backgroundColor:'#ef4444', zIndex:20, pointerEvents:'none' }}>
                   <span style={{ position:'absolute', top:2, left:3, fontSize:9, color:'#ef4444', fontWeight:'bold', whiteSpace:'nowrap', background:'white', padding:'0 2px', borderRadius:2 }}>{currentTimeLabel}</span>
@@ -463,7 +478,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
 
               <table
                 className="text-xs border-collapse select-none"
-                style={{ width: STAFF_COL_WIDTH + TOTAL_SLOTS * CELL_WIDTH, tableLayout:'fixed' }}
+                style={{ width: STAFF_COL_WIDTH + TOTAL_SLOTS * cellWidth, tableLayout:'fixed' }}
                 onMouseLeave={() => {
                   // ドラッグ中（dragStartRef がセット済み）のみキャンセル
                   if (dragStartRef.current && !dragMovedRef.current) {
@@ -478,7 +493,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                       スタッフ / シフト
                     </th>
                     {slots.map(i => (
-                      <th key={i} className={`px-0 py-1 text-center font-normal ${isHourlyBoundary(i) ? 'border-l-2 border-gray-500' : 'border-l border-gray-700'}`} style={{ width: CELL_WIDTH, minWidth: CELL_WIDTH }}>
+                      <th key={i} className={`px-0 py-1 text-center font-normal ${isHourlyBoundary(i) ? 'border-l-2 border-gray-500' : 'border-l border-gray-700'}`} style={{ width: cellWidth, minWidth: cellWidth }}>
                         {shouldShowLabel(i) ? <span className="text-gray-300 block whitespace-nowrap" style={{ fontSize:8 }}>{slotLabel(i)}</span> : null}
                       </th>
                     ))}
@@ -564,7 +579,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                             key={slotIdx}
                             className={`p-0 ${bgClass} ${borderClass} transition-colors cursor-crosshair`}
                             title={title}
-                            style={{ width: CELL_WIDTH, minWidth: CELL_WIDTH, height: 28 }}
+                            style={{ width: cellWidth, minWidth: cellWidth, height: 28 }}
                             onMouseDown={e => {
                               e.preventDefault()
                               dragStartRef.current = { staffId: staff.id, slot: slotIdx }
