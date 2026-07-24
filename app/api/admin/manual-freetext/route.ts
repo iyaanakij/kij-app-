@@ -35,6 +35,35 @@ async function fetchTargets(cs3CastId: string) {
   return [...bySiteId.values()]
 }
 
+// site_id → Venreyアカウント名（93-manual-freetext-venrey-worker.js と同じ体系）
+const SITE_TO_VENREY_ACCOUNT_NAME: Record<string, string> = {
+  iya_narita: '癒したくて 成田',
+  iya_chiba: '癒したくて 成田',
+  iya_funabashi: '癒したくて 錦糸町',
+  iya_kinshicho: '癒したくて 錦糸町',
+  mka_narita: '快楽M性感倶楽部 成田',
+  mka_chiba: '快楽M性感倶楽部 成田',
+  mka_funabashi: '快楽M性感倶楽部 錦糸町',
+  mka_kinshicho: '快楽M性感倶楽部 錦糸町',
+}
+
+async function fetchVenreyTargets(cs3CastId: string) {
+  const { data, error } = await adminSupabase
+    .from('publish_rules')
+    .select('site_id, venrey_cast_id')
+    .eq('cs3_cast_id', cs3CastId)
+    .eq('enabled', true)
+    .not('venrey_cast_id', 'is', null)
+  if (error) throw new Error(error.message)
+  const byAccount = new Map<string, string>()
+  for (const row of data ?? []) {
+    const accountName = SITE_TO_VENREY_ACCOUNT_NAME[row.site_id]
+    if (!accountName || byAccount.has(accountName)) continue
+    byAccount.set(accountName, row.venrey_cast_id!)
+  }
+  return [...byAccount.entries()].map(([accountName, venreyCastId]) => ({ accountName, venreyCastId }))
+}
+
 export async function GET(request: NextRequest) {
   const staffId = request.nextUrl.searchParams.get('staff_id')
   if (!staffId) return NextResponse.json({ error: 'staff_id is required' }, { status: 400 })
@@ -46,20 +75,23 @@ export async function GET(request: NextRequest) {
     .single()
   if (staffErr || !staff) return NextResponse.json({ error: 'スタッフが見つかりません' }, { status: 404 })
   if (!staff.cs3_cast_id) {
-    return NextResponse.json({ staff, targets: [], latest_job: null, error: 'CS3未連携のためCP4配信対象を特定できません' })
+    return NextResponse.json({ staff, targets: [], venrey_targets: [], latest_job: null, error: 'CS3未連携のため配信対象を特定できません' })
   }
 
-  const targets = await fetchTargets(staff.cs3_cast_id).catch(e => { throw e })
+  const [targets, venreyTargets] = await Promise.all([
+    fetchTargets(staff.cs3_cast_id),
+    fetchVenreyTargets(staff.cs3_cast_id),
+  ])
 
   const { data: latestJob } = await adminSupabase
     .from('manual_freetext_jobs')
-    .select('id, freetext_value, status, result, error_message, created_at, updated_at')
+    .select('id, freetext_value, status, result, error_message, venrey_status, venrey_result, venrey_error_message, created_at, updated_at')
     .eq('cs3_cast_id', staff.cs3_cast_id)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
-  return NextResponse.json({ staff, targets, latest_job: latestJob ?? null })
+  return NextResponse.json({ staff, targets, venrey_targets: venreyTargets, latest_job: latestJob ?? null })
 }
 
 export async function POST(request: NextRequest) {
@@ -78,18 +110,21 @@ export async function POST(request: NextRequest) {
   if (staffErr || !staff) return NextResponse.json({ error: 'スタッフが見つかりません' }, { status: 404 })
   if (!staff.cs3_cast_id) return NextResponse.json({ error: 'CS3未連携のためCP4配信対象を特定できません' }, { status: 400 })
 
-  const targets = await fetchTargets(staff.cs3_cast_id)
-  if (targets.length === 0) {
-    return NextResponse.json({ error: 'CP4配信が有効な店舗がありません（publish_rules未設定）' }, { status: 400 })
+  const [targets, venreyTargets] = await Promise.all([
+    fetchTargets(staff.cs3_cast_id),
+    fetchVenreyTargets(staff.cs3_cast_id),
+  ])
+  if (targets.length === 0 && venreyTargets.length === 0) {
+    return NextResponse.json({ error: 'CP4/Venreyとも配信が有効な店舗がありません（publish_rules未設定）' }, { status: 400 })
   }
 
-  // 直近1分以内に同キャストの pending/running ジョブがあればクールダウン（連打防止）
+  // 直近1分以内に同キャストの pending/running ジョブ（CP4 or Venrey）があればクールダウン（連打防止）
   const since = new Date(Date.now() - 60 * 1000).toISOString()
   const { data: existing } = await adminSupabase
     .from('manual_freetext_jobs')
     .select('id')
     .eq('cs3_cast_id', staff.cs3_cast_id)
-    .in('status', ['pending', 'running'])
+    .or('status.in.(pending,running),venrey_status.in.(pending,running)')
     .gte('created_at', since)
     .limit(1)
   if (existing && existing.length > 0) {
@@ -110,5 +145,5 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true, job_id: data.id, freetext_value: freetextValue, target_count: targets.length })
+  return NextResponse.json({ ok: true, job_id: data.id, freetext_value: freetextValue, target_count: targets.length, venrey_target_count: venreyTargets.length })
 }

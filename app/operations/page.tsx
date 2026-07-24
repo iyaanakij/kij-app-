@@ -74,12 +74,16 @@ function roundUpToTenMinutes(date: Date): string {
 }
 
 interface FreetextTarget { site_id: string; cp4_gid: string | null }
+interface VenreyFreetextTarget { accountName: string; venreyCastId: string }
 interface FreetextJob {
   id: number
   freetext_value: string
   status: 'pending' | 'running' | 'done' | 'error'
   result: { by_site?: Record<string, { ok: boolean; reason?: string }> } | null
   error_message: string | null
+  venrey_status: 'pending' | 'running' | 'done' | 'error' | 'skipped'
+  venrey_result: { by_account?: Record<string, { ok: boolean; reason?: string }> } | null
+  venrey_error_message: string | null
   created_at: string
   updated_at: string
 }
@@ -142,9 +146,10 @@ export default function OperationsPage() {
   }>({ staff_id: null, start_hhmm: '13:00', start_next: false, end_hhmm: '14:00', end_next: false, color: 'yellow', memo: '' })
   const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null)
 
-  // フリーテキスト一括反映モーダル（CP4）
+  // フリーテキスト一括反映モーダル（CP4 + Venrey）
   const [freetextModal, setFreetextModal] = useState<{ staffId: number; staffName: string } | null>(null)
   const [freetextTargets, setFreetextTargets] = useState<FreetextTarget[]>([])
+  const [freetextVenreyTargets, setFreetextVenreyTargets] = useState<VenreyFreetextTarget[]>([])
   const [freetextValue, setFreetextValue] = useState('')
   const [freetextJob, setFreetextJob] = useState<FreetextJob | null>(null)
   const [freetextLoading, setFreetextLoading] = useState(false)
@@ -161,6 +166,7 @@ export default function OperationsPage() {
     const json = await res.json()
     if (!res.ok) { setFreetextError(json.error ?? '取得に失敗しました'); return }
     setFreetextTargets(json.targets ?? [])
+    setFreetextVenreyTargets(json.venrey_targets ?? [])
     setFreetextJob(json.latest_job ?? null)
     if (json.error) setFreetextError(json.error)
     return json.latest_job as FreetextJob | null
@@ -171,6 +177,7 @@ export default function OperationsPage() {
     setFreetextError(null)
     setFreetextJob(null)
     setFreetextTargets([])
+    setFreetextVenreyTargets([])
     setFreetextValue(roundUpToTenMinutes(new Date()))
     setFreetextLoading(true)
     await loadFreetextState(staffId)
@@ -196,9 +203,10 @@ export default function OperationsPage() {
     if (!res.ok) { setFreetextError(json.error ?? '反映依頼に失敗しました'); return }
 
     stopFreetextPoll()
+    const isTerminal = (s: string) => s === 'done' || s === 'error' || s === 'skipped'
     freetextPollRef.current = setInterval(async () => {
       const job = await loadFreetextState(freetextModal.staffId)
-      if (job && (job.status === 'done' || job.status === 'error')) stopFreetextPoll()
+      if (job && isTerminal(job.status) && isTerminal(job.venrey_status)) stopFreetextPoll()
     }, 2000)
   }
 
@@ -689,14 +697,14 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
             <h2 className="text-lg font-bold text-gray-800 mb-1">フリーテキスト一括反映</h2>
-            <p className="text-sm text-gray-500 mb-4">{freetextModal.staffName} — CP4</p>
+            <p className="text-sm text-gray-500 mb-4">{freetextModal.staffName} — CP4 / Venrey</p>
 
             {freetextLoading ? (
               <div className="text-sm text-gray-400 py-4">読み込み中...</div>
             ) : (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">反映先（{freetextTargets.length}件）</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">CP4 反映先（{freetextTargets.length}件）</label>
                   {freetextTargets.length === 0 ? (
                     <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">CP4配信が有効な店舗がありません</div>
                   ) : (
@@ -704,6 +712,21 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                       {freetextTargets.map(t => (
                         <span key={t.site_id} className="px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-200">
                           {SITE_LABELS[t.site_id] ?? t.site_id}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Venrey 反映先（{freetextVenreyTargets.length}件）</label>
+                  {freetextVenreyTargets.length === 0 ? (
+                    <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">Venrey配信が有効なアカウントがありません</div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {freetextVenreyTargets.map(t => (
+                        <span key={t.accountName} className="px-2 py-0.5 rounded-full text-xs bg-purple-50 text-purple-700 border border-purple-200">
+                          {t.accountName}
                         </span>
                       ))}
                     </div>
@@ -741,28 +764,59 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                 {freetextError && <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{freetextError}</div>}
 
                 {freetextJob && (
-                  <div className="text-xs bg-gray-50 rounded-lg px-3 py-2 space-y-1">
+                  <div className="text-xs bg-gray-50 rounded-lg px-3 py-2 space-y-2">
                     <div className="flex items-center gap-2">
                       <span className="text-gray-500">直近の反映:</span>
                       <span className="font-mono">{freetextJob.freetext_value}</span>
-                      {freetextJob.status === 'pending' || freetextJob.status === 'running' ? (
-                        <span className="text-amber-600">処理中...</span>
-                      ) : freetextJob.status === 'done' ? (
-                        <span className="text-green-600">完了</span>
-                      ) : (
-                        <span className="text-red-600">エラー</span>
-                      )}
                     </div>
-                    {freetextJob.result?.by_site && (
-                      <div className="flex flex-wrap gap-1">
-                        {Object.entries(freetextJob.result.by_site).map(([siteId, r]) => (
-                          <span key={siteId} className={`px-1.5 py-0.5 rounded ${r.ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {SITE_LABELS[siteId] ?? siteId}{r.ok ? '' : `(${r.reason ?? 'NG'})`}
-                          </span>
-                        ))}
+
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500 w-12">CP4</span>
+                        {freetextJob.status === 'pending' || freetextJob.status === 'running' ? (
+                          <span className="text-amber-600">処理中...</span>
+                        ) : freetextJob.status === 'done' ? (
+                          <span className="text-green-600">完了</span>
+                        ) : (
+                          <span className="text-red-600">エラー</span>
+                        )}
                       </div>
-                    )}
-                    {freetextJob.error_message && <div className="text-red-600">{freetextJob.error_message}</div>}
+                      {freetextJob.result?.by_site && (
+                        <div className="flex flex-wrap gap-1">
+                          {Object.entries(freetextJob.result.by_site).map(([siteId, r]) => (
+                            <span key={siteId} className={`px-1.5 py-0.5 rounded ${r.ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {SITE_LABELS[siteId] ?? siteId}{r.ok ? '' : `(${r.reason ?? 'NG'})`}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {freetextJob.error_message && <div className="text-red-600">{freetextJob.error_message}</div>}
+                    </div>
+
+                    <div className="space-y-1 border-t border-gray-200 pt-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500 w-12">Venrey</span>
+                        {freetextJob.venrey_status === 'pending' || freetextJob.venrey_status === 'running' ? (
+                          <span className="text-amber-600">処理中...</span>
+                        ) : freetextJob.venrey_status === 'done' ? (
+                          <span className="text-green-600">完了</span>
+                        ) : freetextJob.venrey_status === 'skipped' ? (
+                          <span className="text-gray-400">対象なし</span>
+                        ) : (
+                          <span className="text-red-600">エラー</span>
+                        )}
+                      </div>
+                      {freetextJob.venrey_result?.by_account && (
+                        <div className="flex flex-wrap gap-1">
+                          {Object.entries(freetextJob.venrey_result.by_account).map(([accountName, r]) => (
+                            <span key={accountName} className={`px-1.5 py-0.5 rounded ${r.ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {accountName}{r.ok ? '' : `(${r.reason ?? 'NG'})`}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {freetextJob.venrey_error_message && <div className="text-red-600">{freetextJob.venrey_error_message}</div>}
+                    </div>
                   </div>
                 )}
               </div>
@@ -772,7 +826,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
               <button onClick={closeFreetextModal} className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">閉じる</button>
               <button
                 onClick={submitFreetext}
-                disabled={freetextSubmitting || freetextTargets.length === 0}
+                disabled={freetextSubmitting || (freetextTargets.length === 0 && freetextVenreyTargets.length === 0)}
                 className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
               >
                 {freetextSubmitting ? '送信中...' : '反映する'}
