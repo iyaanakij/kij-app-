@@ -503,6 +503,7 @@ export default function ShiftPage() {
 
   function openMobileSheet(staffId: number, day: number) {
     const shift = getShift(staffId, day)
+    if (shift?.notes === 'CS3同期') return // CS3自動同期のため手動編集不可（CS3Alice側で変更してください）
     let val = ''
     if (shift) val = shift.status === 'x' ? 'x' : displayShiftTime(shift)
     setEditValue(val)
@@ -511,6 +512,7 @@ export default function ShiftPage() {
 
   function startEdit(staffId: number, day: number) {
     const shift = getShift(staffId, day)
+    if (shift?.notes === 'CS3同期') return // CS3自動同期のため手動編集不可（CS3Alice側で変更してください）
     let val = ''
     if (shift) {
       val = shift.status === 'x' ? 'x' : displayShiftTime(shift)
@@ -531,6 +533,7 @@ export default function ShiftPage() {
   async function commitEdit(staffId: number, day: number, value: string) {
     const dateStr = formatDateStr(year, month, day)
     const existingShift = getShift(staffId, day)
+    if (existingShift?.notes === 'CS3同期') return // CS3自動同期のため手動編集不可（防御的ガード）
     const parsed = parseShiftValue(value)
     const storeId = existingShift?.store_id ?? resolveStoreId(staffId)
 
@@ -906,6 +909,7 @@ export default function ShiftPage() {
                         )
                       }
                       const shift = getShift(staff.id, d)
+                      const isCS3Locked = shift?.notes === 'CS3同期'
                       const wd = getWeekday(d)
                       const isSun = wd === 0
                       const isSat = wd === 6
@@ -956,9 +960,9 @@ export default function ShiftPage() {
                       return (
                         <td
                           key={d}
-                          title={shootingText || undefined}
+                          title={isCS3Locked ? 'CS3自動同期のため手動編集不可（CS3Alice側で変更してください）' : (shootingText || undefined)}
                           onClick={e => { e.stopPropagation(); isTouchDevice ? openMobileSheet(staff.id, d) : startEdit(staff.id, d) }}
-                          className={`group relative border-l border-gray-100 px-0.5 py-0 text-center cursor-pointer transition-colors overflow-visible ${isEditing ? 'bg-yellow-50 ring-2 ring-inset ring-yellow-400 z-10' : `${cellBg} ${textColor}`} ${today ? 'ring-1 ring-inset ring-blue-400' : ''}`}
+                          className={`group relative border-l border-gray-100 px-0.5 py-0 text-center transition-colors overflow-visible ${isCS3Locked ? 'cursor-not-allowed' : 'cursor-pointer'} ${isEditing ? 'bg-yellow-50 ring-2 ring-inset ring-yellow-400 z-10' : `${cellBg} ${textColor}`} ${today ? 'ring-1 ring-inset ring-blue-400' : ''}`}
                           style={{ minWidth: 52, height: 30 }}
                         >
                           {isEditing ? (
@@ -978,6 +982,9 @@ export default function ShiftPage() {
                           ) : (
                             <>
                               <span className="relative z-0 flex h-full items-center justify-center truncate text-center" style={{ fontSize: 10 }}>{cellText}</span>
+                              {isCS3Locked && (
+                                <span className="absolute top-0 right-0 z-0 opacity-0 group-hover:opacity-60 transition-opacity" style={{ fontSize: 8 }}>🔒</span>
+                              )}
                               {markerLabels && shift && (
                                 <span
                                   className="absolute bottom-0.5 right-0.5 z-0 max-w-[42px] truncate rounded bg-white/70 px-0.5 text-[8px] font-bold leading-3 text-gray-700"

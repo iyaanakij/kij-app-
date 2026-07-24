@@ -304,7 +304,8 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
     })
   }
 
-  const deleteShift = async (staffId: number) => {
+  const deleteShift = async (staffId: number, notes: string | null | undefined) => {
+    if (notes === 'CS3同期') return // CS3自動同期のため削除不可（防御的ガード。次回同期で復活し混乱を招くため）
     if (!confirm('このシフトをDBから削除しますか？')) return
     const area = AREAS.find(a => a.id === selectedAreaId)!
     await supabase.from('shifts')
@@ -522,12 +523,20 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                               title="非表示"
                               style={{ fontSize: 11 }}
                             >✕</button>
-                            <button
-                              onClick={e => { e.stopPropagation(); deleteShift(staff.id) }}
-                              className="w-5 h-5 flex items-center justify-center rounded-full bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
-                              title="シフト削除"
-                              style={{ fontSize: 11 }}
-                            >🗑</button>
+                            {shift?.notes === 'CS3同期' ? (
+                              <span
+                                className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-50 text-gray-300"
+                                title="CS3自動同期のため削除不可（CS3Alice側で変更してください）"
+                                style={{ fontSize: 10 }}
+                              >🔒</span>
+                            ) : (
+                              <button
+                                onClick={e => { e.stopPropagation(); deleteShift(staff.id, shift?.notes) }}
+                                className="w-5 h-5 flex items-center justify-center rounded-full bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
+                                title="シフト削除"
+                                style={{ fontSize: 11 }}
+                              >🗑</button>
+                            )}
                           </div>
                         </div>
                         {shift
