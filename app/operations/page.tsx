@@ -589,6 +589,24 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                           if (isBlockStart) { radiusStyle.borderTopLeftRadius = 5; radiusStyle.borderBottomLeftRadius = 5 }
                           if (isBlockEnd) { radiusStyle.borderTopRightRadius = 5; radiusStyle.borderBottomRightRadius = 5 }
 
+                          // 終了ラベル（分数）がある予約ブロックは、自ブロック自身の幅を超えて伸びると
+                          // 終了ラベルと重なってしまうため、自ブロック幅を上限にする。
+                          // 終了ラベルがないメモ等は、次の別予約・別メモに重ならない範囲で空きへはみ出してよい。
+                          let ownBlockRunSlots = 1
+                          let safeRunSlots = 0
+                          if (isBlockStart) {
+                            while (slotIdx + ownBlockRunSlots < slots.length && cellsInfo[slotIdx + ownBlockRunSlots].blockKey === blockKey) ownBlockRunSlots++
+                            for (let i = slotIdx; i < slots.length; i++) {
+                              const key = cellsInfo[i].blockKey
+                              if (i > slotIdx && (key.startsWith('r-') || key.startsWith('a-')) && key !== blockKey) break
+                              safeRunSlots++
+                            }
+                          }
+                          const willHaveEndText = status === 'occupied' && !!reservation
+                          const startMaxWidthPx = willHaveEndText
+                            ? Math.max(ownBlockRunSlots * cellWidth - 22, 20)
+                            : Math.max(safeRunSlots * cellWidth - 6, 20)
+
                           const location = reservation?.hotel || reservation?.area || ''
                           const title = status === 'occupied' && reservation
                             ? `${location} ${formatTime(reservation.time)}〜${reservation.checkout_time ? formatTime(reservation.checkout_time) : ''} ${reservation.course_duration ?? ''}分`
@@ -598,9 +616,9 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                           let endText = ''
                           if (status === 'occupied' && reservation && isBlockStart) {
                             const inMin = reservation.time != null ? String(reservation.time % 100).padStart(2, '0') : ''
-                            startText = `${inMin}${location ? ' ' + location.slice(0, 8) : ''}`
+                            startText = `${inMin}${location ? ' ' + location : ''}`
                           } else if (annotation && annotation.memo && isBlockStart) {
-                            startText = annotation.memo.slice(0, 5)
+                            startText = annotation.memo
                           }
                           if (status === 'occupied' && reservation && isBlockEnd) {
                             let outMin: string
@@ -642,8 +660,13 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                             >
                               {(startText || endText) && (
                                 <div className={`flex items-center h-full pointer-events-none ${startText && endText ? 'justify-between' : startText ? 'justify-start' : 'justify-end'}`} style={{ fontSize: 11, paddingLeft: startText ? 4 : 0, paddingRight: endText ? 4 : 0, overflow: 'visible', position: 'relative', zIndex: 5 }}>
-                                  {startText && <span className={`font-bold whitespace-nowrap ${status === 'occupied' ? 'text-white' : 'text-gray-700'}`}>{startText}</span>}
-                                  {endText && <span className={`font-bold whitespace-nowrap ${status === 'occupied' ? 'text-white' : 'text-gray-700'}`}>{endText}</span>}
+                                  {startText && (
+                                    <span
+                                      className={`font-bold whitespace-nowrap overflow-hidden flex-shrink-0 ${status === 'occupied' ? 'text-white' : 'text-gray-700'}`}
+                                      style={{ textOverflow: 'ellipsis', maxWidth: startMaxWidthPx }}
+                                    >{startText}</span>
+                                  )}
+                                  {endText && <span className={`font-bold whitespace-nowrap flex-shrink-0 ${status === 'occupied' ? 'text-white' : 'text-gray-700'}`}>{endText}</span>}
                                 </div>
                               )}
                             </td>
