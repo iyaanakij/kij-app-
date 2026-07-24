@@ -526,7 +526,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                             <button
                               onClick={e => { e.stopPropagation(); openFreetextModal(staff.id, staff.name) }}
                               className="w-5 h-5 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
-                              title="CP4フリーテキスト一括反映"
+                              title="CP4/Venrey リアルタイム一括更新"
                               style={{ fontSize: 11 }}
                             >⏱</button>
                             <button
@@ -696,11 +696,11 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
         </div>
       )}
 
-      {/* CP4フリーテキスト一括反映モーダル */}
+      {/* CP4/Venrey リアルタイム一括更新モーダル */}
       {freetextModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
-            <h2 className="text-lg font-bold text-gray-800 mb-1">フリーテキスト一括反映</h2>
+            <h2 className="text-lg font-bold text-gray-800 mb-1">リアルタイム一括更新</h2>
             <p className="text-sm text-gray-500 mb-4">{freetextModal.staffName} — CP4 / Venrey</p>
 
             {freetextLoading ? (

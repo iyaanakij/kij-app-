@@ -38,8 +38,8 @@ const NAME_JA: Record<string, string> = {
   'log:cp4-apply':         'ログ：HP反映',
   'log:new-cast-check':    'ログ：新規キャスト確認',
   'log:retention-cleanup': 'ログ：ファイル整理',
-  'log:manual-freetext':        'ログ：CP4フリーテキスト手動反映',
-  'log:manual-freetext-venrey': 'ログ：Venreyフリーテキスト手動反映',
+  'log:manual-freetext':        'ログ：CP4リアルタイム更新（手動）',
+  'log:manual-freetext-venrey': 'ログ：Venreyリアルタイム更新（手動）',
   'cp4-lock-meta':         'HP反映処理の実行状態',
   'playwright-residue':    'ブラウザプロセス残留',
   'memory':                'VPSメモリ',
@@ -112,12 +112,12 @@ const CHECK_GUIDE: Record<string, CheckGuideEntry> = {
   },
   'log:manual-freetext': {
     category: 'ENGINEER_REQUIRED',
-    summary: '/operationsのCP4フリーテキスト一括反映でエラーが発生しています',
+    summary: '/operationsのCP4リアルタイム一括更新でエラーが発生しています',
     operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
   },
   'log:manual-freetext-venrey': {
     category: 'ENGINEER_REQUIRED',
-    summary: '/operationsのVenreyフリーテキスト一括反映でエラーが発生しています',
+    summary: '/operationsのVenreyリアルタイム一括更新でエラーが発生しています',
     operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
   },
   'cp4-lock-meta': {
@@ -711,7 +711,9 @@ export default function DashboardPage() {
                 {[
                   { name: 'Venrey sync',      interval: '10分ごと',              log: 'sync.log' },
                   { name: 'HP掲載（CP4）',    interval: '10分ごと（:05〜）',     log: 'cp4-apply.log' },
-                  { name: 'HPフリーテキスト', interval: '10分ごと（:00,:10...）', log: 'cp4-freetext.log' },
+                  { name: 'HPリアルタイム更新（自動）', interval: '10分ごと（:00,:10...）', log: 'cp4-freetext.log' },
+                  { name: 'CP4リアルタイム更新（手動）', interval: '1分ごと',              log: 'manual-freetext-worker.log' },
+                  { name: 'Venreyリアルタイム更新（手動）', interval: '1分ごと',            log: 'manual-freetext-venrey-worker.log' },
                   { name: '新規キャスト確認', interval: '1時間ごと',             log: 'new-cast-check.log' },
                   { name: 'Venreyダンプ更新', interval: '毎日 04:00 JST',        log: 'venrey-dump.log' },
                   { name: 'HPキャストダンプ', interval: '毎日 03:00 JST',        log: 'cp4-cast-dump.log' },
