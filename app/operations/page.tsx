@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, type CSSProperties } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Shift, Reservation, Staff, AREAS, formatShiftTime, hhmmToDecimal, todayString } from '@/lib/types'
+import { Shift, Reservation, Staff, AREAS, formatShiftTime, formatTime, hhmmToDecimal, todayString } from '@/lib/types'
 
 const TIME_START = 10
 const TIME_END = 30
@@ -10,10 +10,6 @@ const SLOT_MINUTES = 10
 const TOTAL_SLOTS = ((TIME_END - TIME_START) * 60) / SLOT_MINUTES
 const MIN_CELL_WIDTH = 10
 const STAFF_COL_WIDTH = 160
-
-function getSlotIndex(decimalTime: number): number {
-  return (decimalTime - TIME_START) / (SLOT_MINUTES / 60)
-}
 
 function slotLabel(slotIdx: number): string {
   const t = TIME_START + slotIdx * (SLOT_MINUTES / 60)
@@ -486,7 +482,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
             <div style={{ position: 'relative', minWidth: `${STAFF_COL_WIDTH + TOTAL_SLOTS * cellWidth}px` }}>
               {isToday && currentTimeSlotOffset !== null && (
                 <div style={{ position:'absolute', top:0, bottom:0, left: STAFF_COL_WIDTH + currentTimeSlotOffset, width:2, backgroundColor:'#ef4444', zIndex:20, pointerEvents:'none' }}>
-                  <span style={{ position:'absolute', top:2, left:3, fontSize:9, color:'#ef4444', fontWeight:'bold', whiteSpace:'nowrap', background:'white', padding:'0 2px', borderRadius:2 }}>{currentTimeLabel}</span>
+                  <span style={{ position:'absolute', top:34, left:3, fontSize:9, color:'#ef4444', fontWeight:'bold', whiteSpace:'nowrap', background:'white', padding:'1px 3px', borderRadius:3, boxShadow:'0 1px 3px rgba(0,0,0,0.15)' }}>{currentTimeLabel}</span>
                 </div>
               )}
 
@@ -522,25 +518,25 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                       <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50/40 border-r border-gray-200 py-1.5 transition-colors" style={{ width: STAFF_COL_WIDTH, minWidth: STAFF_COL_WIDTH, paddingLeft:8, paddingRight:8 }}>
                         <div className="flex items-center justify-between gap-1">
                           <div className="font-semibold text-gray-800 truncate" style={{ maxWidth: STAFF_COL_WIDTH-80 }}>{staff.name}</div>
-                          <div className="flex gap-1 flex-shrink-0">
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
                             <button
                               onClick={e => { e.stopPropagation(); openFreetextModal(staff.id, staff.name) }}
-                              className="w-7 h-7 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+                              className="w-7 h-7 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors shadow-sm"
                               title="CP4/Venrey リアルタイム一括更新"
                               style={{ fontSize: 15 }}
                             >⏱</button>
                             <button
                               onClick={e => { e.stopPropagation(); toggleHidden(staff.id) }}
-                              className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-300 hover:text-gray-700 transition-colors"
+                              className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-300 hover:text-gray-700 transition-colors"
                               title="非表示"
-                              style={{ fontSize: 11 }}
+                              style={{ fontSize: 12 }}
                             >✕</button>
                             {shift?.notes !== 'CS3同期' && (
                               <button
                                 onClick={e => { e.stopPropagation(); deleteShift(staff.id, shift?.notes) }}
-                                className="w-5 h-5 flex items-center justify-center rounded-full bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
+                                className="w-6 h-6 flex items-center justify-center rounded-full bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
                                 title="シフト削除"
-                                style={{ fontSize: 11 }}
+                                style={{ fontSize: 12 }}
                               >🗑</button>
                             )}
                           </div>
@@ -550,78 +546,110 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                           : <div className="text-gray-400" style={{ fontSize:11 }}>シフトなし</div>
                         }
                       </td>
-                      {slots.map(slotIdx => {
-                        const { status, reservation } = getCellStatus(staff.id, slotIdx)
-                        const annotation = getCellAnnotation(staff.id, slotIdx)
-                        const colorDef = annotation ? ANNOTATION_COLORS.find(c => c.key === annotation.color) : null
+                      {(() => {
+                        // 行全体を先に計算し、連続する同一ブロック（同一予約/メモ/シフト在席）の開始・終了を判定して角丸を付ける
+                        const cellsInfo = slots.map(slotIdx => {
+                          const { status, reservation } = getCellStatus(staff.id, slotIdx)
+                          const annotation = getCellAnnotation(staff.id, slotIdx)
+                          const blockKey = status === 'occupied' ? `r-${reservation?.id ?? slotIdx}`
+                            : annotation ? `a-${annotation.id}`
+                            : status === 'available' ? 's' : 'o'
+                          return { status, reservation, annotation, blockKey }
+                        })
 
-                        // Drag highlight
-                        const isDragged = drag && drag.staffId === staff.id &&
-                          slotIdx >= Math.min(drag.startSlot, drag.endSlot) &&
-                          slotIdx <= Math.max(drag.startSlot, drag.endSlot)
+                        return slots.map(slotIdx => {
+                          const { status, reservation, annotation, blockKey } = cellsInfo[slotIdx]
+                          const colorDef = annotation ? ANNOTATION_COLORS.find(c => c.key === annotation.color) : null
 
-                        let bgClass = 'bg-gray-100'
-                        let borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-gray-400' : 'border-l border-gray-200'
+                          // Drag highlight
+                          const isDragged = drag && drag.staffId === staff.id &&
+                            slotIdx >= Math.min(drag.startSlot, drag.endSlot) &&
+                            slotIdx <= Math.max(drag.startSlot, drag.endSlot)
 
-                        if (isDragged) {
-                          bgClass = 'bg-indigo-300'
-                          borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-indigo-500' : 'border-l border-indigo-400'
-                        } else if (status === 'occupied') {
-                          bgClass = 'bg-red-400'
-                          borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-red-600' : 'border-l border-red-500'
-                        } else if (annotation && colorDef) {
-                          bgClass = colorDef.bg
-                          borderClass = isHourlyBoundary(slotIdx) ? `border-l-2 ${colorDef.border}` : `border-l ${colorDef.border}`
-                        } else if (status === 'available') {
-                          bgClass = 'bg-blue-200'
-                          borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-blue-400' : 'border-l border-blue-300'
-                        }
+                          let bgClass = 'bg-gray-100'
+                          let borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-gray-400' : 'border-l border-gray-200'
 
-                        const title = status === 'occupied' && reservation
-                          ? `${reservation.customer_name ?? ''} ${reservation.course_duration ?? ''}分`
-                          : annotation ? `${annotation.memo ?? ''} (${decimalToHHMM(annotation.start_time)}〜${decimalToHHMM(annotation.end_time)}) ※クリックで削除` : ''
+                          if (isDragged) {
+                            bgClass = 'bg-indigo-300'
+                            borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-indigo-500' : ''
+                          } else if (status === 'occupied') {
+                            bgClass = 'bg-red-400'
+                            borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-red-600' : ''
+                          } else if (annotation && colorDef) {
+                            bgClass = colorDef.bg
+                            borderClass = isHourlyBoundary(slotIdx) ? `border-l-2 ${colorDef.border}` : ''
+                          } else if (status === 'available') {
+                            bgClass = 'bg-blue-200'
+                            borderClass = isHourlyBoundary(slotIdx) ? 'border-l-2 border-blue-400' : ''
+                          }
 
-                        let cellText = ''
-                        if (status === 'occupied' && reservation && reservation.time) {
-                          const resStartSlot = Math.round(getSlotIndex(hhmmToDecimal(reservation.time)))
-                          if (slotIdx === resStartSlot) cellText = (reservation.customer_name ?? '').slice(0, 3)
-                        } else if (annotation && annotation.memo) {
-                          const annStartSlot = Math.round(getSlotIndex(annotation.start_time))
-                          if (slotIdx === annStartSlot) cellText = annotation.memo.slice(0, 5)
-                        }
+                          const isBlockStart = status !== 'outside' && (slotIdx === 0 || cellsInfo[slotIdx - 1].blockKey !== blockKey)
+                          const isBlockEnd = status !== 'outside' && (slotIdx === slots.length - 1 || cellsInfo[slotIdx + 1].blockKey !== blockKey)
+                          const radiusStyle: CSSProperties = {}
+                          if (isBlockStart) { radiusStyle.borderTopLeftRadius = 5; radiusStyle.borderBottomLeftRadius = 5 }
+                          if (isBlockEnd) { radiusStyle.borderTopRightRadius = 5; radiusStyle.borderBottomRightRadius = 5 }
 
-                        return (
-                          <td
-                            key={slotIdx}
-                            className={`p-0 ${bgClass} ${borderClass} transition-colors cursor-crosshair`}
-                            title={title}
-                            style={{ width: cellWidth, minWidth: cellWidth, height: 28 }}
-                            onMouseDown={e => {
-                              e.preventDefault()
-                              dragStartRef.current = { staffId: staff.id, slot: slotIdx }
-                              dragMovedRef.current = false
-                              // don't reset drag state yet — wait until mouse moves
-                            }}
-                            onMouseEnter={() => {
-                              if (dragStartRef.current) {
-                                dragMovedRef.current = true
-                                setDrag({ staffId: dragStartRef.current.staffId, startSlot: dragStartRef.current.slot, endSlot: dragStartRef.current.staffId === staff.id ? slotIdx : dragStartRef.current.slot })
-                              }
-                            }}
-                            onClick={() => {
-                              if (!dragMovedRef.current && annotation && status !== 'occupied') {
-                                openEditAnnotation(annotation)
-                              }
-                            }}
-                          >
-                            {cellText && (
-                              <span className={`font-bold flex items-center h-full whitespace-nowrap pointer-events-none ${status === 'occupied' ? 'text-white' : 'text-gray-700'}`} style={{ fontSize: 11, paddingLeft: 2, overflow: 'visible', position: 'relative', zIndex: 5 }}>
-                                {cellText}
-                              </span>
-                            )}
-                          </td>
-                        )
-                      })}
+                          const location = reservation?.hotel || reservation?.area || ''
+                          const title = status === 'occupied' && reservation
+                            ? `${location} ${formatTime(reservation.time)}〜${reservation.checkout_time ? formatTime(reservation.checkout_time) : ''} ${reservation.course_duration ?? ''}分`
+                            : annotation ? `${annotation.memo ?? ''} (${decimalToHHMM(annotation.start_time)}〜${decimalToHHMM(annotation.end_time)}) ※クリックで削除` : ''
+
+                          let startText = ''
+                          let endText = ''
+                          if (status === 'occupied' && reservation && isBlockStart) {
+                            const inMin = reservation.time != null ? String(reservation.time % 100).padStart(2, '0') : ''
+                            startText = `${inMin}${location ? ' ' + location.slice(0, 8) : ''}`
+                          } else if (annotation && annotation.memo && isBlockStart) {
+                            startText = annotation.memo.slice(0, 5)
+                          }
+                          if (status === 'occupied' && reservation && isBlockEnd) {
+                            let outMin: string
+                            if (reservation.checkout_time) {
+                              outMin = String(reservation.checkout_time % 100).padStart(2, '0')
+                            } else if (reservation.time && reservation.course_duration) {
+                              const resStart = hhmmToDecimal(reservation.time)
+                              const resEnd = resStart + (reservation.course_duration + Math.round(((reservation.extension ?? 0) / 3000) * 10)) / 60
+                              outMin = String(Math.round((resEnd % 1) * 60)).padStart(2, '0')
+                            } else {
+                              outMin = ''
+                            }
+                            endText = outMin
+                          }
+
+                          return (
+                            <td
+                              key={slotIdx}
+                              className={`p-0 ${bgClass} ${borderClass} transition-colors cursor-crosshair`}
+                              title={title}
+                              style={{ width: cellWidth, minWidth: cellWidth, height: 30, ...radiusStyle }}
+                              onMouseDown={e => {
+                                e.preventDefault()
+                                dragStartRef.current = { staffId: staff.id, slot: slotIdx }
+                                dragMovedRef.current = false
+                                // don't reset drag state yet — wait until mouse moves
+                              }}
+                              onMouseEnter={() => {
+                                if (dragStartRef.current) {
+                                  dragMovedRef.current = true
+                                  setDrag({ staffId: dragStartRef.current.staffId, startSlot: dragStartRef.current.slot, endSlot: dragStartRef.current.staffId === staff.id ? slotIdx : dragStartRef.current.slot })
+                                }
+                              }}
+                              onClick={() => {
+                                if (!dragMovedRef.current && annotation && status !== 'occupied') {
+                                  openEditAnnotation(annotation)
+                                }
+                              }}
+                            >
+                              {(startText || endText) && (
+                                <div className={`flex items-center h-full pointer-events-none ${startText && endText ? 'justify-between' : startText ? 'justify-start' : 'justify-end'}`} style={{ fontSize: 11, paddingLeft: startText ? 4 : 0, paddingRight: endText ? 4 : 0, overflow: 'visible', position: 'relative', zIndex: 5 }}>
+                                  {startText && <span className={`font-bold whitespace-nowrap ${status === 'occupied' ? 'text-white' : 'text-gray-700'}`}>{startText}</span>}
+                                  {endText && <span className={`font-bold whitespace-nowrap ${status === 'occupied' ? 'text-white' : 'text-gray-700'}`}>{endText}</span>}
+                                </div>
+                              )}
+                            </td>
+                          )
+                        })
+                      })()}
                     </tr>
                   ))}
                 </tbody>
