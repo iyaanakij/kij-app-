@@ -26,7 +26,13 @@ async function fetchTargets(cs3CastId: string) {
     .not('cp4_gid', 'is', null)
     .order('site_id')
   if (error) throw new Error(error.message)
-  return data ?? []
+  // publish_rules は (cs3_cast_id, source_shop_id, site_id) がPKのため、
+  // 同じ site_id が source_shop_id の数だけ重複する。site_id単位で去重する。
+  const bySiteId = new Map<string, NonNullable<typeof data>[number]>()
+  for (const row of data ?? []) {
+    if (!bySiteId.has(row.site_id)) bySiteId.set(row.site_id, row)
+  }
+  return [...bySiteId.values()]
 }
 
 export async function GET(request: NextRequest) {
