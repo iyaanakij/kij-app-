@@ -525,9 +525,9 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                           <div className="flex gap-1 flex-shrink-0">
                             <button
                               onClick={e => { e.stopPropagation(); openFreetextModal(staff.id, staff.name) }}
-                              className="w-5 h-5 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+                              className="w-7 h-7 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
                               title="CP4/Venrey リアルタイム一括更新"
-                              style={{ fontSize: 11 }}
+                              style={{ fontSize: 15 }}
                             >⏱</button>
                             <button
                               onClick={e => { e.stopPropagation(); toggleHidden(staff.id) }}
@@ -535,13 +535,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                               title="非表示"
                               style={{ fontSize: 11 }}
                             >✕</button>
-                            {shift?.notes === 'CS3同期' ? (
-                              <span
-                                className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-50 text-gray-300"
-                                title="CS3自動同期のため削除不可（CS3Alice側で変更してください）"
-                                style={{ fontSize: 10 }}
-                              >🔒</span>
-                            ) : (
+                            {shift?.notes !== 'CS3同期' && (
                               <button
                                 onClick={e => { e.stopPropagation(); deleteShift(staff.id, shift?.notes) }}
                                 className="w-5 h-5 flex items-center justify-center rounded-full bg-red-50 text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors"
