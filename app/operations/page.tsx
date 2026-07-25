@@ -62,6 +62,20 @@ function formatFreetextHourOption(h: number): string {
   return h >= 24 ? `翌${String(h - 24).padStart(2, '0')}時` : `${String(h).padStart(2, '0')}時`
 }
 
+function formatJstDateTime(iso: string): string {
+  const d = new Date(iso)
+  const jst = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
+  return `${jst.getMonth() + 1}/${jst.getDate()} ${String(jst.getHours()).padStart(2, '0')}:${String(jst.getMinutes()).padStart(2, '0')}`
+}
+
+function isTodayJst(iso: string): boolean {
+  const toJstDateStr = (d: Date) => {
+    const jst = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
+    return `${jst.getFullYear()}-${jst.getMonth()}-${jst.getDate()}`
+  }
+  return toJstDateStr(new Date(iso)) === toJstDateStr(new Date())
+}
+
 function roundUpToTenMinutes(date: Date): string {
   const totalMin = Math.ceil((date.getHours() * 60 + date.getMinutes()) / 10) * 10
   const h = Math.floor(totalMin / 60) % 24
@@ -833,11 +847,19 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                 {freetextError && <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{freetextError}</div>}
 
                 {freetextJob && (
-                  <div className="text-xs bg-gray-50 rounded-lg px-3 py-2 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-500">直近の反映:</span>
+                  <div className={`text-xs rounded-lg px-3 py-2 space-y-2 ${isTodayJst(freetextJob.created_at) ? 'bg-gray-50' : 'bg-amber-50 border border-amber-200'}`}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-gray-500">
+                        {isTodayJst(freetextJob.created_at) ? '直近の反映:' : '前回の反映（本日分の操作はまだありません）:'}
+                      </span>
                       <span className="font-mono">{freetextJob.freetext_value}</span>
+                      <span className="text-gray-400">{formatJstDateTime(freetextJob.created_at)}</span>
                     </div>
+                    {!isTodayJst(freetextJob.created_at) && (
+                      <div className="text-amber-700">
+                        現在の実際の状態とは異なる可能性があります。ライブの状態はCP4/Venrey管理画面で確認してください。
+                      </div>
+                    )}
 
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
