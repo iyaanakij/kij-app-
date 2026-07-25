@@ -68,14 +68,6 @@ function formatJstDateTime(iso: string): string {
   return `${jst.getMonth() + 1}/${jst.getDate()} ${String(jst.getHours()).padStart(2, '0')}:${String(jst.getMinutes()).padStart(2, '0')}`
 }
 
-function isTodayJst(iso: string): boolean {
-  const toJstDateStr = (d: Date) => {
-    const jst = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
-    return `${jst.getFullYear()}-${jst.getMonth()}-${jst.getDate()}`
-  }
-  return toJstDateStr(new Date(iso)) === toJstDateStr(new Date())
-}
-
 function roundUpToTenMinutes(date: Date): string {
   const totalMin = Math.ceil((date.getHours() * 60 + date.getMinutes()) / 10) * 10
   const h = Math.floor(totalMin / 60) % 24
@@ -760,10 +752,13 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
       {/* CP4/Venrey リアルタイム一括更新モーダル */}
       {freetextModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm max-h-[85vh] flex flex-col">
+          <div className="p-6 pb-0">
             <h2 className="text-lg font-bold text-gray-800 mb-1">リアルタイム一括更新</h2>
             <p className="text-sm text-gray-500 mb-4">{freetextModal.staffName} — CP4 / Venrey</p>
+          </div>
 
+          <div className="flex-1 overflow-y-auto px-6 min-h-0">
             {freetextLoading ? (
               <div className="text-sm text-gray-400 py-4">読み込み中...</div>
             ) : (
@@ -847,19 +842,12 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                 {freetextError && <div className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{freetextError}</div>}
 
                 {freetextJob && (
-                  <div className={`text-xs rounded-lg px-3 py-2 space-y-2 ${isTodayJst(freetextJob.created_at) ? 'bg-gray-50' : 'bg-amber-50 border border-amber-200'}`}>
+                  <div className="text-xs bg-gray-50 rounded-lg px-3 py-2 space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-gray-500">
-                        {isTodayJst(freetextJob.created_at) ? '直近の反映:' : '前回の反映（本日分の操作はまだありません）:'}
-                      </span>
+                      <span className="text-gray-500">直近の反映:</span>
                       <span className="font-mono">{freetextJob.freetext_value}</span>
                       <span className="text-gray-400">{formatJstDateTime(freetextJob.created_at)}</span>
                     </div>
-                    {!isTodayJst(freetextJob.created_at) && (
-                      <div className="text-amber-700">
-                        現在の実際の状態とは異なる可能性があります。ライブの状態はCP4/Venrey管理画面で確認してください。
-                      </div>
-                    )}
 
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
@@ -912,8 +900,9 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                 )}
               </div>
             )}
+          </div>
 
-            <div className="flex gap-2 mt-5">
+          <div className="flex gap-2 p-6 pt-4 border-t border-gray-100">
               <button onClick={closeFreetextModal} className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">閉じる</button>
               <button
                 onClick={submitFreetext}
@@ -922,7 +911,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
               >
                 {freetextSubmitting ? '送信中...' : '反映する'}
               </button>
-            </div>
+          </div>
           </div>
         </div>
       )}
