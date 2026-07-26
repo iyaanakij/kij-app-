@@ -4,12 +4,33 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { AREAS, todayString } from '@/lib/types'
 
+interface StoreTarget {
+  area_id: number
+  daily_target_count: number | null
+  unit_price: number
+}
+
 interface SalesGoalRow {
   area_id: number
   monthly_goal_yen: number | null
 }
 
-interface AreaStat {
+interface BreakEvenStat {
+  areaId: number
+  name: string
+  dailyTarget: number | null
+  unitPrice: number
+  monthlyTargetCount: number | null
+  monthlyTargetRevenue: number | null
+  actualCount: number
+  actualRevenue: number
+  remainingCount: number | null
+  remainingRevenue: number | null
+  expectedPaceCount: number | null
+  paceGapCount: number | null
+}
+
+interface SalesGoalStat {
   areaId: number
   name: string
   monthlyGoal: number | null
@@ -29,7 +50,7 @@ const METER_STYLES: Record<MeterState, { track: string; fill: string }> = {
   behind: { track: 'bg-amber-100 dark:bg-amber-900/30', fill: 'bg-amber-500 dark:bg-amber-400' },
 }
 
-function GoalMeter({ percent, expectedPacePercent, state }: { percent: number; expectedPacePercent: number; state: MeterState }) {
+function Meter({ percent, expectedPacePercent, state }: { percent: number; expectedPacePercent: number; state: MeterState }) {
   const style = METER_STYLES[state]
   const fillWidth = Math.min(100, Math.max(0, percent))
   const paceLeft = Math.min(100, Math.max(0, expectedPacePercent))
@@ -58,40 +79,57 @@ const yesterday = (() => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 })()
 
+function formatCount(n: number | null): string {
+  return n == null ? '—' : n.toFixed(1)
+}
+
 function formatYen(n: number | null): string {
   return n == null ? '—' : `¥${Math.round(n).toLocaleString()}`
 }
 
+type Tab = 'goal' | 'breakeven'
+
 export default function SalesGoalPage() {
+  const [tab, setTab] = useState<Tab>('goal')
+
+  const [targets, setTargets] = useState<Record<number, StoreTarget>>({})
   const [goals, setGoals] = useState<Record<number, SalesGoalRow>>({})
-  const [unitPrices, setUnitPrices] = useState<Record<number, number>>({})
-  const [actualRevenues, setActualRevenues] = useState<Record<number, number>>({})
-  const [editValues, setEditValues] = useState<Record<number, string>>({})
+  const [actualCounts, setActualCounts] = useState<Record<number, number>>({})
+  const [editTargetValues, setEditTargetValues] = useState<Record<number, string>>({})
+  const [editGoalValues, setEditGoalValues] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data: goalRows } = await supabase.from('store_sales_goals').select('*')
+    const [{ data: targetRows }, { data: goalRows }] = await Promise.all([
+      supabase.from('store_targets').select('*'),
+      supabase.from('store_sales_goals').select('*'),
+    ])
+
+    const targetMap: Record<number, StoreTarget> = {}
+    for (const row of targetRows ?? []) {
+      targetMap[row.area_id] = row
+    }
+    setTargets(targetMap)
+    setEditTargetValues(
+      Object.fromEntries(
+        AREAS.map(a => [a.id, targetMap[a.id]?.daily_target_count?.toString() ?? ''])
+      )
+    )
+
     const goalMap: Record<number, SalesGoalRow> = {}
     for (const row of goalRows ?? []) {
       goalMap[row.area_id] = row
     }
     setGoals(goalMap)
-    setEditValues(
+    setEditGoalValues(
       Object.fromEntries(
         AREAS.map(a => [a.id, goalMap[a.id]?.monthly_goal_yen?.toString() ?? ''])
       )
     )
 
-    // 単価は損益分岐ライン（store_targets）の設定を流用する
-    const { data: targetRows } = await supabase.from('store_targets').select('area_id, unit_price')
-    const unitPriceMap: Record<number, number> = {}
-    for (const row of targetRows ?? []) {
-      unitPriceMap[row.area_id] = row.unit_price
-    }
-    setUnitPrices(unitPriceMap)
-
     // 過去日分: store_daily_actuals に積み上げ済みの日次スナップショットを合算
+    // （reservationsは当日+未来分しか保持されないため、過去日はここから拾う）
     const { data: archivedRows } = await supabase
       .from('store_daily_actuals')
       .select('area_id, count')
@@ -115,13 +153,11 @@ export default function SalesGoalPage() {
       })
     )
 
-    const revenueMap: Record<number, number> = {}
+    const countMap: Record<number, number> = {}
     for (const area of AREAS) {
-      const count = (archivedMap[area.id] ?? 0) + (liveMap[area.id] ?? 0)
-      const unitPrice = unitPriceMap[area.id] ?? 9000
-      revenueMap[area.id] = count * unitPrice
+      countMap[area.id] = (archivedMap[area.id] ?? 0) + (liveMap[area.id] ?? 0)
     }
-    setActualRevenues(revenueMap)
+    setActualCounts(countMap)
     setLoading(false)
   }, [])
 
@@ -129,8 +165,26 @@ export default function SalesGoalPage() {
     load()
   }, [load])
 
+  async function saveTarget(areaId: number) {
+    const raw = editTargetValues[areaId]
+    const value = raw === '' ? null : Number(raw)
+    if (value !== null && Number.isNaN(value)) return
+    const unitPrice = targets[areaId]?.unit_price ?? 9000
+    const { error } = await supabase
+      .from('store_targets')
+      .upsert({ area_id: areaId, daily_target_count: value, unit_price: unitPrice })
+    if (error) {
+      alert(`保存に失敗しました: ${error.message}`)
+      return
+    }
+    setTargets(prev => ({
+      ...prev,
+      [areaId]: { area_id: areaId, daily_target_count: value, unit_price: unitPrice },
+    }))
+  }
+
   async function saveGoal(areaId: number) {
-    const raw = editValues[areaId]
+    const raw = editGoalValues[areaId]
     const value = raw === '' ? null : Number(raw)
     if (value !== null && Number.isNaN(value)) return
     const { error } = await supabase
@@ -146,9 +200,39 @@ export default function SalesGoalPage() {
     }))
   }
 
-  const stats: AreaStat[] = AREAS.map(area => {
+  const breakEvenStats: BreakEvenStat[] = AREAS.map(area => {
+    const target = targets[area.id]
+    const dailyTarget = target?.daily_target_count ?? null
+    const unitPrice = target?.unit_price ?? 9000
+    const actualCount = actualCounts[area.id] ?? 0
+    const actualRevenue = actualCount * unitPrice
+    const monthlyTargetCount = dailyTarget != null ? dailyTarget * daysInMonth : null
+    const monthlyTargetRevenue = monthlyTargetCount != null ? monthlyTargetCount * unitPrice : null
+    const remainingCount = monthlyTargetCount != null ? monthlyTargetCount - actualCount : null
+    const remainingRevenue = remainingCount != null ? remainingCount * unitPrice : null
+    const expectedPaceCount = dailyTarget != null ? dailyTarget * day : null
+    const paceGapCount = expectedPaceCount != null ? expectedPaceCount - actualCount : null
+    return {
+      areaId: area.id,
+      name: area.name,
+      dailyTarget,
+      unitPrice,
+      monthlyTargetCount,
+      monthlyTargetRevenue,
+      actualCount,
+      actualRevenue,
+      remainingCount,
+      remainingRevenue,
+      expectedPaceCount,
+      paceGapCount,
+    }
+  })
+
+  const salesGoalStats: SalesGoalStat[] = AREAS.map(area => {
+    const unitPrice = targets[area.id]?.unit_price ?? 9000
+    const actualCount = actualCounts[area.id] ?? 0
+    const actualRevenue = actualCount * unitPrice
     const monthlyGoal = goals[area.id]?.monthly_goal_yen ?? null
-    const actualRevenue = actualRevenues[area.id] ?? 0
     const remainingRevenue = monthlyGoal != null ? monthlyGoal - actualRevenue : null
     const simpleDailyAvg = monthlyGoal != null ? monthlyGoal / daysInMonth : null
     const requiredDailyPace =
@@ -170,18 +254,39 @@ export default function SalesGoalPage() {
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-6">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white">店舗別 売上目標・実績</h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">売上目標</h1>
         <div className="text-sm text-gray-500 dark:text-gray-400">
           {year}年{month}月・本日 {today}・月末まで残り <span className="font-semibold text-gray-700 dark:text-gray-200">{daysRemaining}</span> 日
         </div>
       </div>
 
+      <div className="flex gap-1 mb-6">
+        {(
+          [
+            { key: 'goal', label: '売上目標' },
+            { key: 'breakeven', label: '損益分岐ライン' },
+          ] as const
+        ).map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              tab === t.key
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <div className="text-sm text-gray-500 dark:text-gray-400">読み込み中...</div>
-      ) : (
+      ) : tab === 'goal' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {stats.map(s => {
+          {salesGoalStats.map(s => {
             const achieved = s.remainingRevenue != null && s.remainingRevenue <= 0
             return (
               <div
@@ -196,8 +301,8 @@ export default function SalesGoalPage() {
                     <input
                       type="number"
                       step="10000"
-                      value={editValues[s.areaId] ?? ''}
-                      onChange={e => setEditValues(prev => ({ ...prev, [s.areaId]: e.target.value }))}
+                      value={editGoalValues[s.areaId] ?? ''}
+                      onChange={e => setEditGoalValues(prev => ({ ...prev, [s.areaId]: e.target.value }))}
                       onBlur={() => saveGoal(s.areaId)}
                       placeholder="未設定"
                       className="w-28 px-1.5 py-0.5 text-right rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
@@ -226,7 +331,7 @@ export default function SalesGoalPage() {
 
                 {s.monthlyGoal != null && (
                   <>
-                    <GoalMeter
+                    <Meter
                       percent={(s.actualRevenue / s.monthlyGoal) * 100}
                       expectedPacePercent={((s.expectedPaceRevenue ?? 0) / s.monthlyGoal) * 100}
                       state={achieved ? 'achieved' : s.actualRevenue >= (s.expectedPaceRevenue ?? 0) ? 'onPace' : 'behind'}
@@ -251,6 +356,88 @@ export default function SalesGoalPage() {
                   ) : (
                     <div className="text-sm">
                       <span className="text-gray-500 dark:text-gray-400">あと </span>
+                      <span className="font-semibold text-orange-600 dark:text-orange-400">{formatYen(s.remainingRevenue)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {breakEvenStats.map(s => {
+            const achieved = s.remainingCount != null && s.remainingCount <= 0
+            return (
+              <div
+                key={s.areaId}
+                className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 shadow-sm"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="font-semibold text-gray-900 dark:text-white">{s.name}</h2>
+                  <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+                    日次分岐
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={editTargetValues[s.areaId] ?? ''}
+                      onChange={e => setEditTargetValues(prev => ({ ...prev, [s.areaId]: e.target.value }))}
+                      onBlur={() => saveTarget(s.areaId)}
+                      placeholder="未設定"
+                      className="w-16 px-1.5 py-0.5 text-right rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                    本/日
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div>
+                    <div className="text-gray-500 dark:text-gray-400">月間分岐本数</div>
+                    <div className="font-medium text-gray-900 dark:text-white">{formatCount(s.monthlyTargetCount)}本</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500 dark:text-gray-400">月間分岐売上</div>
+                    <div className="font-medium text-gray-900 dark:text-white">{formatYen(s.monthlyTargetRevenue)}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500 dark:text-gray-400">実績本数（今月）</div>
+                    <div className="font-medium text-gray-900 dark:text-white">{s.actualCount}本</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500 dark:text-gray-400">実績売上（今月）</div>
+                    <div className="font-medium text-gray-900 dark:text-white">{formatYen(s.actualRevenue)}</div>
+                  </div>
+                </div>
+
+                {s.dailyTarget != null && s.monthlyTargetCount && (
+                  <>
+                    <Meter
+                      percent={(s.actualCount / s.monthlyTargetCount) * 100}
+                      expectedPacePercent={((s.expectedPaceCount ?? 0) / s.monthlyTargetCount) * 100}
+                      state={achieved ? 'achieved' : s.actualCount >= (s.expectedPaceCount ?? 0) ? 'onPace' : 'behind'}
+                    />
+                    <div className="mt-1 text-xs">
+                      {s.paceGapCount != null && s.paceGapCount > 0 ? (
+                        <span className="text-amber-600 dark:text-amber-400">
+                          本日時点のペース目安まで あと <span className="font-semibold">{formatCount(s.paceGapCount)}本</span>
+                        </span>
+                      ) : (
+                        <span className="text-blue-600 dark:text-blue-400 font-medium">本日時点のペース目安 達成中</span>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                  {s.dailyTarget == null ? (
+                    <span className="text-sm text-gray-400 dark:text-gray-500">分岐ライン未設定</span>
+                  ) : achieved ? (
+                    <span className="text-sm font-semibold text-green-600 dark:text-green-400">損益分岐ライン到達 🎉</span>
+                  ) : (
+                    <div className="text-sm">
+                      <span className="text-gray-500 dark:text-gray-400">あと </span>
+                      <span className="font-semibold text-orange-600 dark:text-orange-400">{formatCount(s.remainingCount)}本</span>
+                      <span className="text-gray-500 dark:text-gray-400"> / </span>
                       <span className="font-semibold text-orange-600 dark:text-orange-400">{formatYen(s.remainingRevenue)}</span>
                     </div>
                   )}
