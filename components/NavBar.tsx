@@ -7,6 +7,7 @@ import { useTheme } from 'next-themes'
 
 const navItems = [
   { href: '/targets', label: '損益分岐ライン' },
+  { href: '/sales-goal', label: '売上目標' },
   { href: '/reservations', label: '予約管理' },
   { href: '/operations', label: '稼働ボード' },
   { href: '/shift', label: 'シフト管理' },
