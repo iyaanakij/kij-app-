@@ -32,6 +32,7 @@ type ActionJob = {
 const NAME_JA: Record<string, string> = {
   'approved-latest':       'CS3承認データ',
   'venrey-apply':          'Venrey反映',
+  'venrey-auto-fully-booked': 'Venrey受付終了（自動）',
   'cp4-apply':             'HP掲載（CP4）',
   'cp4-clear-summary':     'HP削除候補',
   'log:venrey-sync':       'ログ：Venrey同期',
@@ -40,6 +41,7 @@ const NAME_JA: Record<string, string> = {
   'log:retention-cleanup': 'ログ：ファイル整理',
   'log:manual-freetext':        'ログ：CP4リアルタイム更新（手動）',
   'log:manual-freetext-venrey': 'ログ：Venreyリアルタイム更新（手動）',
+  'log:venrey-auto-fully-booked': 'ログ：Venrey受付終了（自動）',
   'cp4-lock-meta':         'HP反映処理の実行状態',
   'playwright-residue':    'ブラウザプロセス残留',
   'memory':                'VPSメモリ',
@@ -71,6 +73,11 @@ const CHECK_GUIDE: Record<string, CheckGuideEntry> = {
     operatorAction: '復旧ボタンを押してください。失敗したら担当者に報告してください。',
     action: 'cs3_relogin_a',
     actionLabel: 'Venrey同期を復旧',
+  },
+  'venrey-auto-fully-booked': {
+    category: 'ENGINEER_REQUIRED',
+    summary: 'Venreyの自動受付終了でエラーが発生しています',
+    operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
   },
   'cp4-apply': {
     category: 'RETRYABLE_BUT_ESCALATE',
@@ -118,6 +125,11 @@ const CHECK_GUIDE: Record<string, CheckGuideEntry> = {
   'log:manual-freetext-venrey': {
     category: 'ENGINEER_REQUIRED',
     summary: '/operationsのVenreyリアルタイム一括更新でエラーが発生しています',
+    operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
+  },
+  'log:venrey-auto-fully-booked': {
+    category: 'ENGINEER_REQUIRED',
+    summary: 'Venreyの自動受付終了ログにエラーが記録されています',
     operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
   },
   'cp4-lock-meta': {
@@ -712,6 +724,7 @@ export default function DashboardPage() {
                   { name: 'Venrey sync',      interval: '10分ごと',              log: 'sync.log' },
                   { name: 'HP掲載（CP4）',    interval: '10分ごと（:05〜）',     log: 'cp4-apply.log' },
                   { name: 'HPリアルタイム更新（自動）', interval: '10分ごと（:00,:10...）', log: 'cp4-freetext.log' },
+                  { name: 'Venreyリアルタイム更新（自動）', interval: '10分ごと（:02,:12...）', log: 'venrey-auto-fully-booked.log' },
                   { name: 'CP4リアルタイム更新（手動）', interval: '1分ごと',              log: 'manual-freetext-worker.log' },
                   { name: 'Venreyリアルタイム更新（手動）', interval: '1分ごと',            log: 'manual-freetext-venrey-worker.log' },
                   { name: '新規キャスト確認', interval: '1時間ごと',             log: 'new-cast-check.log' },
