@@ -724,7 +724,7 @@ export default function DashboardPage() {
                   { name: 'Venrey sync',      interval: '10分ごと',              log: 'sync.log' },
                   { name: 'HP掲載（CP4）',    interval: '10分ごと（:05〜）',     log: 'cp4-apply.log' },
                   { name: 'HPリアルタイム更新（自動）', interval: '10分ごと（:00,:10...）', log: 'cp4-freetext.log' },
-                  { name: 'Venreyリアルタイム更新（自動）', interval: '10分ごと（:02,:12...）', log: 'venrey-auto-fully-booked.log' },
+                  { name: 'Venreyリアルタイム更新（自動）', interval: '10分ごと（:03,:13...）', log: 'venrey-auto-fully-booked.log' },
                   { name: 'CP4リアルタイム更新（手動）', interval: '1分ごと',              log: 'manual-freetext-worker.log' },
                   { name: 'Venreyリアルタイム更新（手動）', interval: '1分ごと',            log: 'manual-freetext-venrey-worker.log' },
                   { name: '新規キャスト確認', interval: '1時間ごと',             log: 'new-cast-check.log' },
