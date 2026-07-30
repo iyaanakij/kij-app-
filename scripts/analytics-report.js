@@ -526,6 +526,23 @@ function absDiff(curr, prev) {
   return round1(curr - prev)
 }
 
+// M性感4店舗合計の主要指標と前週比。Claudeに合計・割り算を計算させると誤るため、コード側で事前計算して渡す。
+function buildGa4Summary(ga4Results) {
+  const fields = ['sessions', 'phone_click', 'reservation_click', 'request_click', 'survey_click']
+  const stores = Object.values(ga4Results)
+  const totals = { current: {}, previous: {} }
+  for (const period of ['current', 'previous']) {
+    for (const field of fields) {
+      totals[period][field] = stores.reduce((sum, store) => sum + (store[period][field] || 0), 0)
+    }
+  }
+  const result = { store_count: stores.length, current: totals.current, previous: totals.previous }
+  for (const field of fields) {
+    result[`${field}_diff_pct`] = percentDiff(totals.current[field], totals.previous[field])
+  }
+  return result
+}
+
 function primaryChannel(channels) {
   const entries = Object.entries(channels || {}).sort((a, b) => b[1] - a[1])
   if (!entries.length) return { name: 'なし', sessions: 0, share: 0 }
@@ -550,7 +567,6 @@ function buildStoreInsights(ga4Results) {
     if (sessionsDiffPct !== null && sessionsDiffPct >= 10 && reservationCvrDiff <= -0.5) alerts.push('traffic_up_cvr_down')
     if (phoneCvrDiff <= -1) alerts.push('phone_cvr_drop')
     if (reservationCvrDiff <= -0.5) alerts.push('reservation_cvr_drop')
-    if (current.phone_cvr >= current.reservation_cvr * 2 && current.phone_click >= 10) alerts.push('phone_heavy')
     if (current.reservation_cvr >= current.phone_cvr * 1.5 && current.reservation_click >= 10) alerts.push('web_reservation_heavy')
     if (channel.name === 'Direct' && channel.share >= 75) alerts.push('direct_heavy')
 
@@ -573,7 +589,6 @@ function buildStoreInsights(ga4Results) {
       traffic_up_cvr_down: '流入増・予約CVR低下',
       phone_cvr_drop: '電話CVR低下',
       reservation_cvr_drop: 'WEB予約CVR低下',
-      phone_heavy: '電話偏重',
       web_reservation_heavy: 'WEB予約偏重',
       direct_heavy: 'Direct偏重',
     }
@@ -589,8 +604,6 @@ function buildStoreInsights(ga4Results) {
       recommendedAction = '電話ボタンの表示位置、営業時間表記、スマホ導線を確認'
     } else if (alerts.includes('sessions_drop')) {
       recommendedAction = 'Organic SearchとReferralの減少元を確認'
-    } else if (alerts.includes('phone_heavy')) {
-      recommendedAction = '予約方法データと照合し、電話偏重が媒体特性か導線問題か確認'
     } else if (alerts.includes('direct_heavy')) {
       recommendedAction = 'UTM未設定流入や外部埋め込みノイズの有無を確認'
     }
@@ -1369,10 +1382,13 @@ async function main() {
   console.log(' 店舗SEO完了')
 
   const marketing = buildMarketingInsights(ga4Results, scResults, pageSeoResults)
+  const ga4Summary = buildGa4Summary(ga4Results)
 
   if (DRY_RUN) {
     console.log('--- DRY RUN: castAccess / profileReferrers プレビュー ---')
     console.log(JSON.stringify({ castAccess, profileReferrers }, null, 2).slice(0, 4000))
+    console.log('--- DRY RUN: ga4Summary（前週比・合計値の事前計算結果）---')
+    console.log(JSON.stringify(ga4Summary, null, 2))
     console.log('--- DRY RUN: raw_data 構造プレビュー (先頭6000文字) ---')
     console.log(JSON.stringify({ ga4: ga4Results, searchConsole: scResults, pageSeo: pageSeoResults, marketing }, null, 2).slice(0, 6000))
     console.log('\n[analytics-report] DRY RUN 完了 ✓（Claude呼び出し・Supabase保存スキップ）')
@@ -1388,6 +1404,7 @@ async function main() {
   // Claudeには機械判定済みのmarketingを中心に渡す。page+queryの全行は長くなるため渡さない。
   const promptData = {
     ga4: ga4Results,
+    ga4Summary,
     searchConsole: scResults,
     marketing,
     pageSeoSummary: pageSeoResults.map(page => ({
@@ -1411,6 +1428,7 @@ async function main() {
 
 【データ構造の説明】
 - GA4: current（今週）/ previous（前週）形式。M性感4店舗分。
+- ga4Summary: M性感4店舗合計のsessions/phone_click/reservation_click/request_click/survey_clickと前週比（%）。コード側で事前計算済みのため、この数値をそのまま使うこと。自分で店舗別データを合計・割り算しないこと。
 - searchConsole: current（今週）/ previous（前週）形式。M性感サイト分。
 - marketing.storeInsights: GA4から機械判定した店舗別アラート。priority A/B/C、alerts、recommended_action を含む。
 - marketing.seoOpportunities: Search Consoleから機械抽出したSEO改善候補。priority A/B/C、issue_type、recommended_action を含む。
@@ -1432,7 +1450,7 @@ ${dataText}
 ## 📊 週次ウェブ解析レポート（${startDate} 〜 ${endDate}）
 
 ### 1. 今週の重要変化（3〜5行）
-- M性感4店舗の総セッション・総電話クリック・総WEB予約クリック・総出勤リクエストと前週比
+- M性感4店舗の総セッション・総電話クリック・総WEB予約クリック・総出勤リクエストと前週比 → ga4Summary の数値・diff_pctをそのまま使うこと（自分で合計や割り算を計算しないこと）
 - marketing.actionItems の優先度A/Bを踏まえた特筆事項
 
 ### 2. 今週優先すべき店舗
@@ -1452,7 +1470,7 @@ marketing.storeInsights を参照し、priority A/Bの店舗を優先して書�
 
 見るべき観点:
 - CVRが高い/低い店舗を具体的数字で指摘（前週比も添えること）
-- 電話偏重（phone_cvr >> reservation_cvr）の店舗
+- ※電話クリックがWEB予約より多い・phone_cvrがreservation_cvrより高いのは自然な傾向。電話偏重自体は問題として指摘しないこと
 - WEB予約偏重（reservation_cvr が高い）の店舗
 - request_cvr が他店舗より高い/低い店舗（指名文化の差）
 
@@ -1516,6 +1534,7 @@ marketing.actionItems から優先度A/Bを中心に最大5件。各項目は以
       summary,
       raw_data: {
         ga4: ga4Results,
+        ga4Summary,
         searchConsole: scResults,
         pageSeo: pageSeoResults,
         marketing,
