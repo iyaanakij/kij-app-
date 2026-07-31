@@ -1576,6 +1576,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildGa4Summary,
   buildMarketingInsights,
   buildPageSeoInsights,
   buildSeoOpportunities,
