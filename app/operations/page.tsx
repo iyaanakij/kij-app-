@@ -119,6 +119,8 @@ function slotToTimeLabel(slotDecimal: number): { hhmm: string; next: boolean } {
 export default function OperationsPage() {
   useEffect(() => { document.title = '業務管理 | KIJ管理' }, [])
   const [selectedDate, setSelectedDate] = useState(todayString())
+  const isToday = selectedDate === todayString()
+  const isPastDate = selectedDate < todayString()
   const [selectedAreaId, setSelectedAreaId] = useState(3) // デフォルト: 西船橋
   const [shifts, setShifts] = useState<Shift[]>([])
   const [reservations, setReservations] = useState<Reservation[]>([])
@@ -164,8 +166,8 @@ export default function OperationsPage() {
     if (freetextPollRef.current) { clearInterval(freetextPollRef.current); freetextPollRef.current = null }
   }
 
-  const loadFreetextState = useCallback(async (staffId: number) => {
-    const res = await fetch(`/api/admin/manual-freetext?staff_id=${staffId}`)
+  const loadFreetextState = useCallback(async (staffId: number, date: string) => {
+    const res = await fetch(`/api/admin/manual-freetext?staff_id=${staffId}&date=${date}`)
     const json = await res.json()
     if (!res.ok) { setFreetextError(json.error ?? '取得に失敗しました'); return }
     setFreetextTargets(json.targets ?? [])
@@ -184,7 +186,7 @@ export default function OperationsPage() {
     setFreetextValue(roundUpToTenMinutes(new Date()))
     setFreetextFullyBooked(false)
     setFreetextLoading(true)
-    await loadFreetextState(staffId)
+    await loadFreetextState(staffId, selectedDate)
     setFreetextLoading(false)
   }
 
@@ -200,9 +202,13 @@ export default function OperationsPage() {
     const res = await fetch('/api/admin/manual-freetext', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(freetextFullyBooked
-        ? { staff_id: freetextModal.staffId, fully_booked: true }
-        : { staff_id: freetextModal.staffId, hhmm: freetextValue }),
+      body: JSON.stringify({
+        staff_id: freetextModal.staffId,
+        ...(freetextFullyBooked ? { fully_booked: true } : { hhmm: freetextValue }),
+        // 当日は従来通りdate省略（サーバー側が当日として扱い、Venreyも通常通り実行）。
+        // 翌日以降を明示的に指定した場合のみCP4（HP）だけを対象にする。
+        ...(isToday ? {} : { date: selectedDate }),
+      }),
     })
     const json = await res.json()
     setFreetextSubmitting(false)
@@ -211,7 +217,7 @@ export default function OperationsPage() {
     stopFreetextPoll()
     const isTerminal = (s: string) => s === 'done' || s === 'error' || s === 'skipped'
     freetextPollRef.current = setInterval(async () => {
-      const job = await loadFreetextState(freetextModal.staffId)
+      const job = await loadFreetextState(freetextModal.staffId, selectedDate)
       if (job && isTerminal(job.status) && isTerminal(job.venrey_status)) stopFreetextPoll()
     }, 2000)
   }
@@ -352,7 +358,6 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
   }
 
   const slots = Array.from({ length: TOTAL_SLOTS }, (_, i) => i)
-  const isToday = selectedDate === todayString()
   const currentTimeSlotOffset = useMemo(() => {
     if (!isToday || currentTimeDecimal === null) return null
     if (currentTimeDecimal < TIME_START || currentTimeDecimal >= TIME_END) return null
@@ -526,9 +531,10 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                           <div className="font-semibold text-gray-800 truncate" style={{ maxWidth: STAFF_COL_WIDTH-80 }}>{staff.name}</div>
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             <button
-                              onClick={e => { e.stopPropagation(); openFreetextModal(staff.id, staff.name) }}
-                              className="w-7 h-7 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors shadow-sm"
-                              title="CP4/Venrey リアルタイム一括更新"
+                              onClick={e => { e.stopPropagation(); if (!isPastDate) openFreetextModal(staff.id, staff.name) }}
+                              disabled={isPastDate}
+                              className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors shadow-sm ${isPastDate ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+                              title={isPastDate ? '過去日はリアルタイム更新できません' : isToday ? 'CP4(HP)/Venrey リアルタイム一括更新' : 'CP4(HP) リアルタイム更新（Venreyは当日のみ）'}
                               style={{ fontSize: 15 }}
                             >⏱</button>
                             <button
@@ -755,7 +761,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm max-h-[85vh] flex flex-col">
           <div className="p-6 pb-0">
             <h2 className="text-lg font-bold text-gray-800 mb-1">リアルタイム一括更新</h2>
-            <p className="text-sm text-gray-500 mb-4">{freetextModal.staffName} — CP4 / Venrey</p>
+            <p className="text-sm text-gray-500 mb-4">{freetextModal.staffName} — {selectedDate}{isToday ? '（当日・CP4 / Venrey）' : '（CP4のみ）'}</p>
           </div>
 
           <div className="flex-1 overflow-y-auto px-6 min-h-0">
@@ -764,7 +770,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
             ) : (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">CP4 反映先（{freetextTargets.length}件）</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">CP4(HP) 反映先（{freetextTargets.length}件）</label>
                   {freetextTargets.length === 0 ? (
                     <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">CP4配信が有効な店舗がありません</div>
                   ) : (
@@ -780,7 +786,9 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Venrey 反映先（{freetextVenreyTargets.length}件）</label>
-                  {freetextVenreyTargets.length === 0 ? (
+                  {!isToday ? (
+                    <div className="text-xs text-gray-500 bg-gray-100 rounded-lg px-3 py-2">Venreyは当日のみ反映可能です（{selectedDate}は対象外・CP4のみ反映します）</div>
+                  ) : freetextVenreyTargets.length === 0 ? (
                     <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">Venrey配信が有効なアカウントがありません</div>
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
@@ -906,7 +914,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
               <button onClick={closeFreetextModal} className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">閉じる</button>
               <button
                 onClick={submitFreetext}
-                disabled={freetextSubmitting || (freetextTargets.length === 0 && freetextVenreyTargets.length === 0)}
+                disabled={freetextSubmitting || (isToday ? (freetextTargets.length === 0 && freetextVenreyTargets.length === 0) : freetextTargets.length === 0)}
                 className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
               >
                 {freetextSubmitting ? '送信中...' : '反映する'}
