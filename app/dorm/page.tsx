@@ -11,6 +11,8 @@ const DORM_ENTRY_MEMO_PREFIX = '__NARITA_DORM_ENTRY__'
 const DORM_COMMENT_MEMO_PREFIX = '__NARITA_DORM_COMMENT__'
 const DORM_STAFF_MEMO = '__NARITA_DORM_STAFF__'
 const DORM_STAFF_CONFIG_DATE = '2000-01-01'
+const DORM_HOLD_STAFF_ID = -1
+const DORM_HOLD_LABEL = '仮押さえ'
 
 interface StaffStore {
   staff_id: number
@@ -330,11 +332,11 @@ export default function DormPage() {
     applyEntryToState(optimistic)
 
     const payload = {
-      staff_id: nextData.checkinStaffId,
+      staff_id: nextData.checkinStaffId === DORM_HOLD_STAFF_ID ? null : nextData.checkinStaffId,
       date,
       start_time: 0,
       end_time: 0,
-      color: 'green',
+      color: nextData.checkinStaffId === DORM_HOLD_STAFF_ID ? 'red' : 'green',
       memo: encodeDormEntry(nextData),
       store_id: NARITA_STORE_ID,
     }
@@ -580,6 +582,12 @@ function FragmentCells() {
   )
 }
 
+function getOccupancyCellClass(staffId: number | null | undefined): string {
+  if (staffId === DORM_HOLD_STAFF_ID) return 'bg-red-50'
+  if (staffId) return 'bg-emerald-50'
+  return ''
+}
+
 function RoomTopCells({
   date,
   room,
@@ -595,13 +603,14 @@ function RoomTopCells({
 }) {
   return (
     <>
-      <td className={`border-r border-gray-200 px-1 py-1 ${entry?.checkinStaffId ? 'bg-emerald-50' : ''}`}>
+      <td className={`border-r border-gray-200 px-1 py-1 ${getOccupancyCellClass(entry?.checkinStaffId)}`}>
         <select
           value={entry?.checkinStaffId ?? ''}
           onChange={e => onSave(date, room, { checkinStaffId: e.target.value ? Number(e.target.value) : null })}
           className="h-8 w-full border-0 bg-transparent px-1 text-xs text-gray-800 outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500"
         >
           <option value="">-</option>
+          <option value={DORM_HOLD_STAFF_ID}>{DORM_HOLD_LABEL}</option>
           {staffOptions.map(staff => (
             <option key={staff.id} value={staff.id}>{staff.name}</option>
           ))}
@@ -648,7 +657,7 @@ function RoomBottomCells({
 }) {
   return (
     <>
-      <td className={`border-r border-gray-200 px-1 py-1 ${entry?.checkinStaffId ? 'bg-emerald-50' : ''}`}>
+      <td className={`border-r border-gray-200 px-1 py-1 ${getOccupancyCellClass(entry?.checkinStaffId)}`}>
         <select
           value={entry?.checkinStatus ?? ''}
           onChange={e => onSave(date, room, { checkinStatus: e.target.value === '-' ? '' : e.target.value })}
