@@ -8,8 +8,9 @@ const sb = createClient(
 
 // CP4のgidは5桁ゼロ埋め文字列（例: "00726"）。shift-sync/scripts/lib/cp4-gid.js と同じロジック。
 // パッケージをまたぐため小さいのでここに複製している。
-function normalizeCp4Gid(gid: string): string | null {
-  const digits = gid.replace(/\D/g, '')
+// JSONで数値（726）が来てもStringに寄せてから処理する（.replaceを直接呼ぶと数値では実行時エラーになるため）。
+function normalizeCp4Gid(gid: unknown): string | null {
+  const digits = String(gid).replace(/\D/g, '')
   if (!digits || digits.length > 5) return null
   return digits.padStart(5, '0')
 }
