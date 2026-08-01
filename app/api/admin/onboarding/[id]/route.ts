@@ -6,6 +6,14 @@ const sb = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// CP4のgidは5桁ゼロ埋め文字列（例: "00726"）。shift-sync/scripts/lib/cp4-gid.js と同じロジック。
+// パッケージをまたぐため小さいのでここに複製している。
+function normalizeCp4Gid(gid: string): string | null {
+  const digits = gid.replace(/\D/g, '')
+  if (!digits || digits.length > 5) return null
+  return digits.padStart(5, '0')
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -71,7 +79,17 @@ export async function PATCH(
   const update: Record<string, unknown> = {}
   if (body.normalized_data !== undefined) update.normalized_data = body.normalized_data
   if (body.admin_notes !== undefined) update.admin_notes = body.admin_notes
-  if (body.cp4_gid !== undefined) update.cp4_gid = body.cp4_gid || null
+  if (body.cp4_gid !== undefined) {
+    if (!body.cp4_gid) {
+      update.cp4_gid = null
+    } else {
+      const normalized = normalizeCp4Gid(body.cp4_gid)
+      if (!normalized) {
+        return NextResponse.json({ error: `cp4_gidを5桁の数字として解釈できません: "${body.cp4_gid}"` }, { status: 400 })
+      }
+      update.cp4_gid = normalized
+    }
+  }
   if (body.venrey_cast_id !== undefined) update.venrey_cast_id = body.venrey_cast_id || null
 
   const { error } = await sb.from('onboarding_submissions').update(update).eq('id', id)
