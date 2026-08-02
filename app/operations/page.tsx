@@ -68,6 +68,11 @@ function formatJstDateTime(iso: string): string {
   return `${jst.getMonth() + 1}/${jst.getDate()} ${String(jst.getHours()).padStart(2, '0')}:${String(jst.getMinutes()).padStart(2, '0')}`
 }
 
+const SKIP_REASON_LABEL: Record<string, string> = {
+  stale_target_time: '指定時刻を過ぎたため未反映',
+  superseded_by_newer_job: 'より新しい更新に置き換え済みのため未反映',
+}
+
 function roundUpToTenMinutes(date: Date): string {
   const totalMin = Math.ceil((date.getHours() * 60 + date.getMinutes()) / 10) * 10
   const h = Math.floor(totalMin / 60) % 24
@@ -81,7 +86,12 @@ interface FreetextJob {
   id: number
   freetext_value: string
   status: 'pending' | 'running' | 'done' | 'error'
-  result: { by_site?: Record<string, { ok: boolean; reason?: string }> } | null
+  result: {
+    by_site?: Record<string, { ok: boolean; reason?: string }>
+    skipped?: boolean
+    reason?: string
+    superseded_by?: { id: number; freetext_value: string }
+  } | null
   error_message: string | null
   venrey_status: 'pending' | 'running' | 'done' | 'error' | 'skipped'
   venrey_result: { by_account?: Record<string, { ok: boolean; reason?: string }> } | null
@@ -862,6 +872,8 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                         <span className="text-gray-500 w-12">CP4</span>
                         {freetextJob.status === 'pending' || freetextJob.status === 'running' ? (
                           <span className="text-amber-600">処理中...</span>
+                        ) : freetextJob.status === 'done' && freetextJob.result?.skipped ? (
+                          <span className="text-gray-400">未反映（{SKIP_REASON_LABEL[freetextJob.result.reason ?? ''] ?? freetextJob.result.reason}）</span>
                         ) : freetextJob.status === 'done' ? (
                           <span className="text-green-600">完了</span>
                         ) : (
