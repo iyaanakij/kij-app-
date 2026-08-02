@@ -73,6 +73,22 @@ const SKIP_REASON_LABEL: Record<string, string> = {
   superseded_by_newer_job: 'より新しい更新に置き換え済みのため未反映',
 }
 
+function cp4StatusDisplay(job: FreetextJob): { text: string; className: string } {
+  if (job.status === 'pending' || job.status === 'running') return { text: '処理中...', className: 'text-amber-600' }
+  if (job.status === 'error') return { text: 'エラー', className: 'text-red-600' }
+  if (job.result?.skipped) {
+    const reason = job.result.reason ?? ''
+    return { text: `未反映（${SKIP_REASON_LABEL[reason] ?? reason}）`, className: 'text-gray-400' }
+  }
+  const siteResults = job.result?.by_site ? Object.values(job.result.by_site) : []
+  if (siteResults.length > 0) {
+    const okCount = siteResults.filter(r => r.ok).length
+    if (okCount === 0) return { text: '未反映', className: 'text-red-600' }
+    if (okCount < siteResults.length) return { text: '一部未反映', className: 'text-amber-600' }
+  }
+  return { text: '完了', className: 'text-green-600' }
+}
+
 function roundUpToTenMinutes(date: Date): string {
   const totalMin = Math.ceil((date.getHours() * 60 + date.getMinutes()) / 10) * 10
   const h = Math.floor(totalMin / 60) % 24
@@ -870,15 +886,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="text-gray-500 w-12">CP4</span>
-                        {freetextJob.status === 'pending' || freetextJob.status === 'running' ? (
-                          <span className="text-amber-600">処理中...</span>
-                        ) : freetextJob.status === 'done' && freetextJob.result?.skipped ? (
-                          <span className="text-gray-400">未反映（{SKIP_REASON_LABEL[freetextJob.result.reason ?? ''] ?? freetextJob.result.reason}）</span>
-                        ) : freetextJob.status === 'done' ? (
-                          <span className="text-green-600">完了</span>
-                        ) : (
-                          <span className="text-red-600">エラー</span>
-                        )}
+                        <span className={cp4StatusDisplay(freetextJob).className}>{cp4StatusDisplay(freetextJob).text}</span>
                       </div>
                       {freetextJob.result?.by_site && (
                         <div className="flex flex-wrap gap-1">
