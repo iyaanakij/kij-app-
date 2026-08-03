@@ -13,7 +13,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const body = await request.json() as { mode: 'create' | 'link'; staff_id?: number }
+  const body = await request.json() as {
+    mode: 'create' | 'link'
+    staff_id?: number
+    normalized_data?: NormalizedOnboardingData | null
+    admin_notes?: string
+  }
 
   const { data: sub, error: subErr } = await sb
     .from('onboarding_submissions')
@@ -26,7 +31,9 @@ export async function POST(
     return NextResponse.json({ error: `承認できるのはsubmitted状態のみです（現在: ${sub.status}）` }, { status: 400 })
   }
 
-  const nd = sub.normalized_data as NormalizedOnboardingData | null
+  const nd = (body.normalized_data !== undefined
+    ? body.normalized_data
+    : sub.normalized_data) as NormalizedOnboardingData | null
   if (!nd?.stage_name) {
     return NextResponse.json({ error: '源氏名が設定されていません' }, { status: 400 })
   }
@@ -72,11 +79,14 @@ export async function POST(
       { submission_id: sub.id, job_type: 'create_venrey_cast',  status: 'pending',      updated_at: now },
     ])
 
-    await sb.from('onboarding_submissions').update({
+    const { error: approvalErr } = await sb.from('onboarding_submissions').update({
       status: 'approved',
       approved_at: now,
       staff_id: body.staff_id,
+      normalized_data: nd,
+      ...(body.admin_notes !== undefined ? { admin_notes: body.admin_notes } : {}),
     }).eq('id', id)
+    if (approvalErr) return NextResponse.json({ error: approvalErr.message }, { status: 500 })
 
     return NextResponse.json({ ok: true, staff_id: body.staff_id, mode: 'link' })
   }
@@ -111,11 +121,14 @@ export async function POST(
     { submission_id: sub.id, job_type: 'create_venrey_cast',  status: 'pending',      updated_at: now },
   ])
 
-  await sb.from('onboarding_submissions').update({
+  const { error: approvalErr } = await sb.from('onboarding_submissions').update({
     status: 'approved',
     approved_at: now,
     staff_id: newStaff.id,
+    normalized_data: nd,
+    ...(body.admin_notes !== undefined ? { admin_notes: body.admin_notes } : {}),
   }).eq('id', id)
+  if (approvalErr) return NextResponse.json({ error: approvalErr.message }, { status: 500 })
 
   return NextResponse.json({ ok: true, staff_id: newStaff.id, mode: 'create' })
 }

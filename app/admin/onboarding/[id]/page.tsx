@@ -69,7 +69,7 @@ const ND_FIELDS: { key: keyof NormalizedOnboardingData; label: string; brand?: '
   { key: 'm_favorite_toy',     label: '好きなおもちゃ',    brand: 'M' },
   { key: 'm_specialty_play',   label: '得意プレイ',        brand: 'M', multiline: true },
   { key: 'm_challenge_play',   label: '挑戦したいプレイ',  brand: 'M', multiline: true },
-  { key: 'm_meaning',          label: 'M性感の意味',       brand: 'M', multiline: true },
+  { key: 'm_meaning',          label: 'あなたにとってM性感とは', brand: 'M', multiline: true },
   { key: 'm_message',          label: 'メッセージ',        brand: 'M', multiline: true },
   // E専用
   { key: 'e_hobby',            label: '趣味・特技',        brand: 'E', multiline: true },
@@ -159,7 +159,11 @@ export default function OnboardingDetailPage() {
     const res = await fetch(`/api/admin/onboarding/${id}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(mode === 'link' ? { mode, staff_id: staffId } : { mode }),
+      body: JSON.stringify({
+        ...(mode === 'link' ? { mode, staff_id: staffId } : { mode }),
+        normalized_data: nd,
+        admin_notes: adminNotes,
+      }),
     })
     const d = await res.json()
     setApproving(false)
