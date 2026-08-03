@@ -48,6 +48,36 @@ const M_STORE_PAGES = [
   { siteUrl: 'https://www.m-kairaku.com/', siteName: 'M性感', area: '成田', storeName: 'M性感 成田', path: '/narita/', includePath: '/narita/' },
 ]
 
+// --- コンテンツSEO定点観測（8テーマ×4店舗=32ページ）---
+// パス対応はscripts/export-looker-studio-csv.jsのCONTENT_THEMESと同一（正本を分けない）
+const CONTENT_SEO_NOISY_START = '2026-05-20'
+const CONTENT_SEO_NOISY_END = '2026-07-31'
+
+const CONTENT_THEMES = [
+  { group: 'initial_4', theme: '顔面騎乗', slug: 'ganmenkijou', published_at: '2026-04-08', paths: { 錦糸町: '/kinshicho/2015/10/22/ganmenkijou/', 西船橋: '/ganmenkijou/', 千葉: '/chiba/ganmenkijou/', 成田: '/narita/ganmenkijou/' } },
+  { group: 'initial_4', theme: 'ドライオーガズム', slug: 'dry_orgasm', published_at: '2026-04-12', paths: { 錦糸町: '/kinshicho/2015/10/22/dry_orgasm/', 西船橋: '/dry_orgasm/', 千葉: '/chiba/dry_orgasm/', 成田: '/narita/dry_orgasm/' } },
+  { group: 'initial_4', theme: '男の潮吹き', slug: 'shiofuki', published_at: '2026-04-14', paths: { 錦糸町: '/kinshicho/2015/10/22/shiofuki/', 西船橋: '/shiofuki/', 千葉: '/chiba/shiofuki/', 成田: '/narita/shiofuki/' } },
+  { group: 'initial_4', theme: 'パンスト亀頭責め', slug: 'panst_m', published_at: '2026-04-14', paths: { 錦糸町: '/kinshicho/2015/10/22/panst_m/', 西船橋: '/panst_m/', 千葉: '/chiba/panst_m/', 成田: '/narita/panst_m/' } },
+  { group: 'new_4', theme: 'エネマグラ', slug: 'enema', published_at: '2026-07-11', paths: { 錦糸町: '/kinshicho/2015/10/22/enema/', 西船橋: '/enema-2/', 千葉: '/chiba/enema/', 成田: '/narita/enema/' } },
+  { group: 'new_4', theme: '前立腺マッサージ', slug: 'zenritsusen_m', published_at: '2026-07-11', paths: { 錦糸町: '/kinshicho/2015/10/22/zenritsusen_m/', 西船橋: '/zenritsusen_m/', 千葉: '/chiba/zenritsusen_m/', 成田: '/narita/zenritsusen_m/' } },
+  { group: 'new_4', theme: 'パウダー性感', slug: 'powder_m', published_at: '2026-07-11', paths: { 錦糸町: '/kinshicho/2015/10/22/powder_m/', 西船橋: '/powder_m/', 千葉: '/chiba/powder_m/', 成田: '/narita/powder_m/' } },
+  { group: 'new_4', theme: '拘束プレイ', slug: 'kousoku_m', published_at: '2026-07-11', paths: { 錦糸町: '/kinshicho/2015/10/22/kousoku_m/', 西船橋: '/kousoku_m/', 千葉: '/chiba/kousoku_m/', 成田: '/narita/kousoku_m/' } },
+]
+
+const CONTENT_SEO_PAGES = CONTENT_THEMES.flatMap(theme =>
+  GA4_PROPERTIES.map(prop => ({
+    theme_group: theme.group,
+    theme: theme.theme,
+    slug: theme.slug,
+    published_at: theme.published_at,
+    area: prop.area,
+    store_name: prop.name,
+    propertyId: prop.id,
+    path: theme.paths[prop.area],
+    page: `https://www.m-kairaku.com${theme.paths[prop.area]}`,
+  }))
+)
+
 // --- OAuth2 ---
 // サービスアカウント認証（2026-07-12〜）。OAuthユーザー認証は「テスト」公開ステータスだと
 // リフレッシュトークンが7日で失効し、隔週の週次cronが度々止まっていたため恒久対応として切替。
@@ -216,6 +246,35 @@ async function fetchGA4CastProfileReferrers(propertyId, accessToken, startDate, 
     orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
     limit: 1000,
   })
+}
+
+// ⑦ コンテンツSEO用: プロパティ内の全ページPV（page単位で照合するため個別ページ指定はしない）
+async function fetchGA4ContentPageviews(propertyId, accessToken, startDate, endDate) {
+  return ga4Report(propertyId, accessToken, {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: 'pagePathPlusQueryString' }],
+    metrics: [{ name: 'screenPageViews' }],
+    limit: 10000,
+  })
+}
+
+// ⑧ コンテンツSEO用: プロパティ内の全ページ×電話/WEB予約CTA
+async function fetchGA4ContentCtaEvents(propertyId, accessToken, startDate, endDate) {
+  return ga4Report(propertyId, accessToken, {
+    dateRanges: [{ startDate, endDate }],
+    dimensions: [{ name: 'pagePathPlusQueryString' }, { name: 'eventName' }],
+    metrics: [{ name: 'eventCount' }],
+    dimensionFilter: {
+      filter: { fieldName: 'eventName', inListFilter: { values: ['phone_click', 'reservation_click'] } },
+    },
+    limit: 10000,
+  })
+}
+
+function normalizeGa4Path(value) {
+  const withoutOrigin = String(value || '').replace(/^https?:\/\/www\.m-kairaku\.com/i, '')
+  const pathOnly = withoutOrigin.split('?')[0].split('#')[0]
+  return pathOnly.endsWith('/') ? pathOnly : `${pathOnly}/`
 }
 
 // --- Search Console API ---
@@ -524,6 +583,20 @@ function percentDiff(curr, prev) {
 
 function absDiff(curr, prev) {
   return round1(curr - prev)
+}
+
+// Search Console等への同時リクエスト数を絞りつつ全件処理する（32ページ分の一斉発火を避ける）
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length)
+  let index = 0
+  async function worker() {
+    while (index < items.length) {
+      const current = index++
+      results[current] = await fn(items[current], current)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return results
 }
 
 // M性感4店舗合計の主要指標と前週比。Claudeに合計・割り算を計算させると誤るため、コード側で事前計算して渡す。
@@ -999,6 +1072,307 @@ function buildPageSeoInsights(pageResults) {
   ))
 }
 
+// --- コンテンツSEO定点観測（8テーマ×4店舗）---
+
+function exactPageFilterSC(page) {
+  return {
+    dimensionFilterGroups: [{
+      filters: [{ dimension: 'page', operator: 'equals', expression: page }],
+    }],
+  }
+}
+
+// GA4プロパティ単位で全ページのPV・電話/予約CTAを取得し、area×pathでMapにまとめる
+async function fetchContentGa4ByProperty(accessToken, startDate, endDate) {
+  const result = {}
+  await Promise.all(GA4_PROPERTIES.map(async prop => {
+    const [pagesData, eventsData] = await Promise.all([
+      fetchGA4ContentPageviews(prop.id, accessToken, startDate, endDate),
+      fetchGA4ContentCtaEvents(prop.id, accessToken, startDate, endDate),
+    ])
+    for (const row of pagesData?.rows || []) {
+      const p = normalizeGa4Path(row.dimensionValues[0].value)
+      const key = `${prop.area}|${p}`
+      if (!result[key]) result[key] = { phone_click: 0, reservation_click: 0 }
+      result[key].pageviews = (result[key].pageviews || 0) + Math.round(Number(row.metricValues[0].value) || 0)
+    }
+    for (const row of eventsData?.rows || []) {
+      const p = normalizeGa4Path(row.dimensionValues[0].value)
+      const eventName = row.dimensionValues[1].value
+      const key = `${prop.area}|${p}`
+      if (!result[key]) result[key] = { phone_click: 0, reservation_click: 0 }
+      if (eventName === 'phone_click' || eventName === 'reservation_click') {
+        result[key][eventName] += Math.round(Number(row.metricValues[0].value) || 0)
+      }
+    }
+  }))
+  return result
+}
+
+// 32ページを厳密一致（page=equals）でSearch Consoleにクエリ単位取得。
+// 同時発火数を絞るためmapWithConcurrencyを使う（4期間×32ページ=最大128リクエスト）
+async function fetchContentScByPage(accessToken, startDate, endDate) {
+  const result = {}
+  await mapWithConcurrency(CONTENT_SEO_PAGES, 8, async contentPage => {
+    const data = await fetchSC(SC_SITES[0].url, accessToken, {
+      ...exactPageFilterSC(contentPage.page),
+      dimensions: ['query'],
+      rowLimit: 50,
+      startDate,
+      endDate,
+    })
+    result[`${contentPage.area}|${contentPage.path}`] = data?.rows || []
+  })
+  return result
+}
+
+// new_4（2026-07-11公開）を含む場合、比較対象の前期間がまだ公開前ならlaunch_partial_monthとして
+// 前期間比を強く読ませない。前期間も完全に公開後であればpost_reworkとして通常比較する。
+function contentSeoMeasurementPhase(contentPage, currentRange, previousRange) {
+  if (contentPage.theme_group !== 'new_4') return 'comparable'
+  if (currentRange.endDate < contentPage.published_at) return 'pre_rework'
+  const earliestPrevStart = previousRange.startDate < currentRange.startDate ? previousRange.startDate : currentRange.startDate
+  if (earliestPrevStart < contentPage.published_at) return 'launch_partial_month'
+  return 'post_rework'
+}
+
+function isContentSeoPhoneClickNoisy(area, range) {
+  if (!['千葉', '成田'].includes(area)) return false
+  return range.startDate <= CONTENT_SEO_NOISY_END && range.endDate >= CONTENT_SEO_NOISY_START
+}
+
+function weightedCtrAndPosition(clicksSum, impressionsSum, posWeightedSum) {
+  return {
+    ctr: impressionsSum > 0 ? round1(clicksSum / impressionsSum * 100) : 0,
+    position: impressionsSum > 0 ? round1(posWeightedSum / impressionsSum) : 0,
+  }
+}
+
+function buildContentSeoSummary(pages) {
+  const clicks = pages.reduce((s, p) => s + p.gsc_clicks, 0)
+  const clicksPrev = pages.reduce((s, p) => s + (p.gsc_clicks_prev || 0), 0)
+  const impressions = pages.reduce((s, p) => s + p.gsc_impressions, 0)
+  const impressionsPrev = pages.reduce((s, p) => s + (p.gsc_impressions_prev || 0), 0)
+  const posWeighted = pages.reduce((s, p) => s + p.gsc_average_position * p.gsc_impressions, 0)
+  const posWeightedPrev = pages.reduce((s, p) => s + (p.gsc_average_position_prev || 0) * (p.gsc_impressions_prev || 0), 0)
+  const phoneClick = pages.reduce((s, p) => s + p.ga4_phone_click, 0)
+  const phoneClickPrev = pages.reduce((s, p) => s + (p.ga4_phone_click_prev || 0), 0)
+  const reservationClick = pages.reduce((s, p) => s + p.ga4_reservation_click, 0)
+  const reservationClickPrev = pages.reduce((s, p) => s + (p.ga4_reservation_click_prev || 0), 0)
+  const curr = weightedCtrAndPosition(clicks, impressions, posWeighted)
+  const prev = weightedCtrAndPosition(clicksPrev, impressionsPrev, posWeightedPrev)
+
+  return {
+    gsc_clicks: clicks,
+    gsc_clicks_diff_pct: percentDiff(clicks, clicksPrev),
+    gsc_impressions: impressions,
+    gsc_impressions_diff_pct: percentDiff(impressions, impressionsPrev),
+    gsc_ctr: curr.ctr,
+    gsc_ctr_diff: absDiff(curr.ctr, prev.ctr),
+    gsc_average_position: curr.position,
+    gsc_average_position_diff: absDiff(curr.position, prev.position),
+    ga4_phone_click: phoneClick,
+    ga4_phone_click_diff_pct: percentDiff(phoneClick, phoneClickPrev),
+    ga4_reservation_click: reservationClick,
+    ga4_reservation_click_diff_pct: percentDiff(reservationClick, reservationClickPrev),
+  }
+}
+
+const CONTENT_SEO_PHASE_PRIORITY = { pre_rework: 0, launch_partial_month: 1, comparable: 2, post_rework: 2 }
+
+function buildContentSeoThemes(pages) {
+  const byTheme = {}
+  for (const p of pages) {
+    if (!byTheme[p.theme]) byTheme[p.theme] = { theme: p.theme, theme_group: p.theme_group, pages: [] }
+    byTheme[p.theme].pages.push(p)
+  }
+  return Object.values(byTheme)
+    .map(t => {
+      const clicks = t.pages.reduce((s, p) => s + p.gsc_clicks, 0)
+      const clicksPrev = t.pages.reduce((s, p) => s + (p.gsc_clicks_prev || 0), 0)
+      const impressions = t.pages.reduce((s, p) => s + p.gsc_impressions, 0)
+      const impressionsPrev = t.pages.reduce((s, p) => s + (p.gsc_impressions_prev || 0), 0)
+      const posWeighted = t.pages.reduce((s, p) => s + p.gsc_average_position * p.gsc_impressions, 0)
+      const posWeightedPrev = t.pages.reduce((s, p) => s + (p.gsc_average_position_prev || 0) * (p.gsc_impressions_prev || 0), 0)
+      const phoneClick = t.pages.reduce((s, p) => s + p.ga4_phone_click, 0)
+      const phoneClickPrev = t.pages.reduce((s, p) => s + (p.ga4_phone_click_prev || 0), 0)
+      const curr = weightedCtrAndPosition(clicks, impressions, posWeighted)
+      const prev = weightedCtrAndPosition(clicksPrev, impressionsPrev, posWeightedPrev)
+      const measurementPhase = t.pages.reduce(
+        (worst, p) => CONTENT_SEO_PHASE_PRIORITY[p.measurement_phase] < CONTENT_SEO_PHASE_PRIORITY[worst] ? p.measurement_phase : worst,
+        t.pages[0].measurement_phase
+      )
+      return {
+        theme: t.theme,
+        theme_group: t.theme_group,
+        measurement_phase: measurementPhase,
+        gsc_clicks: clicks,
+        gsc_clicks_diff_pct: percentDiff(clicks, clicksPrev),
+        gsc_impressions: impressions,
+        gsc_impressions_diff_pct: percentDiff(impressions, impressionsPrev),
+        gsc_ctr: curr.ctr,
+        gsc_ctr_diff: absDiff(curr.ctr, prev.ctr),
+        gsc_average_position: curr.position,
+        gsc_average_position_diff: absDiff(curr.position, prev.position),
+        ga4_phone_click: phoneClick,
+        ga4_phone_click_diff_pct: percentDiff(phoneClick, phoneClickPrev),
+      }
+    })
+    .sort((a, b) => (a.theme_group === b.theme_group ? 0 : a.theme_group === 'initial_4' ? -1 : 1))
+}
+
+function contentSeoAlertRow(p, category) {
+  return {
+    category,
+    theme: p.theme,
+    theme_group: p.theme_group,
+    area: p.area,
+    store_name: p.store_name,
+    gsc_clicks: p.gsc_clicks,
+    gsc_clicks_diff_pct: p.gsc_clicks_diff_pct,
+    gsc_impressions: p.gsc_impressions,
+    gsc_impressions_diff_pct: p.gsc_impressions_diff_pct,
+    gsc_ctr: p.gsc_ctr,
+    ga4_phone_click: p.ga4_phone_click,
+    ga4_reservation_click: p.ga4_reservation_click,
+    measurement_phase: p.measurement_phase,
+    phone_click_is_noisy: p.phone_click_is_noisy,
+  }
+}
+
+// ページ別注意リスト: 伸びた/落ちた/表示増だがCTR低い/GSCクリック0だがGA4 CTAあり の4分類のみ
+function buildContentSeoPageAlerts(pages) {
+  const grown = pages
+    .filter(p => p.gsc_clicks_prev >= 3 && p.gsc_clicks_diff_pct !== null && p.gsc_clicks_diff_pct >= 30)
+    .sort((a, b) => (b.gsc_clicks_diff_pct || 0) - (a.gsc_clicks_diff_pct || 0))
+    .slice(0, 5)
+    .map(p => contentSeoAlertRow(p, 'grown'))
+
+  const dropped = pages
+    .filter(p => p.gsc_clicks_prev >= 3 && p.gsc_clicks_diff_pct !== null && p.gsc_clicks_diff_pct <= -30)
+    .sort((a, b) => (a.gsc_clicks_diff_pct || 0) - (b.gsc_clicks_diff_pct || 0))
+    .slice(0, 5)
+    .map(p => contentSeoAlertRow(p, 'dropped'))
+
+  const impressionsUpCtrLow = pages
+    .filter(p => p.gsc_impressions >= 20 && p.gsc_impressions_diff_pct !== null && p.gsc_impressions_diff_pct >= 15 && p.gsc_ctr < 10)
+    .sort((a, b) => (b.gsc_impressions_diff_pct || 0) - (a.gsc_impressions_diff_pct || 0))
+    .slice(0, 5)
+    .map(p => contentSeoAlertRow(p, 'impressions_up_ctr_low'))
+
+  const clicksZeroCtaExists = pages
+    .filter(p => p.gsc_clicks === 0 && (p.ga4_phone_click + p.ga4_reservation_click) > 0)
+    .sort((a, b) => (b.ga4_phone_click + b.ga4_reservation_click) - (a.ga4_phone_click + a.ga4_reservation_click))
+    .slice(0, 5)
+    .map(p => contentSeoAlertRow(p, 'clicks_zero_cta_exists'))
+
+  return { grown, dropped, impressions_up_ctr_low: impressionsUpCtrLow, clicks_zero_cta_exists: clicksZeroCtaExists }
+}
+
+// クエリ単位の変動（表示回数差分の絶対値が大きい順）を全32ページ横断で上位10件のみ
+function buildContentSeoQueryChanges(pagesWithRows) {
+  const changes = []
+  for (const p of pagesWithRows) {
+    const currentByQuery = {}
+    for (const row of p._scRowsCurrent) currentByQuery[row.keys[0]] = row
+    const previousByQuery = {}
+    for (const row of p._scRowsPrevious) previousByQuery[row.keys[0]] = row
+
+    const allQueries = new Set([...Object.keys(currentByQuery), ...Object.keys(previousByQuery)])
+    for (const query of allQueries) {
+      const cur = currentByQuery[query]
+      const prev = previousByQuery[query]
+      const currImpressions = cur?.impressions || 0
+      const prevImpressions = prev?.impressions || 0
+      if (currImpressions < 5 && prevImpressions < 5) continue
+      changes.push({
+        query,
+        theme: p.theme,
+        theme_group: p.theme_group,
+        area: p.area,
+        store_name: p.store_name,
+        impressions: currImpressions,
+        impressions_diff: currImpressions - prevImpressions,
+        clicks: cur?.clicks || 0,
+        clicks_diff: (cur?.clicks || 0) - (prev?.clicks || 0),
+        average_position: cur ? Math.round(cur.position * 10) / 10 : (prev ? Math.round(prev.position * 10) / 10 : null),
+      })
+    }
+  }
+  return changes
+    .sort((a, b) => Math.abs(b.impressions_diff) - Math.abs(a.impressions_diff))
+    .slice(0, 10)
+}
+
+async function buildContentSeoPeriod(accessToken, ga4Current, ga4Previous, scCurrent, scPrevious) {
+  const [ga4CurrentMap, ga4PreviousMap, scCurrentMap, scPreviousMap] = await Promise.all([
+    fetchContentGa4ByProperty(accessToken, ga4Current.startDate, ga4Current.endDate),
+    fetchContentGa4ByProperty(accessToken, ga4Previous.startDate, ga4Previous.endDate),
+    fetchContentScByPage(accessToken, scCurrent.startDate, scCurrent.endDate),
+    fetchContentScByPage(accessToken, scPrevious.startDate, scPrevious.endDate),
+  ])
+
+  const pages = CONTENT_SEO_PAGES.map(contentPage => {
+    const key = `${contentPage.area}|${contentPage.path}`
+    const curGa4 = ga4CurrentMap[key] || { phone_click: 0, reservation_click: 0 }
+    const prevGa4 = ga4PreviousMap[key] || { phone_click: 0, reservation_click: 0 }
+    const scRowsCurrent = scCurrentMap[key] || []
+    const scRowsPrevious = scPreviousMap[key] || []
+    const curSc = summarizeSCRows(scRowsCurrent)
+    const prevSc = summarizeSCRows(scRowsPrevious)
+
+    return {
+      theme: contentPage.theme,
+      theme_group: contentPage.theme_group,
+      area: contentPage.area,
+      store_name: contentPage.store_name,
+      path: contentPage.path,
+      page: contentPage.page,
+      gsc_clicks: curSc.clicks,
+      gsc_clicks_prev: prevSc.clicks,
+      gsc_clicks_diff_pct: percentDiff(curSc.clicks, prevSc.clicks),
+      gsc_impressions: curSc.impressions,
+      gsc_impressions_prev: prevSc.impressions,
+      gsc_impressions_diff_pct: percentDiff(curSc.impressions, prevSc.impressions),
+      gsc_ctr: curSc.ctr,
+      gsc_ctr_prev: prevSc.ctr,
+      gsc_ctr_diff: absDiff(curSc.ctr, prevSc.ctr),
+      gsc_average_position: curSc.position,
+      gsc_average_position_prev: prevSc.position,
+      gsc_average_position_diff: absDiff(curSc.position, prevSc.position),
+      ga4_phone_click: curGa4.phone_click || 0,
+      ga4_phone_click_prev: prevGa4.phone_click || 0,
+      ga4_phone_click_diff_pct: percentDiff(curGa4.phone_click || 0, prevGa4.phone_click || 0),
+      ga4_reservation_click: curGa4.reservation_click || 0,
+      ga4_reservation_click_prev: prevGa4.reservation_click || 0,
+      ga4_reservation_click_diff_pct: percentDiff(curGa4.reservation_click || 0, prevGa4.reservation_click || 0),
+      measurement_phase: contentSeoMeasurementPhase(contentPage, ga4Current, ga4Previous),
+      phone_click_is_noisy: isContentSeoPhoneClickNoisy(contentPage.area, ga4Current),
+      _scRowsCurrent: scRowsCurrent,
+      _scRowsPrevious: scRowsPrevious,
+    }
+  })
+
+  const queryChanges = buildContentSeoQueryChanges(pages)
+  const cleanPages = pages.map(({ _scRowsCurrent, _scRowsPrevious, ...rest }) => rest)
+
+  return {
+    summary: buildContentSeoSummary(cleanPages),
+    themes: buildContentSeoThemes(cleanPages),
+    pages: cleanPages,
+    queryChanges,
+    alerts: buildContentSeoPageAlerts(cleanPages),
+  }
+}
+
+async function buildContentSeo(accessToken, ranges) {
+  const [weekly, rolling28] = await Promise.all([
+    buildContentSeoPeriod(accessToken, ranges.weekly.ga4Current, ranges.weekly.ga4Previous, ranges.weekly.scCurrent, ranges.weekly.scPrevious),
+    buildContentSeoPeriod(accessToken, ranges.rolling28.ga4Current, ranges.rolling28.ga4Previous, ranges.rolling28.scCurrent, ranges.rolling28.scPrevious),
+  ])
+  return { weekly, rolling28 }
+}
+
 function buildMarketingInsights(ga4Results, scResults, pageSeoResults = []) {
   const storeInsights = buildStoreInsights(ga4Results)
   const seoOpportunities = buildSeoOpportunities(scResults)
@@ -1381,6 +1755,23 @@ async function main() {
   }))
   console.log(' 店舗SEO完了')
 
+  process.stdout.write('コンテンツSEO定点観測取得中(8テーマ×4店舗)')
+  const contentSeo = await buildContentSeo(token, {
+    weekly: {
+      ga4Current: { startDate, endDate },
+      ga4Previous: { startDate: prevStart, endDate: prevEnd },
+      scCurrent: { startDate: scStartDate, endDate: scEndDate },
+      scPrevious: { startDate: scPrevStartDate, endDate: scPrevEndDate },
+    },
+    rolling28: {
+      ga4Current: { startDate: r28Start, endDate: r28End },
+      ga4Previous: { startDate: r28PrevStart, endDate: r28PrevEnd },
+      scCurrent: { startDate: scR28Start, endDate: scR28End },
+      scPrevious: { startDate: scR28PrevStart, endDate: scR28PrevEnd },
+    },
+  })
+  console.log(' コンテンツSEO完了')
+
   const marketing = buildMarketingInsights(ga4Results, scResults, pageSeoResults)
   const ga4Summary = buildGa4Summary(ga4Results)
 
@@ -1389,6 +1780,16 @@ async function main() {
     console.log(JSON.stringify({ castAccess, profileReferrers }, null, 2).slice(0, 4000))
     console.log('--- DRY RUN: ga4Summary（前週比・合計値の事前計算結果）---')
     console.log(JSON.stringify(ga4Summary, null, 2))
+    console.log('--- DRY RUN: contentSeo.weekly.summary / themes / alerts件数 ---')
+    console.log(JSON.stringify({
+      summary: contentSeo.weekly.summary,
+      themes: contentSeo.weekly.themes,
+      pageCount: contentSeo.weekly.pages.length,
+      alertCounts: Object.fromEntries(Object.entries(contentSeo.weekly.alerts).map(([k, v]) => [k, v.length])),
+      queryChangesCount: contentSeo.weekly.queryChanges.length,
+    }, null, 2))
+    console.log('--- DRY RUN: contentSeo.rolling28 themes（measurement_phase確認用）---')
+    console.log(JSON.stringify(contentSeo.rolling28.themes.map(t => ({ theme: t.theme, theme_group: t.theme_group, measurement_phase: t.measurement_phase })), null, 2))
     console.log('--- DRY RUN: raw_data 構造プレビュー (先頭6000文字) ---')
     console.log(JSON.stringify({ ga4: ga4Results, searchConsole: scResults, pageSeo: pageSeoResults, marketing }, null, 2).slice(0, 6000))
     console.log('\n[analytics-report] DRY RUN 完了 ✓（Claude呼び出し・Supabase保存スキップ）')
@@ -1538,6 +1939,7 @@ marketing.actionItems から優先度A/Bを中心に最大5件。各項目は以
         searchConsole: scResults,
         pageSeo: pageSeoResults,
         marketing,
+        contentSeo,
         castAccess,
         profileReferrers,
         period: {

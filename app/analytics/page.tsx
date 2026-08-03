@@ -41,21 +41,114 @@ interface Ga4SummaryAggregate {
 
 type MeasurementPhase = 'comparable' | 'pre_rework' | 'launch_partial_month' | 'post_rework'
 
-interface ContentSeoRow {
-  period_month: string
-  theme_group: string
+interface ContentSeoPageRow {
   theme: string
+  theme_group: string
   area: string
-  store_name?: string
+  store_name: string
+  path: string
+  page: string
   gsc_clicks: number
+  gsc_clicks_prev: number
+  gsc_clicks_diff_pct: number | null
   gsc_impressions: number
+  gsc_impressions_prev: number
+  gsc_impressions_diff_pct: number | null
   gsc_ctr: number
+  gsc_ctr_prev: number
+  gsc_ctr_diff: number
   gsc_average_position: number
-  ga4_pageviews: number
+  gsc_average_position_prev: number
+  gsc_average_position_diff: number
+  ga4_phone_click: number
+  ga4_phone_click_prev: number
+  ga4_phone_click_diff_pct: number | null
+  ga4_reservation_click: number
+  ga4_reservation_click_prev: number
+  ga4_reservation_click_diff_pct: number | null
+  measurement_phase: MeasurementPhase
+  phone_click_is_noisy: boolean
+}
+
+interface ContentSeoThemeRow {
+  theme: string
+  theme_group: string
+  measurement_phase: MeasurementPhase
+  gsc_clicks: number
+  gsc_clicks_diff_pct: number | null
+  gsc_impressions: number
+  gsc_impressions_diff_pct: number | null
+  gsc_ctr: number
+  gsc_ctr_diff: number
+  gsc_average_position: number
+  gsc_average_position_diff: number
+  ga4_phone_click: number
+  ga4_phone_click_diff_pct: number | null
+}
+
+interface ContentSeoSummary {
+  gsc_clicks: number
+  gsc_clicks_diff_pct: number | null
+  gsc_impressions: number
+  gsc_impressions_diff_pct: number | null
+  gsc_ctr: number
+  gsc_ctr_diff: number
+  gsc_average_position: number
+  gsc_average_position_diff: number
+  ga4_phone_click: number
+  ga4_phone_click_diff_pct: number | null
+  ga4_reservation_click: number
+  ga4_reservation_click_diff_pct: number | null
+}
+
+interface ContentSeoAlertRow {
+  category: string
+  theme: string
+  theme_group: string
+  area: string
+  store_name: string
+  gsc_clicks: number
+  gsc_clicks_diff_pct: number | null
+  gsc_impressions: number
+  gsc_impressions_diff_pct: number | null
+  gsc_ctr: number
   ga4_phone_click: number
   ga4_reservation_click: number
   measurement_phase: MeasurementPhase
   phone_click_is_noisy: boolean
+}
+
+interface ContentSeoAlerts {
+  grown: ContentSeoAlertRow[]
+  dropped: ContentSeoAlertRow[]
+  impressions_up_ctr_low: ContentSeoAlertRow[]
+  clicks_zero_cta_exists: ContentSeoAlertRow[]
+}
+
+interface ContentSeoQueryChange {
+  query: string
+  theme: string
+  theme_group: string
+  area: string
+  store_name: string
+  impressions: number
+  impressions_diff: number
+  clicks: number
+  clicks_diff: number
+  average_position: number | null
+}
+
+interface ContentSeoPeriod {
+  summary: ContentSeoSummary
+  themes: ContentSeoThemeRow[]
+  pages: ContentSeoPageRow[]
+  queryChanges: ContentSeoQueryChange[]
+  alerts: ContentSeoAlerts
+}
+
+interface ContentSeo {
+  weekly: ContentSeoPeriod
+  rolling28: ContentSeoPeriod
 }
 
 interface AlertItem {
@@ -91,8 +184,7 @@ interface Report {
     marketing?: MarketingData
     castAccess?: CastAccessStore[]
     profileReferrers?: ProfileReferrerStore[]
-    // 未統合（次フェーズでraw_dataに保存予定。詳細はdocs/analytics.md参照）
-    contentSeo?: ContentSeoRow[]
+    contentSeo?: ContentSeo
   }
   created_at: string
 }
@@ -520,28 +612,13 @@ function MarkdownContent({ text }: { text: string }) {
   )
 }
 
-const CONTENT_SEO_COLUMNS: { key: keyof ContentSeoRow; label: string }[] = [
-  { key: 'period_month', label: '対象月' },
-  { key: 'theme_group', label: 'テーマ群' },
-  { key: 'theme', label: 'テーマ' },
-  { key: 'area', label: 'エリア' },
-  { key: 'gsc_clicks', label: 'GSCクリック' },
-  { key: 'gsc_impressions', label: 'GSC表示回数' },
-  { key: 'gsc_ctr', label: 'GSC CTR' },
-  { key: 'gsc_average_position', label: 'GSC平均順位' },
-  { key: 'ga4_pageviews', label: 'GA4 PV' },
-  { key: 'ga4_phone_click', label: 'GA4電話CTA' },
-  { key: 'ga4_reservation_click', label: 'GA4 WEB予約CTA' },
-  { key: 'measurement_phase', label: '計測フェーズ' },
-  { key: 'phone_click_is_noisy', label: '電話CTA参考値' },
-]
-
 function MeasurementPhaseBadge({ phase }: { phase: MeasurementPhase }) {
+  if (phase === 'comparable' || phase === 'post_rework') return null
   const labelMap: Record<MeasurementPhase, string> = {
     comparable: '比較可能',
-    pre_rework: '改修前',
-    launch_partial_month: '公開初月（参考）',
-    post_rework: '改修後',
+    pre_rework: '公開前',
+    launch_partial_month: '公開初期（参考）',
+    post_rework: '比較可能',
   }
   const classMap: Record<MeasurementPhase, string> = {
     comparable: 'border-gray-200 bg-gray-50 text-gray-600',
@@ -549,91 +626,155 @@ function MeasurementPhaseBadge({ phase }: { phase: MeasurementPhase }) {
     launch_partial_month: 'border-amber-200 bg-amber-50 text-amber-700',
     post_rework: 'border-blue-200 bg-blue-50 text-blue-700',
   }
-  return <span className={`rounded border px-1.5 py-0.5 text-[11px] ${classMap[phase]}`}>{labelMap[phase]}</span>
+  return <span className={`ml-1.5 rounded border px-1.5 py-0.5 text-[10px] ${classMap[phase]}`}>{labelMap[phase]}</span>
 }
 
-function ContentSeoTable({ rows }: { rows: ContentSeoRow[] }) {
-  const groups = Array.from(new Set(rows.map(r => r.theme_group)))
+function ContentSeoNoisyBadge({ show }: { show: boolean }) {
+  if (!show) return null
+  return <span className="ml-1 text-[10px] text-amber-600">参考値</span>
+}
+
+function ContentSeoSummaryCards({ summary }: { summary: ContentSeoSummary }) {
   return (
-    <div className="space-y-3">
-      {groups.map(group => {
-        const groupRows = rows.filter(r => r.theme_group === group)
-        return (
-          <details key={group} className="rounded border bg-white p-3" open={groups.length <= 2}>
-            <summary className="cursor-pointer select-none text-sm font-semibold text-gray-800">
-              {group}（{groupRows.length}行）
-            </summary>
-            <div className="mt-2 overflow-x-auto">
-              <table className="min-w-full text-left text-xs">
-                <thead className="border-b bg-gray-50 text-gray-500">
-                  <tr>
-                    {CONTENT_SEO_COLUMNS.map(col => (
-                      <th key={col.key} className="whitespace-nowrap px-2 py-1.5 font-medium">{col.label}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {groupRows.map((row, i) => (
-                    <tr key={`${row.theme}-${row.area}-${i}`} className="border-b last:border-b-0">
-                      <td className="whitespace-nowrap px-2 py-1.5 text-gray-500">{row.period_month}</td>
-                      <td className="whitespace-nowrap px-2 py-1.5 text-gray-600">{row.theme_group}</td>
-                      <td className="whitespace-nowrap px-2 py-1.5 font-medium text-gray-900">{row.theme}</td>
-                      <td className="whitespace-nowrap px-2 py-1.5 text-gray-600">{row.area}</td>
-                      <td className="px-2 py-1.5 text-gray-700">{row.gsc_clicks.toLocaleString()}</td>
-                      <td className="px-2 py-1.5 text-gray-700">{row.gsc_impressions.toLocaleString()}</td>
-                      <td className="px-2 py-1.5 text-gray-700">{row.gsc_ctr}%</td>
-                      <td className="px-2 py-1.5 text-gray-700">{row.gsc_average_position}</td>
-                      <td className="px-2 py-1.5 text-gray-700">{row.ga4_pageviews.toLocaleString()}</td>
-                      <td className="px-2 py-1.5 text-gray-700">
-                        {row.ga4_phone_click.toLocaleString()}
-                        {row.phone_click_is_noisy && <span className="ml-1 text-[10px] text-amber-600">参考値</span>}
-                      </td>
-                      <td className="px-2 py-1.5 text-gray-700">{row.ga4_reservation_click.toLocaleString()}</td>
-                      <td className="px-2 py-1.5"><MeasurementPhaseBadge phase={row.measurement_phase} /></td>
-                      <td className="px-2 py-1.5 text-gray-500">{row.phone_click_is_noisy ? 'あり' : '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </details>
-        )
-      })}
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <KpiCard label="GSCクリック" value={summary.gsc_clicks.toLocaleString()} diffPct={summary.gsc_clicks_diff_pct} />
+      <KpiCard label="GSC表示回数" value={summary.gsc_impressions.toLocaleString()} diffPct={summary.gsc_impressions_diff_pct} />
+      <KpiCard
+        label="GSC CTR"
+        value={`${summary.gsc_ctr}%`}
+        note={`${summary.gsc_ctr_diff >= 0 ? '+' : ''}${summary.gsc_ctr_diff}pt`}
+      />
+      <PositionKpiCard label="GSC平均順位" value={summary.gsc_average_position} diff={summary.gsc_average_position_diff} />
+      <KpiCard label="GA4電話CTA" value={summary.ga4_phone_click.toLocaleString()} diffPct={summary.ga4_phone_click_diff_pct} />
+      <KpiCard label="GA4 WEB予約CTA" value={summary.ga4_reservation_click.toLocaleString()} diffPct={summary.ga4_reservation_click_diff_pct} />
     </div>
   )
 }
 
-function ContentSeoDesignProposal() {
+function ContentSeoThemeTable({ themes }: { themes: ContentSeoThemeRow[] }) {
   return (
-    <div className="rounded border bg-white p-4">
-      <h3 className="mb-2 text-sm font-semibold text-gray-800">コンテンツSEO定点観測は未統合です</h3>
-      <p className="mb-3 text-xs leading-relaxed text-gray-600">
-        現在は8テーマ×4店舗の月次定点観測をローカルCSV（<code className="rounded bg-gray-100 px-1">app/data/looker-studio/content_page_monthly.csv</code> / <code className="rounded bg-gray-100 px-1">content_query_monthly.csv</code>）で生成しており、この画面（<code className="rounded bg-gray-100 px-1">analytics_reports.raw_data</code>）にはまだ取り込んでいません。
-        次フェーズで週次レポート生成スクリプトに月次コンテンツSEO集計を追加し、<code className="rounded bg-gray-100 px-1">raw_data.contentSeo</code>（下記スキーマ）として保存する想定です。保存されればこの画面に自動で表示されます。
-      </p>
-      <div className="overflow-x-auto rounded border">
-        <table className="min-w-full text-left text-xs">
-          <thead className="border-b bg-gray-50 text-gray-500">
-            <tr>
-              <th className="px-2 py-1.5 font-medium">フィールド</th>
-              <th className="px-2 py-1.5 font-medium">説明</th>
+    <div className="overflow-x-auto rounded border bg-white">
+      <table className="min-w-full text-left text-xs">
+        <thead className="border-b bg-gray-50 text-gray-500">
+          <tr>
+            <th className="px-2 py-1.5 font-medium">テーマ</th>
+            <th className="px-2 py-1.5 font-medium">テーマ群</th>
+            <th className="px-2 py-1.5 font-medium">GSCクリック</th>
+            <th className="px-2 py-1.5 font-medium">GSC表示回数</th>
+            <th className="px-2 py-1.5 font-medium">GSC CTR</th>
+            <th className="px-2 py-1.5 font-medium">GSC平均順位</th>
+            <th className="px-2 py-1.5 font-medium">GA4電話CTA</th>
+          </tr>
+        </thead>
+        <tbody>
+          {themes.map(t => (
+            <tr key={t.theme} className="border-b last:border-b-0">
+              <td className="whitespace-nowrap px-2 py-1.5 font-medium text-gray-900">
+                {t.theme}
+                <MeasurementPhaseBadge phase={t.measurement_phase} />
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-500">{t.theme_group === 'initial_4' ? '初期4' : '新4'}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">
+                {t.gsc_clicks.toLocaleString()} <SignedValue value={t.gsc_clicks_diff_pct} suffix="%" />
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">
+                {t.gsc_impressions.toLocaleString()} <SignedValue value={t.gsc_impressions_diff_pct} suffix="%" />
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">
+                {t.gsc_ctr}% <SignedValue value={t.gsc_ctr_diff} suffix="pt" />
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">
+                {t.gsc_average_position} <SignedValue value={t.gsc_average_position_diff} invert />
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">
+                {t.ga4_phone_click.toLocaleString()} <SignedValue value={t.ga4_phone_click_diff_pct} suffix="%" />
+              </td>
             </tr>
-          </thead>
-          <tbody className="text-gray-700">
-            <tr className="border-b"><td className="px-2 py-1.5 font-mono">period_month</td><td className="px-2 py-1.5">対象月（例: 2026-07）</td></tr>
-            <tr className="border-b"><td className="px-2 py-1.5 font-mono">theme_group</td><td className="px-2 py-1.5">initial_4 / new_4</td></tr>
-            <tr className="border-b"><td className="px-2 py-1.5 font-mono">theme</td><td className="px-2 py-1.5">テーマ名（例: 顔面騎乗）</td></tr>
-            <tr className="border-b"><td className="px-2 py-1.5 font-mono">area</td><td className="px-2 py-1.5">成田/千葉/西船橋/錦糸町</td></tr>
-            <tr className="border-b"><td className="px-2 py-1.5 font-mono">gsc_clicks / gsc_impressions / gsc_ctr / gsc_average_position</td><td className="px-2 py-1.5">Search Console実績（Google検索からのクリック・表示・CTR・平均順位）</td></tr>
-            <tr className="border-b"><td className="px-2 py-1.5 font-mono">ga4_pageviews / ga4_phone_click / ga4_reservation_click</td><td className="px-2 py-1.5">GA4実績（ページ上のCTA。GSCクリックとは別ソースのため混同しない）</td></tr>
-            <tr className="border-b"><td className="px-2 py-1.5 font-mono">measurement_phase</td><td className="px-2 py-1.5">comparable / pre_rework / launch_partial_month / post_rework</td></tr>
-            <tr><td className="px-2 py-1.5 font-mono">phone_click_is_noisy</td><td className="px-2 py-1.5">千葉・成田で対象月が2026-05-20〜07-31に重なる場合true（参考値）</td></tr>
-          </tbody>
-        </table>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+const CONTENT_SEO_ALERT_LABELS: Record<keyof ContentSeoAlerts, string> = {
+  grown: '伸びたページ',
+  dropped: '落ちたページ',
+  impressions_up_ctr_low: '表示増だがCTR低いページ',
+  clicks_zero_cta_exists: 'GSCクリック0だがGA4 CTAあり',
+}
+
+function ContentSeoAlertList({ category, rows }: { category: keyof ContentSeoAlerts; rows: ContentSeoAlertRow[] }) {
+  if (rows.length === 0) return null
+  return (
+    <div className="rounded border bg-white p-3">
+      <h3 className="mb-2 text-xs font-semibold text-gray-700">{CONTENT_SEO_ALERT_LABELS[category]}</h3>
+      <div className="space-y-1.5">
+        {rows.map((r, i) => (
+          <div key={`${r.theme}-${r.area}-${i}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+            <span className="font-medium text-gray-900">{r.theme}</span>
+            <span className="text-gray-400">{r.area}</span>
+            <MeasurementPhaseBadge phase={r.measurement_phase} />
+            {category === 'clicks_zero_cta_exists' ? (
+              <span className="text-gray-600">
+                GA4電話CTA {r.ga4_phone_click} / GA4 WEB予約CTA {r.ga4_reservation_click}
+                <ContentSeoNoisyBadge show={r.phone_click_is_noisy} />
+              </span>
+            ) : category === 'impressions_up_ctr_low' ? (
+              <span className="text-gray-600">
+                GSC表示回数 {r.gsc_impressions.toLocaleString()} <SignedValue value={r.gsc_impressions_diff_pct} suffix="%" /> ・GSC CTR {r.gsc_ctr}%
+              </span>
+            ) : (
+              <span className="text-gray-600">
+                GSCクリック {r.gsc_clicks.toLocaleString()} <SignedValue value={r.gsc_clicks_diff_pct} suffix="%" />
+              </span>
+            )}
+          </div>
+        ))}
       </div>
-      <p className="mt-3 text-[11px] text-gray-400">
-        新4テーマ（エネマグラ・前立腺マッサージ・パウダー性感・拘束プレイ）は2026-07-11反映のため、2026-07は launch_partial_month として前月比を強く読まない。GSCクリック0でもGA4のCTAが発生することは正常（検索以外の流入経由でCTAが起きるため）。
-      </p>
+    </div>
+  )
+}
+
+function ContentSeoPageAlerts({ alerts }: { alerts: ContentSeoAlerts }) {
+  const categories: (keyof ContentSeoAlerts)[] = ['grown', 'dropped', 'impressions_up_ctr_low', 'clicks_zero_cta_exists']
+  const hasAny = categories.some(c => alerts[c].length > 0)
+  if (!hasAny) return <p className="text-xs text-gray-400">該当するページはありません。</p>
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {categories.map(c => <ContentSeoAlertList key={c} category={c} rows={alerts[c]} />)}
+    </div>
+  )
+}
+
+function ContentSeoQueryChangesTable({ rows }: { rows: ContentSeoQueryChange[] }) {
+  if (rows.length === 0) return <p className="text-xs text-gray-400">目立った変動クエリはありません。</p>
+  return (
+    <div className="overflow-x-auto rounded border bg-white">
+      <table className="min-w-full text-left text-xs">
+        <thead className="border-b bg-gray-50 text-gray-500">
+          <tr>
+            <th className="px-2 py-1.5 font-medium">クエリ</th>
+            <th className="px-2 py-1.5 font-medium">テーマ</th>
+            <th className="px-2 py-1.5 font-medium">店舗</th>
+            <th className="px-2 py-1.5 font-medium">GSC表示回数差分</th>
+            <th className="px-2 py-1.5 font-medium">GSCクリック差分</th>
+            <th className="px-2 py-1.5 font-medium">GSC平均順位</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={`${r.query}-${r.store_name}-${i}`} className="border-b last:border-b-0">
+              <td className="max-w-56 px-2 py-1.5 font-medium text-gray-900">{r.query}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-600">{r.theme}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-600">{r.store_name}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700"><SignedValue value={r.impressions_diff} /></td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700"><SignedValue value={r.clicks_diff} /></td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">{r.average_position ?? '-'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -681,7 +822,8 @@ export default function AnalyticsPage() {
   const scSite = selected?.raw_data?.searchConsole ? Object.values(selected.raw_data.searchConsole)[0] : undefined
   const scCurrent = scSite?.current?.summary
   const scPrevious = scSite?.previous?.summary
-  const contentSeo = selected?.raw_data?.contentSeo ?? []
+  const contentSeo = selected?.raw_data?.contentSeo
+  const contentSeoPeriod = contentSeo ? (comparisonMode === 'rolling28' ? contentSeo.rolling28 : contentSeo.weekly) : null
 
   const actionItems = marketing?.actionItems?.slice(0, 5) ?? []
   const rank: Record<Priority, number> = { A: 0, B: 1, C: 2 }
@@ -725,7 +867,7 @@ export default function AnalyticsPage() {
     { id: 'weekly', label: '週次サマリ' },
     { id: 'stores', label: '店舗KPI', count: storeInsightsAll.length },
     { id: 'seo', label: 'SEO', count: pageSeoInsightsAll.filter(i => i.priority !== 'C').length },
-    { id: 'contentSeo', label: 'コンテンツSEO', count: contentSeo.length || undefined },
+    { id: 'contentSeo', label: 'コンテンツSEO', count: contentSeoPeriod?.pages.length },
     { id: 'log', label: '詳細ログ' },
   ]
 
@@ -1226,13 +1368,42 @@ export default function AnalyticsPage() {
 
       {/* ============ コンテンツSEO ============ */}
       {activeTab === 'contentSeo' && (
-        <section className="mb-6">
-          <div className="mb-3 flex items-center justify-between">
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">コンテンツSEO定点観測（8テーマ×4店舗）</h2>
-            <span className="text-xs text-gray-400">raw_data.contentSeo</span>
+            <ComparisonModeToggle mode={comparisonMode} onChange={setComparisonMode} />
           </div>
-          {contentSeo.length > 0 ? <ContentSeoTable rows={contentSeo} /> : <ContentSeoDesignProposal />}
-        </section>
+          <p className="text-xs text-gray-500">
+            週次は今週の変化検知、28日ローリングはサンプルを平滑化した判断用の目安。GSCクリックはGoogle検索経由、GA4電話CTA/GA4 WEB予約CTAはページ上のCTA計測で、GSCクリックが0でもCTAが発生するのは正常。
+          </p>
+
+          {contentSeoPeriod ? (
+            <>
+              <section>
+                <ContentSeoSummaryCards summary={contentSeoPeriod.summary} />
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">テーマ別</h3>
+                <ContentSeoThemeTable themes={contentSeoPeriod.themes} />
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">ページ別注意リスト</h3>
+                <ContentSeoPageAlerts alerts={contentSeoPeriod.alerts} />
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">クエリ変動（上位10件）</h3>
+                <ContentSeoQueryChangesTable rows={contentSeoPeriod.queryChanges} />
+              </section>
+            </>
+          ) : (
+            <p className="rounded border bg-white p-4 text-xs text-gray-500">
+              このレポートにはコンテンツSEOデータがありません（2026-08-03以前に生成されたレポートには未対応）。最新の週次レポートを選択してください。
+            </p>
+          )}
+        </div>
       )}
 
       {/* ============ 詳細ログ ============ */}
