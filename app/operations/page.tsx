@@ -55,7 +55,8 @@ const SITE_LABELS: Record<string, string> = {
 // CP4フリーテキスト欄は10分単位での表示が慣例のため、入力もそれに揃える。
 // ネイティブ<input type="time">はstep指定があってもブラウザによっては1分単位の直接入力を許すため、
 // プルダウン選択（時×10分刻みの分）にして確実に10分単位へ固定する。
-const FREETEXT_HOUR_OPTIONS = Array.from({ length: 30 }, (_, i) => i) // 0〜29時（CS3の24〜29時=翌0〜5時表記に合わせる）
+// 0〜30時（24〜30時=翌0〜6時表記）。業務日切り替えが翌7時のため、翌6時台（実時刻6時台）まで表現できる必要がある。
+const FREETEXT_HOUR_OPTIONS = Array.from({ length: 31 }, (_, i) => i)
 const FREETEXT_MINUTE_OPTIONS = [0, 10, 20, 30, 40, 50]
 
 function formatFreetextHourOption(h: number): string {
@@ -90,8 +91,13 @@ function cp4StatusDisplay(job: FreetextJob): { text: string; className: string }
 }
 
 function roundUpToTenMinutes(date: Date): string {
-  const totalMin = Math.ceil((date.getHours() * 60 + date.getMinutes()) / 10) * 10
-  const h = Math.floor(totalMin / 60) % 24
+  // 業務日の切り替えは翌7時（todayString()と同じ基準）。0〜6時台は「まだ前日の業務日が続いている」
+  // ため、FREETEXT_HOUR_OPTIONSの翌日表記（24〜30時）に合わせて実時刻+24時間で初期値を出す。
+  let hours = date.getHours()
+  if (hours < 7) hours += 24
+  let totalMin = Math.ceil((hours * 60 + date.getMinutes()) / 10) * 10
+  totalMin = Math.min(totalMin, 30 * 60 + 50) // FREETEXT_HOUR_OPTIONSの上限（30時=翌6時台）を超えないようclamp
+  const h = Math.floor(totalMin / 60)
   const m = totalMin % 60
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }

@@ -6,9 +6,13 @@ const adminSupabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// VPSワーカー（92/93番）と同じJST基準の「当日」判定。DBやVercelのUTCタイムゾーンに依存させない。
+// 稼働ボード（lib/types.ts の todayString()）と同じ「業務日」基準（翌7時切り替え）の当日判定。
+// DBやVercelのUTCタイムゾーンに依存させないためJSTへ変換してから判定する。
+// 0時ちょうどに暦日で切り替えると、稼働ボード側（7時切り替え）とズレて日付未指定更新が
+// 翌日扱いになってしまうため、必ずこの基準を維持する（92番ワーカー側の絶対時刻比較とセットで対応済み）。
 function todayJST(): string {
   const jst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
+  if (jst.getHours() < 7) jst.setDate(jst.getDate() - 1)
   const y = jst.getFullYear()
   const m = String(jst.getMonth() + 1).padStart(2, '0')
   const d = String(jst.getDate()).padStart(2, '0')
@@ -22,7 +26,7 @@ function formatFreetextValue(hhmm: string): string | null {
   if (!m) return null
   const h = Number(m[1])
   const mm = Number(m[2])
-  if (h < 0 || h > 29 || mm < 0 || mm > 59) return null
+  if (h < 0 || h > 30 || mm < 0 || mm > 59) return null
   return `${String(h).padStart(2, '0')}：${String(mm).padStart(2, '0')}～`
 }
 
