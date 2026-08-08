@@ -16,6 +16,7 @@ const navItems = [
   { href: '/staff', label: 'キャスト' },
   { href: '/photodiary', label: '写メ日記' },
   { href: '/hotels', label: 'ホテル料金' },
+  { href: '/manual', label: 'マニュアル' },
 ]
 
 function ThemeToggle() {
@@ -54,7 +55,8 @@ export default function NavBar() {
   const [pendingCount, setPendingCount] = useState(0)
 
   useEffect(() => {
-    setIsMenuOpen(false)
+    const timer = window.setTimeout(() => setIsMenuOpen(false), 0)
+    return () => window.clearTimeout(timer)
   }, [pathname])
 
   useEffect(() => {
