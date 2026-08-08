@@ -19,38 +19,111 @@ const storeRows = [
   ['錦糸町', '4', '8', '111704'],
 ]
 
-const dailyFlow = [
+const syncRows = [
   {
-    title: '営業前',
-    items: ['シフト管理で当日の出勤を確認', '予約管理でCS3予約の取り込み状況を確認', 'システム状態で赤い警告が出ていないか確認'],
+    name: 'CS3予約同期',
+    frequency: '常駐',
+    owner: 'systemd',
+    detail: 'CS3の予約情報をSupabaseへ同期し、予約管理・稼働ボード・売上系画面の元データにする。VPSのkij-reservation-daemon.serviceで自動起動・再起動。',
+    log: '/var/log/shift-sync/daemon.log',
   },
   {
-    title: '予約受付時',
-    items: ['CS3で予約を登録', '予約管理で反映を確認', '必要に応じて女性情報のNG・交通費・対応条件を確認'],
+    name: 'Venreyシフト同期',
+    frequency: '10分ごと',
+    owner: 'run-sync.sh',
+    detail: 'CS3承認シフトをもとにVenrey即姫・接客一括更新へ出勤予定を反映する。A系CS3アカウントを使用。',
+    log: '/var/log/shift-sync/sync.log',
   },
   {
-    title: '接客中・接客後',
-    items: ['稼働ボードで次回受付時刻を判断', 'リアルタイム一括更新でCP4とVenreyへ反映', 'ご予約満了にする場合も稼働ボードから更新'],
+    name: 'CP4/HPシフト同期',
+    frequency: '10分ごと (:05系)',
+    owner: 'run-cp4-apply.sh',
+    detail: 'CS3承認シフトをCASTPRO4へ掲載し、不要になった掲載の自動削除確認とSupabase shifts同期も同じ流れで実行する。B系CS3アカウントを使用。',
+    log: '/var/log/shift-sync/cp4-apply.log',
   },
   {
-    title: '営業後',
-    items: ['予約管理の件数・給与計算を確認', '売上目標とランキングで日次の進捗を確認', '翌日のシフト・寮利用を確認'],
+    name: 'CP4受付時刻自動更新',
+    frequency: '10分ごと (:00系)',
+    owner: 'run-cp4-freetext.sh',
+    detail: '当日出勤中キャストのCP4フリーテキスト欄を現在時刻ベースに更新する。終了60分以内は「ご予約満了」にする。未来時刻が入っている場合は上書きしない。',
+    log: '/var/log/shift-sync/cp4-freetext.log',
+  },
+  {
+    name: 'リアルタイム一括更新 CP4',
+    frequency: '1分ごと',
+    owner: '92-manual-freetext-worker.js',
+    detail: '/operationsの時計ボタンで作ったジョブを処理し、指定した次回受付時刻または「ご予約満了」をCP4へ反映する。',
+    log: '/var/log/shift-sync/manual-freetext-worker.log',
+  },
+  {
+    name: 'リアルタイム一括更新 Venrey',
+    frequency: '1分ごと',
+    owner: '93-manual-freetext-venrey-worker.js',
+    detail: '同じジョブをVenrey側でも処理する。通常時は接客終了時刻、満了時は受付終了ステータスへ反映する。',
+    log: '/var/log/shift-sync/manual-freetext-venrey-worker.log',
+  },
+  {
+    name: 'Venrey受付終了自動化',
+    frequency: '10分ごと (:03系)',
+    owner: '94-venrey-auto-fully-booked.js',
+    detail: 'シフト終了60分以内のキャストをVenrey側で自動的に受付終了へ変更する。Venrey本体同期と同じロックを共有し、競合時は次回へ回る。',
+    log: '/var/log/shift-sync/venrey-auto-fully-booked.log',
+  },
+  {
+    name: '入店アンケート登録処理',
+    frequency: '1分ごと',
+    owner: '82-onboarding-worker.js',
+    detail: '承認後のCP4/Venrey新規登録ジョブを処理する。外部ID補完は83番スクリプトが担当する。',
+    log: '/var/log/shift-sync/onboarding-worker.log',
+  },
+  {
+    name: '新規キャストID補完',
+    frequency: '1時間ごと',
+    owner: 'run-new-cast-check.sh',
+    detail: 'CS3/CP4/Venrey側のキャスト一覧を確認し、publish_rulesの外部ID不足を補完する。長時間残るID補完待ちはon-demand dumpで再確認する。',
+    log: '/var/log/shift-sync/new-cast-check.log',
+  },
+  {
+    name: 'health-check',
+    frequency: '15分ごと',
+    owner: '90-health-check.js',
+    detail: '同期ログ、ジョブ滞留、CP4ロック、Playwright残留、メモリ、publish_rules ID不足などをOK/WARN/CRITで監視する。',
+    log: '/var/log/shift-sync/health-check.log',
   },
 ]
 
 const systemNotes = [
-  ['予約データ', 'CS3予約デーモンがSupabaseへ同期し、予約管理・稼働ボード・売上系画面で使う。'],
-  ['シフトデータ', 'CS3出勤申請をshift-syncが取り込み、シフト管理と外部サイト反映の基礎データにする。'],
-  ['外部反映', 'VPS上のshift-syncがCP4、Venrey、HP系の反映を担当する。現場操作は主に稼働ボードから行う。'],
-  ['管理画面', 'Next.jsアプリをVercelで運用。ページ閲覧は管理ログインで保護される。'],
+  ['予約データ', 'CS3予約デーモンがSupabaseへ直接同期する。画面上の予約本体はCS3同期データを表示し、予約管理・稼働ボード・売上目標・ランキングの元データになる。'],
+  ['シフトデータ', 'CS3承認シフトをshift-syncが取得し、Venrey、CP4、Supabase shiftsへ分けて反映する。ローカルPCではなくVPS側のcronが主系。'],
+  ['外部反映', 'CP4系とVenrey系は別ワーカー・別ロックで動く。CP4はWordPress内のCASTPRO4 iframe、VenreyはVenrey管理画面をPlaywrightで操作する。'],
+  ['管理画面', 'Next.jsアプリをVercelで運用。ページ閲覧は管理ログインで保護されるが、管理API単体の認証再適用は既知課題として残っている。'],
 ]
 
-const warnings = [
-  'CS3側の登録内容が正で、管理画面は同期後の確認・補助操作として扱う。',
-  'CP4/Venreyの反映異常は、まずシステム状態と稼働ボードの結果表示を見る。',
-  'Venreyはキャストの出勤終了時刻を超える接客終了時刻を選べない制約がある。',
-  '女性情報は現場運用メモなので、消す前に本当に不要な情報か確認する。',
-  '管理・操作系APIの直接アクセス認証は未解消の既知課題。URLや内部情報を外部共有しない。',
+const detailCards = [
+  {
+    title: 'リアルタイム更新の優先順位',
+    body: '稼働ボードから入れた未来時刻は、CP4自動更新が追いつくまで上書きされない。実時刻がその時刻に追いつくと、10分ごとの自動更新が通常運用へ戻す。',
+  },
+  {
+    title: 'ご予約満了の扱い',
+    body: 'CP4へは「ご予約満了」をそのまま書き込む。Venreyでは終了時刻入力ではなく受付終了ステータスへ変換する。',
+  },
+  {
+    title: 'ID補完待ち',
+    body: '新規キャストや外部ID未取得の行は、1時間ごとのnew-cast-checkと必要時のon-demand dumpで補完する。画面上は「ID補完待ち」として扱う。',
+  },
+  {
+    title: 'publish_rulesキャッシュ',
+    body: 'publish_rulesはVPS側で最大1時間キャッシュされる。DBを直接直した直後に反映されない場合は、キャッシュ残りの可能性がある。',
+  },
+  {
+    title: 'ロックと競合',
+    body: 'CP4系は共通ロック、Venrey系も共通ロックを持つ。処理が重なると片方はスキップまたは次回cronへ回るため、短時間の遅れは即異常とは限らない。',
+  },
+  {
+    title: '異常確認の順番',
+    body: 'まずシステム状態のOK/WARN/CRITを見る。次に対象ログ、稼働ボードの更新結果、対象キャストのpublish_rules外部IDを確認する。',
+  },
 ]
 
 function SectionTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
@@ -72,8 +145,8 @@ export default function ManualPage() {
               <div className="text-sm font-bold text-blue-600 dark:text-blue-300">KIJ管理ツール</div>
               <h1 className="mt-1 text-2xl font-bold text-gray-950 dark:text-gray-50 md:text-3xl">現場マニュアル・設計仕様</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-gray-600 dark:text-gray-300">
-                店舗スタッフが日々の予約、出勤、受付状況、女性情報、外部サイト反映を迷わず扱うための全体仕様です。
-                開発用の詳細手順ではなく、現場で見るべき画面と判断順をまとめています。
+                店舗スタッフと管理者が、予約・シフト・外部サイト反映のつながりを確認するための全体仕様です。
+                各画面の役割、同期頻度、反映までの待ち時間、異常時に見る場所をまとめています。
               </p>
             </div>
             <div className="shrink-0 rounded-md bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
@@ -130,19 +203,30 @@ export default function ManualPage() {
         </div>
 
         <section className="mt-5 rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <SectionTitle eyebrow="DAILY FLOW" title="日次運用フロー" />
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {dailyFlow.map((block, index) => (
-              <div key={block.title} className="rounded-md border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{index + 1}</div>
-                  <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">{block.title}</h3>
-                </div>
-                <ul className="mt-3 space-y-2 text-sm leading-6 text-gray-700 dark:text-gray-300">
-                  {block.items.map(item => <li key={item}>・{item}</li>)}
-                </ul>
-              </div>
-            ))}
+          <SectionTitle eyebrow="SYNC" title="同期・自動処理一覧" />
+          <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
+            <table className="w-full min-w-[980px] text-left text-sm">
+              <thead className="bg-gray-100 text-xs text-gray-600 dark:bg-gray-900 dark:text-gray-300">
+                <tr>
+                  <th className="px-3 py-2">処理</th>
+                  <th className="px-3 py-2">頻度</th>
+                  <th className="px-3 py-2">本体</th>
+                  <th className="px-3 py-2">内容</th>
+                  <th className="px-3 py-2">ログ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                {syncRows.map(row => (
+                  <tr key={row.name} className="align-top">
+                    <td className="whitespace-nowrap px-3 py-3 font-bold text-gray-900 dark:text-gray-100">{row.name}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-gray-800 dark:text-gray-200">{row.frequency}</td>
+                    <td className="whitespace-nowrap px-3 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">{row.owner}</td>
+                    <td className="px-3 py-3 leading-6 text-gray-700 dark:text-gray-300">{row.detail}</td>
+                    <td className="whitespace-nowrap px-3 py-3 font-mono text-xs text-gray-600 dark:text-gray-400">{row.log}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </section>
 
@@ -159,11 +243,16 @@ export default function ManualPage() {
             </div>
           </section>
 
-          <section className="rounded-lg border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-700 dark:bg-amber-900/20">
-            <SectionTitle eyebrow="CAUTION" title="現場で迷いやすい点" />
-            <ul className="space-y-3 text-sm leading-6 text-amber-950 dark:text-amber-100">
-              {warnings.map(item => <li key={item}>・{item}</li>)}
-            </ul>
+          <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <SectionTitle eyebrow="DETAILS" title="細かい仕様メモ" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              {detailCards.map(card => (
+                <div key={card.title} className="rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900">
+                  <div className="text-sm font-bold text-gray-900 dark:text-gray-100">{card.title}</div>
+                  <div className="mt-1 text-sm leading-6 text-gray-600 dark:text-gray-300">{card.body}</div>
+                </div>
+              ))}
+            </div>
           </section>
         </div>
       </div>
