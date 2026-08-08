@@ -641,7 +641,7 @@ export default function StaffPage() {
                         <span className="bg-gray-100 text-gray-400 text-xs px-2 py-0.5 rounded-full">CS3未設定</span>
                       )}
                       {ps && ps.warning_count > 0 && ps.warning_count === ps.enabled_count && (
-                        <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">⚠ 反映不可{ps.warning_count}件</span>
+                        <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-medium">⚠ ID補完待ち{ps.warning_count}件</span>
                       )}
                     </div>
                     {s.notes && <p className="text-xs text-gray-400 font-normal mt-0.5 truncate max-w-xs">{s.notes}</p>}

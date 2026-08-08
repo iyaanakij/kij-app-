@@ -85,7 +85,7 @@ export default function PublishRuleMatrix({
     if (!on) return false
     const siteId = k.split(':')[1]
     const creds = siteCredMap.get(siteId)
-    return !creds?.cp4_gid && !creds?.venrey_cast_id
+    return !creds?.cp4_gid || !creds?.venrey_cast_id
   }).length
 
   const hasCP4 = [...siteCredMap.values()].some(r => !!r.cp4_gid)
@@ -130,9 +130,9 @@ export default function PublishRuleMatrix({
           : <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-400">HP ID 未登録</span>
         }
         {warningCount > 0 && (
-          <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">⚠ {warningCount}件 ID欠落で反映不可</span>
+          <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">⚠ {warningCount}件 ID補完待ち</span>
         )}
-          <span className="text-gray-400 ml-auto">{enabledCount} / 32 有効</span>
+        <span className="text-gray-400 ml-auto">{enabledCount} / 32 有効</span>
         {saveError && <span className="text-red-600 font-semibold">{saveError}</span>}
       </div>
 

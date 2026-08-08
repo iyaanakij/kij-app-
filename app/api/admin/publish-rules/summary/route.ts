@@ -57,7 +57,7 @@ export async function GET() {
     enabled_count: number
     has_cp4: boolean
     has_venrey: boolean
-    warning_count: number  // enabled=true だが cp4_gid/venrey_cast_id 欠落
+    warning_count: number  // enabled=true だが cp4_gid/venrey_cast_id のどちらかが補完待ち
     all_disabled_with_ids: boolean
     e_enabled_count: number  // iya_* サイトの enabled ルール行数
     m_enabled_count: number  // mka_* サイトの enabled ルール行数
@@ -78,7 +78,7 @@ export async function GET() {
     const venreyId = venreyCreds.get(`${r.cs3_cast_id}:${SITE_TO_VENREY_GROUP[r.site_id] ?? r.site_id}`)
     if (creds?.cp4_gid) s.has_cp4 = true
     if (venreyId) s.has_venrey = true
-    if (r.enabled && !creds?.cp4_gid && !venreyId) s.warning_count++
+    if (r.enabled && (!creds?.cp4_gid || !venreyId)) s.warning_count++
   }
 
   // all_disabled_with_ids: IDはあるが全行 disabled

@@ -90,20 +90,6 @@ export async function POST(request: NextRequest) {
     }
   })
 
-  const invalidEnabled = payload.filter(u => u.enabled && (!u.cp4_gid || !u.venrey_cast_id))
-  if (invalidEnabled.length > 0) {
-    return NextResponse.json({
-      error: 'HP ID / Venrey ID が両方そろっていない行は有効化できません',
-      invalid: invalidEnabled.map(u => ({
-        cs3_cast_id: u.cs3_cast_id,
-        source_shop_id: u.source_shop_id,
-        site_id: u.site_id,
-        cp4_gid: u.cp4_gid,
-        venrey_cast_id: u.venrey_cast_id,
-      })),
-    }, { status: 400 })
-  }
-
   const { error } = await adminSupabase
     .from('publish_rules')
     .upsert(

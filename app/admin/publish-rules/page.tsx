@@ -174,7 +174,7 @@ function CastMatrix({
               <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-400">ID未登録</span>
             )}
             {warningCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">⚠ {warningCount}件 ID未登録</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-700">⚠ {warningCount}件 ID補完待ち</span>
             )}
           </div>
         </div>
@@ -230,9 +230,9 @@ function CastMatrix({
                         row?.cp4_gid ? `HP: ${row.cp4_gid}` : 'HP ID: 未登録',
                       ]
                       if (hasWarning) {
-                        if (!row?.cp4_gid && !row?.venrey_cast_id) tipLines.push('⚠ HP・Venrey とも未登録（反映不可）')
-                        else if (!row?.cp4_gid) tipLines.push('⚠ HP ID未登録（Venreyは反映可能）')
-                        else tipLines.push('⚠ Venrey ID未登録（HPは反映可能）')
+                        if (!row?.cp4_gid && !row?.venrey_cast_id) tipLines.push('⚠ HP・Venrey とも未登録（ID補完待ち）')
+                        else if (!row?.cp4_gid) tipLines.push('⚠ HP ID補完待ち（Venreyは反映可能）')
+                        else tipLines.push('⚠ Venrey ID補完待ち（HPは反映可能）')
                       }
 
                       // エリア区切り線
