@@ -78,20 +78,36 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const payload = updates.map(u => {
+    const row = rowCreds.get(`${u.cs3_cast_id}:${u.source_shop_id}:${u.site_id}`)
+    const site = siteCreds.get(`${u.cs3_cast_id}:${u.site_id}`)
+    return {
+      ...u,
+      cp4_gid: row?.cp4_gid ?? site?.cp4_gid ?? null,
+      venrey_cast_id: row?.venrey_cast_id ?? venreyCreds.get(`${u.cs3_cast_id}:${SITE_TO_VENREY_GROUP[u.site_id] ?? u.site_id}`) ?? null,
+      cast_name: row?.cast_name ?? site?.cast_name ?? castNames.get(u.cs3_cast_id) ?? null,
+      updated_at: new Date().toISOString(),
+    }
+  })
+
+  const invalidEnabled = payload.filter(u => u.enabled && (!u.cp4_gid || !u.venrey_cast_id))
+  if (invalidEnabled.length > 0) {
+    return NextResponse.json({
+      error: 'HP ID / Venrey ID が両方そろっていない行は有効化できません',
+      invalid: invalidEnabled.map(u => ({
+        cs3_cast_id: u.cs3_cast_id,
+        source_shop_id: u.source_shop_id,
+        site_id: u.site_id,
+        cp4_gid: u.cp4_gid,
+        venrey_cast_id: u.venrey_cast_id,
+      })),
+    }, { status: 400 })
+  }
+
   const { error } = await adminSupabase
     .from('publish_rules')
     .upsert(
-      updates.map(u => {
-        const row = rowCreds.get(`${u.cs3_cast_id}:${u.source_shop_id}:${u.site_id}`)
-        const site = siteCreds.get(`${u.cs3_cast_id}:${u.site_id}`)
-        return {
-          ...u,
-          cp4_gid: row?.cp4_gid ?? site?.cp4_gid ?? null,
-          venrey_cast_id: row?.venrey_cast_id ?? venreyCreds.get(`${u.cs3_cast_id}:${SITE_TO_VENREY_GROUP[u.site_id] ?? u.site_id}`) ?? null,
-          cast_name: row?.cast_name ?? site?.cast_name ?? castNames.get(u.cs3_cast_id) ?? null,
-          updated_at: new Date().toISOString(),
-        }
-      }),
+      payload,
       { onConflict: 'cs3_cast_id,source_shop_id,site_id' }
     )
 

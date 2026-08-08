@@ -78,6 +78,7 @@ export default function PublishRuleMatrix({
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const enabledCount = Object.values(edits).filter(Boolean).length
   const warningCount = Object.entries(edits).filter(([k, on]) => {
@@ -92,6 +93,7 @@ export default function PublishRuleMatrix({
 
   const handleSave = async () => {
     setSaving(true)
+    setSaveError(null)
     const updates = SHOPS.flatMap(shop =>
       SITES.map(site => ({
         cs3_cast_id: cs3CastId,
@@ -106,7 +108,13 @@ export default function PublishRuleMatrix({
       body: JSON.stringify({ updates }),
     })
     setSaving(false)
-    if (res.ok) { setSaved(true); onSaved?.() }
+    if (res.ok) {
+      setSaved(true)
+      onSaved?.()
+    } else {
+      const json = await res.json().catch(() => null)
+      setSaveError(json?.error ?? '保存に失敗しました')
+    }
   }
 
   return (
@@ -124,7 +132,8 @@ export default function PublishRuleMatrix({
         {warningCount > 0 && (
           <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">⚠ {warningCount}件 ID欠落で反映不可</span>
         )}
-        <span className="text-gray-400 ml-auto">{enabledCount} / 32 有効</span>
+          <span className="text-gray-400 ml-auto">{enabledCount} / 32 有効</span>
+        {saveError && <span className="text-red-600 font-semibold">{saveError}</span>}
       </div>
 
       {/* マトリクス */}

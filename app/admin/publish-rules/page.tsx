@@ -67,6 +67,7 @@ function CastMatrix({
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState(castName)
   const [nameSaving, setNameSaving] = useState(false)
@@ -104,11 +105,13 @@ function CastMatrix({
 
   const handleChange = (shopId: string, siteId: string, checked: boolean) => {
     setSaved(false)
+    setSaveError(null)
     setEdits(prev => ({ ...prev, [ruleKey(shopId, siteId)]: checked }))
   }
 
   const handleSave = async () => {
     setSaving(true)
+    setSaveError(null)
     const updates = SHOPS.flatMap(shop =>
       SITES.map(site => ({
         cs3_cast_id: castId,
@@ -123,7 +126,13 @@ function CastMatrix({
       body: JSON.stringify({ updates }),
     })
     setSaving(false)
-    if (res.ok) { setSaved(true); onSaved(castId, updates) }
+    if (res.ok) {
+      setSaved(true)
+      onSaved(castId, updates)
+    } else {
+      const json = await res.json().catch(() => null)
+      setSaveError(json?.error ?? '保存に失敗しました')
+    }
   }
 
   return (
@@ -260,6 +269,7 @@ function CastMatrix({
             {saving ? '保存中...' : '保存'}
           </button>
           {saved && <span className="text-green-600 text-xs">保存しました</span>}
+          {saveError && <span className="text-red-600 text-xs">{saveError}</span>}
         </div>
       </div>
     </details>
