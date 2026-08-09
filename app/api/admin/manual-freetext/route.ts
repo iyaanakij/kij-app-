@@ -60,10 +60,22 @@ const SITE_TO_VENREY_ACCOUNT_NAME: Record<string, string> = {
   mka_kinshicho: '快楽M性感倶楽部 錦糸町',
 }
 
+const SOURCE_SHOP_TO_VENREY_ACCOUNTS: Record<string, string[]> = {
+  '111701': ['癒したくて 錦糸町', '快楽M性感倶楽部 錦糸町'],
+  '111702': ['癒したくて 成田', '快楽M性感倶楽部 成田'],
+  '111703': ['癒したくて 成田', '快楽M性感倶楽部 成田'],
+  '111704': ['癒したくて 錦糸町', '快楽M性感倶楽部 錦糸町'],
+}
+
+function isValidVenreyRoute(sourceShopId: string | null, accountName: string): boolean {
+  const allowed = sourceShopId ? SOURCE_SHOP_TO_VENREY_ACCOUNTS[sourceShopId] : undefined
+  return !allowed || allowed.includes(accountName)
+}
+
 async function fetchVenreyTargets(cs3CastId: string) {
   const { data, error } = await adminSupabase
     .from('publish_rules')
-    .select('site_id, venrey_cast_id')
+    .select('site_id, source_shop_id, venrey_cast_id')
     .eq('cs3_cast_id', cs3CastId)
     .eq('enabled', true)
     .not('venrey_cast_id', 'is', null)
@@ -71,6 +83,7 @@ async function fetchVenreyTargets(cs3CastId: string) {
   const byAccount = new Map<string, string>()
   for (const row of data ?? []) {
     const accountName = SITE_TO_VENREY_ACCOUNT_NAME[row.site_id]
+    if (accountName && !isValidVenreyRoute(row.source_shop_id, accountName)) continue
     if (!accountName || byAccount.has(accountName)) continue
     byAccount.set(accountName, row.venrey_cast_id!)
   }
