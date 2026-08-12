@@ -293,6 +293,12 @@ async function fetchSC(siteUrl, accessToken, body) {
 }
 
 // --- Date helpers (JST固定) ---
+// ANALYTICS_REPORT_SIMULATE_NOW（ISO日時）を設定すると、過去分の手動再生成時に
+// cron実行時刻を再現できる。未設定時は従来通り実行時刻をそのまま使う。
+function now() {
+  return process.env.ANALYTICS_REPORT_SIMULATE_NOW ? new Date(process.env.ANALYTICS_REPORT_SIMULATE_NOW) : new Date()
+}
+
 function toJSTDateStr(utcDate) {
   return new Date(utcDate.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
@@ -304,7 +310,7 @@ function addDays(dateStr, days) {
 }
 
 function getDateRange() {
-  const end = addDays(toJSTDateStr(new Date()), -1)
+  const end = addDays(toJSTDateStr(now()), -1)
   const start = addDays(end, -6)
   return { startDate: start, endDate: end }
 }
@@ -318,7 +324,7 @@ function getPrevDateRange() {
 // 隔離7日間（getDateRange）は前週比のノイズが大きいキャスト単位の数字向けに
 // 平滑化した並行ビューとして併用する。
 function getRolling28DateRange() {
-  const end = addDays(toJSTDateStr(new Date()), -1)
+  const end = addDays(toJSTDateStr(now()), -1)
   const start = addDays(end, -27)
   return { startDate: start, endDate: end }
 }
@@ -332,7 +338,7 @@ function getPrevRolling28DateRange() {
 
 // Search Console用: データ反映遅延を避けるため endDate = 今日 -3日
 function getSearchConsoleDateRange() {
-  const end = addDays(toJSTDateStr(new Date()), -3)
+  const end = addDays(toJSTDateStr(now()), -3)
   const start = addDays(end, -6)
   return { startDate: start, endDate: end }
 }
@@ -343,7 +349,7 @@ function getPrevSearchConsoleDateRange() {
 }
 
 function getSCRolling28DateRange() {
-  const end = addDays(toJSTDateStr(new Date()), -3)
+  const end = addDays(toJSTDateStr(now()), -3)
   const start = addDays(end, -27)
   return { startDate: start, endDate: end }
 }
