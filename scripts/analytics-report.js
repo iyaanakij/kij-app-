@@ -37,6 +37,19 @@ const GA4_PROPERTIES = [
   { id: '383648097', name: 'M性感 成田',   brand: 'M', area: '成田',   site_id: 'mka_narita' },
 ]
 
+const GA4_GROUP_PAGES = [
+  {
+    id: '532587954',
+    measurement_id: 'G-9K1YBY4Q6F',
+    name: '快楽M性感グループ',
+    pageName: 'グループページLP',
+    page_url: 'https://www.m-kairaku.com/group/discount/',
+    includePath: '/group/discount/',
+  },
+]
+
+const GROUP_PAGE_SHOPS = ['西船橋店', '千葉店', '成田店', '錦糸町店']
+
 const SC_SITES = [
   { url: 'https://www.m-kairaku.com/', name: 'M性感' },
 ]
@@ -141,6 +154,27 @@ async function ga4Report(propertyId, accessToken, body) {
   return data
 }
 
+async function fetchGA4Metadata(propertyId, accessToken) {
+  const res = await fetch(
+    `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}/metadata`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  )
+  const data = await res.json()
+  if (data.error) { console.warn(`GA4 metadata ${propertyId}:`, data.error.message); return null }
+  return data
+}
+
+function findShopCustomDimension(metadata) {
+  const dimensions = metadata?.dimensions || []
+  return dimensions.find(d =>
+    d.apiName === 'customEvent:shop' ||
+    d.apiName === 'shop' ||
+    d.parameterName === 'shop' ||
+    d.uiName === 'shop' ||
+    d.customDefinition === true && /(^|:)shop$/.test(d.apiName || '')
+  ) || null
+}
+
 // ① セッション/PV/直帰率/滞在時間（週次集計・date dimensionなし）
 async function fetchGA4Main(propertyId, accessToken, startDate, endDate) {
   return ga4Report(propertyId, accessToken, {
@@ -152,6 +186,37 @@ async function fetchGA4Main(propertyId, accessToken, startDate, endDate) {
       { name: 'bounceRate' },
       { name: 'averageSessionDuration' },
     ],
+  })
+}
+
+async function fetchGA4GroupEvents(propertyId, accessToken, startDate, endDate) {
+  return ga4Report(propertyId, accessToken, {
+    dateRanges: [{ startDate, endDate }],
+    metrics: [{ name: 'eventCount' }],
+    dimensions: [{ name: 'eventName' }],
+    dimensionFilter: {
+      filter: {
+        fieldName: 'eventName',
+        inListFilter: { values: ['phone_click', 'reservation_click'] },
+      },
+    },
+  })
+}
+
+async function fetchGA4GroupShopClicks(propertyId, accessToken, startDate, endDate, shopDimension) {
+  if (!shopDimension) return null
+  return ga4Report(propertyId, accessToken, {
+    dateRanges: [{ startDate, endDate }],
+    metrics: [{ name: 'eventCount' }],
+    dimensions: [{ name: shopDimension }, { name: 'eventName' }],
+    dimensionFilter: {
+      filter: {
+        fieldName: 'eventName',
+        inListFilter: { values: ['phone_click', 'reservation_click'] },
+      },
+    },
+    orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
+    limit: 100,
   })
 }
 
@@ -392,6 +457,42 @@ function summarizeEvents(data) {
   return result
 }
 
+function summarizeGroupEvents(data) {
+  if (!data?.rows) return { phone_click: 0, reservation_click: 0 }
+  const result = { phone_click: 0, reservation_click: 0 }
+  for (const row of data.rows) {
+    const name = row.dimensionValues[0].value
+    if (name in result) result[name] = Math.round(parseFloat(row.metricValues[0].value))
+  }
+  return result
+}
+
+function summarizeGroupShopClicks(data) {
+  const byShop = Object.fromEntries(
+    GROUP_PAGE_SHOPS.map(shop => [shop, { phone_click: 0, reservation_click: 0 }])
+  )
+  const unassigned = { phone_click: 0, reservation_click: 0 }
+  const other = {}
+
+  for (const row of data?.rows || []) {
+    const shop = row.dimensionValues[0]?.value || ''
+    const eventName = row.dimensionValues[1]?.value || ''
+    const count = Math.round(parseFloat(row.metricValues[0]?.value) || 0)
+    if (!['phone_click', 'reservation_click'].includes(eventName)) continue
+
+    if (shop in byShop) {
+      byShop[shop][eventName] += count
+    } else if (!shop || shop === '(not set)') {
+      unassigned[eventName] += count
+    } else {
+      if (!other[shop]) other[shop] = { phone_click: 0, reservation_click: 0 }
+      other[shop][eventName] += count
+    }
+  }
+
+  return { by_shop: byShop, unassigned, other }
+}
+
 function summarizeSC(data) {
   if (!data?.rows) return { clicks: 0, impressions: 0, ctr: 0, position: 0 }
   let clicks = 0, impressions = 0, posWeightedSum = 0
@@ -620,6 +721,139 @@ function buildGa4Summary(ga4Results) {
     result[`${field}_diff_pct`] = percentDiff(totals.current[field], totals.previous[field])
   }
   return result
+}
+
+async function buildGroupPageSummary(accessToken, ranges) {
+  const pages = await Promise.all(GA4_GROUP_PAGES.map(async page => {
+    const metadata = await fetchGA4Metadata(page.id, accessToken)
+    const shopDimension = findShopCustomDimension(metadata)
+    const scFilter = {
+      dimensionFilterGroups: [{
+        filters: [{
+          dimension: 'page',
+          operator: 'contains',
+          expression: page.page_url,
+        }],
+      }],
+    }
+
+    const [
+      mainCurr,
+      mainPrev,
+      eventsCurr,
+      eventsPrev,
+      shopClicksCurr,
+      shopClicksPrev,
+      scCurrent,
+      scPrevious,
+    ] = await Promise.all([
+      fetchGA4Main(page.id, accessToken, ranges.ga4Current.startDate, ranges.ga4Current.endDate),
+      fetchGA4Main(page.id, accessToken, ranges.ga4Previous.startDate, ranges.ga4Previous.endDate),
+      fetchGA4GroupEvents(page.id, accessToken, ranges.ga4Current.startDate, ranges.ga4Current.endDate),
+      fetchGA4GroupEvents(page.id, accessToken, ranges.ga4Previous.startDate, ranges.ga4Previous.endDate),
+      shopDimension ? fetchGA4GroupShopClicks(page.id, accessToken, ranges.ga4Current.startDate, ranges.ga4Current.endDate, shopDimension.apiName) : Promise.resolve(null),
+      shopDimension ? fetchGA4GroupShopClicks(page.id, accessToken, ranges.ga4Previous.startDate, ranges.ga4Previous.endDate, shopDimension.apiName) : Promise.resolve(null),
+      fetchSC('https://www.m-kairaku.com/', accessToken, {
+        ...scFilter,
+        dimensions: ['page', 'query'],
+        rowLimit: 50,
+        startDate: ranges.scCurrent.startDate,
+        endDate: ranges.scCurrent.endDate,
+      }),
+      fetchSC('https://www.m-kairaku.com/', accessToken, {
+        ...scFilter,
+        dimensions: ['page', 'query'],
+        rowLimit: 50,
+        startDate: ranges.scPrevious.startDate,
+        endDate: ranges.scPrevious.endDate,
+      }),
+    ])
+
+    const currentMain = summarizeMain(mainCurr)
+    const previousMain = summarizeMain(mainPrev)
+    const currentEvents = summarizeGroupEvents(eventsCurr)
+    const previousEvents = summarizeGroupEvents(eventsPrev)
+    const calcCVR = (count, sessions) => sessions > 0 ? round1(count / sessions * 100) : 0
+
+    return {
+      id: page.id,
+      measurement_id: page.measurement_id,
+      name: page.name,
+      pageName: page.pageName,
+      page_url: page.page_url,
+      includePath: page.includePath,
+      shop_custom_dimension: shopDimension ? {
+        registered: true,
+        apiName: shopDimension.apiName,
+        uiName: shopDimension.uiName || null,
+      } : {
+        registered: false,
+        apiName: null,
+        uiName: null,
+      },
+      current: {
+        sessions: currentMain.sessions,
+        phone_click: currentEvents.phone_click,
+        reservation_click: currentEvents.reservation_click,
+        phone_cvr: calcCVR(currentEvents.phone_click, currentMain.sessions),
+        reservation_cvr: calcCVR(currentEvents.reservation_click, currentMain.sessions),
+      },
+      previous: {
+        sessions: previousMain.sessions,
+        phone_click: previousEvents.phone_click,
+        reservation_click: previousEvents.reservation_click,
+        phone_cvr: calcCVR(previousEvents.phone_click, previousMain.sessions),
+        reservation_cvr: calcCVR(previousEvents.reservation_click, previousMain.sessions),
+      },
+      diff_pct: {
+        sessions: percentDiff(currentMain.sessions, previousMain.sessions),
+        phone_click: percentDiff(currentEvents.phone_click, previousEvents.phone_click),
+        reservation_click: percentDiff(currentEvents.reservation_click, previousEvents.reservation_click),
+      },
+      shop_clicks: shopDimension ? {
+        current: summarizeGroupShopClicks(shopClicksCurr),
+        previous: summarizeGroupShopClicks(shopClicksPrev),
+      } : null,
+      searchConsole: {
+        current: {
+          summary: summarizeSC(scCurrent),
+          topQueries: (scCurrent?.rows || []).map(row => ({
+            page: row.keys[0],
+            query: row.keys[1],
+            clicks: row.clicks,
+            impressions: row.impressions,
+            ctr: Math.round(row.ctr * 1000) / 10,
+            position: Math.round(row.position * 10) / 10,
+          })),
+        },
+        previous: {
+          summary: summarizeSC(scPrevious),
+        },
+      },
+    }
+  }))
+
+  return { pages }
+}
+
+function formatGroupPageDryRunSection(groupPageSummary) {
+  const lines = ['### グループページ実績（M性感4店舗合計とは別集計）']
+  for (const page of groupPageSummary.pages || []) {
+    lines.push(`- ${page.name} ${page.page_url}`)
+    lines.push(`  - sessions: ${page.current.sessions}（前週比 ${page.diff_pct.sessions ?? '前週データなし'}%）`)
+    lines.push(`  - phone_click: ${page.current.phone_click} / phone_cvr: ${page.current.phone_cvr}%（前週比 ${page.diff_pct.phone_click ?? '前週データなし'}%）`)
+    lines.push(`  - reservation_click: ${page.current.reservation_click} / reservation_cvr: ${page.current.reservation_cvr}%（前週比 ${page.diff_pct.reservation_click ?? '前週データなし'}%）`)
+    lines.push(`  - GSC clicks/impressions/ctr/position: ${page.searchConsole.current.summary.clicks}/${page.searchConsole.current.summary.impressions}/${page.searchConsole.current.summary.ctr}%/${page.searchConsole.current.summary.position}`)
+    if (page.shop_custom_dimension.registered && page.shop_clicks) {
+      lines.push(`  - shopカスタムディメンション: 登録済み（${page.shop_custom_dimension.apiName}）`)
+      for (const [shop, counts] of Object.entries(page.shop_clicks.current.by_shop)) {
+        lines.push(`    - ${shop}: phone_click ${counts.phone_click}, reservation_click ${counts.reservation_click}`)
+      }
+    } else {
+      lines.push('  - shopカスタムディメンション: 未登録。店舗別クリック内訳はスキップ')
+    }
+  }
+  return lines.join('\n')
 }
 
 function primaryChannel(channels) {
@@ -1778,6 +2012,14 @@ async function main() {
   })
   console.log(' コンテンツSEO完了')
 
+  const groupPageSummary = await buildGroupPageSummary(token, {
+    ga4Current: { startDate, endDate },
+    ga4Previous: { startDate: prevStart, endDate: prevEnd },
+    scCurrent: { startDate: scStartDate, endDate: scEndDate },
+    scPrevious: { startDate: scPrevStartDate, endDate: scPrevEndDate },
+  })
+  console.log(' グループページ完了')
+
   const marketing = buildMarketingInsights(ga4Results, scResults, pageSeoResults)
   const ga4Summary = buildGa4Summary(ga4Results)
 
@@ -1796,8 +2038,11 @@ async function main() {
     }, null, 2))
     console.log('--- DRY RUN: contentSeo.rolling28 themes（measurement_phase確認用）---')
     console.log(JSON.stringify(contentSeo.rolling28.themes.map(t => ({ theme: t.theme, theme_group: t.theme_group, measurement_phase: t.measurement_phase })), null, 2))
+    console.log('--- DRY RUN: グループページ実績（4店舗合計とは別集計）---')
+    console.log(formatGroupPageDryRunSection(groupPageSummary))
+    console.log(JSON.stringify(groupPageSummary, null, 2))
     console.log('--- DRY RUN: raw_data 構造プレビュー (先頭6000文字) ---')
-    console.log(JSON.stringify({ ga4: ga4Results, searchConsole: scResults, pageSeo: pageSeoResults, marketing }, null, 2).slice(0, 6000))
+    console.log(JSON.stringify({ ga4: ga4Results, ga4Summary, groupPages: groupPageSummary, searchConsole: scResults, pageSeo: pageSeoResults, marketing }, null, 2).slice(0, 6000))
     console.log('\n[analytics-report] DRY RUN 完了 ✓（Claude呼び出し・Supabase保存スキップ）')
     return
   }
@@ -1812,6 +2057,7 @@ async function main() {
   const promptData = {
     ga4: ga4Results,
     ga4Summary,
+    groupPages: groupPageSummary,
     searchConsole: scResults,
     marketing,
     pageSeoSummary: pageSeoResults.map(page => ({
@@ -1836,6 +2082,7 @@ async function main() {
 【データ構造の説明】
 - GA4: current（今週）/ previous（前週）形式。M性感4店舗分。
 - ga4Summary: M性感4店舗合計のsessions/phone_click/reservation_click/request_click/survey_clickと前週比（%）。コード側で事前計算済みのため、この数値をそのまま使うこと。自分で店舗別データを合計・割り算しないこと。
+- groupPages: 「快楽M性感グループ」LP（/group/discount/）の専用集計。M性感4店舗合計とは完全に別物として扱い、ga4Summaryや店舗別CVRに合算しないこと。shop_custom_dimension.registered が false の場合、shop_clicks は未取得として扱うこと。
 - searchConsole: current（今週）/ previous（前週）形式。M性感サイト分。
 - marketing.storeInsights: GA4から機械判定した店舗別アラート。priority A/B/C、alerts、recommended_action を含む。
 - marketing.seoOpportunities: Search Consoleから機械抽出したSEO改善候補。priority A/B/C、issue_type、recommended_action を含む。
@@ -1860,7 +2107,14 @@ ${dataText}
 - M性感4店舗の総セッション・総電話クリック・総WEB予約クリック・総出勤リクエストと前週比 → ga4Summary の数値・diff_pctをそのまま使うこと（自分で合計や割り算を計算しないこと）
 - marketing.actionItems の優先度A/Bを踏まえた特筆事項
 
-### 2. 今週優先すべき店舗
+### 2. グループページ実績（4店舗合計とは別集計）
+groupPages.pages を参照し、/group/discount/ のLP実績だけを書くこと。M性感4店舗合計や店舗別評価には合算しないこと。
+- セッション、電話クリック、WEB予約クリック、各CVR、前週比
+- Search Consoleの clicks / impressions / ctr / position
+- shop_custom_dimension.registered が true の場合は shop_clicks.current.by_shop で電話リンクの店舗別内訳を書くこと
+- shop_custom_dimension.registered が false の場合は「shopカスタムディメンション未登録のため店舗別内訳は未取得」と明記すること
+
+### 3. 今週優先すべき店舗
 marketing.storeInsights を参照し、priority A/Bの店舗を優先して書くこと。
 - 店舗名
 - priority
@@ -1868,7 +2122,7 @@ marketing.storeInsights を参照し、priority A/Bの店舗を優先して書�
 - recommended_action
 - 根拠となる数字（セッション、phone_cvr、reservation_cvr、前週比）
 
-### 3. CVR分析（重要）
+### 4. CVR分析（重要）
 4種CVRすべてを店舗ごとに比較すること:
 - phone_cvr（電話クリックCVR）
 - reservation_cvr（WEB予約クリックCVR）
@@ -1881,21 +2135,21 @@ marketing.storeInsights を参照し、priority A/Bの店舗を優先して書�
 - WEB予約偏重（reservation_cvr が高い）の店舗
 - request_cvr が他店舗より高い/低い店舗（指名文化の差）
 
-### 4. 流入チャネル分析
+### 5. 流入チャネル分析
 - M性感全体でのオーガニック/直接/参照の割合
 - 特定店舗で流入構造が偏っている場合は指摘
 
-### 5. 店舗別ハイライト
+### 6. 店舗別ハイライト
 - 伸びた店舗・落ちた店舗を具体的数字で（前週比±15%以上を強調）
 
-### 6. SEO改善候補（Search Console）
+### 7. SEO改善候補（Search Console）
 searchConsole.current.summary と searchConsole.previous.summary の実データを使って前週比を計算すること（推測禁止）。
 - M性感の clicks / impressions / ctr / position と前週比
 - topQueries から注目クエリ（clicks_diff が大きい、または position_diff がマイナスで改善）
 - marketing.seoOpportunities のpriority A/Bを優先し、表示回数が多くCTRが低いクエリ、8〜20位で伸ばせるクエリを具体的に挙げる
 - 各候補に recommended_action を添える
 
-### 7. 店舗ページ別SEO深掘り
+### 8. 店舗ページ別SEO深掘り
 marketing.pageSeoInsights を使い、priority A/Bの店舗ページを優先して書くこと。
 - 表示回数、クリック、CTR、平均順位の前週比
 - query_groups から指名系/エリア業種系/その他の偏り
@@ -1903,13 +2157,13 @@ marketing.pageSeoInsights を使い、priority A/Bの店舗ページを優先し
 - 「表示減・CTR上昇」は新規自然流入減・指名流入偏重の疑いとして扱う
 - recommended_action を添える
 
-### 8. 非指名・欲求検索の成長候補
+### 9. 非指名・欲求検索の成長候補
 marketing.growthQueryOpportunities を使い、priority A/Bを優先して書くこと。
 - 店舗名、クエリ、分類、表示回数、CTR、順位
 - エリア×プレイ内容を最優先し、本文・FAQ・内部リンクのどれを足すべきか提案
 - 純粋な「エリア + M性感」の表記揺れはここでは成長候補として扱わない
 
-### 9. 来週の改善アクション（優先度順）
+### 10. 来週の改善アクション（優先度順）
 marketing.actionItems から優先度A/Bを中心に最大5件。各項目は以下の形式:
 - 優先度 / 領域 / 対象
 - 理由
@@ -1942,6 +2196,7 @@ marketing.actionItems から優先度A/Bを中心に最大5件。各項目は以
       raw_data: {
         ga4: ga4Results,
         ga4Summary,
+        groupPages: groupPageSummary,
         searchConsole: scResults,
         pageSeo: pageSeoResults,
         marketing,
