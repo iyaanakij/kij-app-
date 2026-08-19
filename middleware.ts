@@ -38,7 +38,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   // /api/admin/* と /api/staff-dedup（呼び出し元コードが存在しない旧管理系エンドポイント。
-  // 未認証POSTでstaffレコードのマージ/削除が可能なため同様にゲート対象へ）はゲート対象に含める。
+  // 未認証POSTでstaffレコードのマージ/削除が可能なため同様にゲート対象へ）に加え、
+  // /api/line/notify（呼び出し元は管理画面ログイン必須の/shiftページのみ）もゲート対象に含める。
   // /api/cast, /api/photodiary, /api/chat 等の顧客・キャスト向け公開APIは除外したままにする。
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/(?!admin|staff-dedup)).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/(?!admin|staff-dedup|line/notify)).*)'],
 }
