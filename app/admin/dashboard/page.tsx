@@ -35,6 +35,7 @@ const NAME_JA: Record<string, string> = {
   'venrey-auto-fully-booked': 'Venrey受付終了（自動）',
   'cp4-apply':             'HP掲載（CP4）',
   'cp4-clear-summary':     'HP削除候補',
+  'venrey-dump-freshness': 'Venreyキャスト名簿更新',
   'log:venrey-sync':       'ログ：Venrey同期',
   'log:cp4-apply':         'ログ：HP反映',
   'log:new-cast-check':    'ログ：新規キャスト確認',
@@ -89,6 +90,11 @@ const CHECK_GUIDE: Record<string, CheckGuideEntry> = {
   'cp4-clear-summary': {
     category: 'ENGINEER_REQUIRED',
     summary: 'HP削除候補のデータに異常があります',
+    operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
+  },
+  'venrey-dump-freshness': {
+    category: 'ENGINEER_REQUIRED',
+    summary: 'Venreyキャスト名簿の取得が長時間更新されていません（新規キャストのID紐付けに影響）',
     operatorAction: '店舗では対応できません。このページの報告文を担当者に送ってください。',
   },
   'log:venrey-sync': {
