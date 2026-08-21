@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTheme } from 'next-themes'
 
 const navItems = [
@@ -14,10 +14,17 @@ const navItems = [
   { href: '/dorm', label: '寮管理' },
   { href: '/women-info', label: '女性情報' },
   { href: '/staff', label: 'キャスト' },
-  { href: '/photodiary', label: '写メ日記' },
-  { href: '/admin/vanilla-blog', label: 'バニラブログ' },
   { href: '/hotels', label: 'ホテル料金' },
   { href: '/manual', label: 'マニュアル' },
+]
+
+// 外部公開ページ・投稿系ツールは「ツール」プルダウンにまとめる
+const TOOL_ITEMS = [
+  { href: '/cast/login', label: 'キャストページ', external: true, dot: 'bg-pink-400' },
+  { href: '/photodiary', label: '写メ日記', external: false, dot: 'bg-blue-400' },
+  { href: '/photodiary/login', label: '写メ日記投稿', external: true, dot: 'bg-purple-400' },
+  { href: '/chat', label: 'チャット', external: true, dot: 'bg-green-400' },
+  { href: '/admin/vanilla-blog', label: 'バニラブログ', external: false, dot: 'bg-rose-400' },
 ]
 
 function ThemeToggle() {
@@ -53,10 +60,12 @@ function ThemeToggle() {
 export default function NavBar() {
   const pathname = usePathname()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isToolsOpen, setIsToolsOpen] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
+  const toolsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setIsMenuOpen(false), 0)
+    const timer = window.setTimeout(() => { setIsMenuOpen(false); setIsToolsOpen(false) }, 0)
     return () => window.clearTimeout(timer)
   }, [pathname])
 
@@ -66,6 +75,15 @@ export default function NavBar() {
       .then(d => setPendingCount(d.count ?? 0))
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!isToolsOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (toolsRef.current && !toolsRef.current.contains(e.target as Node)) setIsToolsOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isToolsOpen])
 
   if (pathname.startsWith('/cast') || pathname.startsWith('/photodiary') || pathname.startsWith('/chat')) return null
 
@@ -108,33 +126,42 @@ export default function NavBar() {
 
           {/* Desktop: right side */}
           <div className="ml-auto hidden md:flex items-center gap-2">
-            <Link
-              href="/cast/login"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-pink-50 text-pink-500 hover:bg-pink-100 border border-pink-200 dark:bg-pink-600/20 dark:text-pink-300 dark:hover:bg-pink-600/40 dark:border-pink-600/30 transition-colors"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-pink-400 inline-block"></span>
-              キャストページ
-            </Link>
-            <Link
-              href="/photodiary/login"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-purple-50 text-purple-500 hover:bg-purple-100 border border-purple-200 dark:bg-purple-600/20 dark:text-purple-300 dark:hover:bg-purple-600/40 dark:border-purple-600/30 transition-colors"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 inline-block"></span>
-              写メ日記投稿
-            </Link>
-            <Link
-              href="/chat"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 dark:bg-green-600/20 dark:text-green-300 dark:hover:bg-green-600/40 dark:border-green-600/30 transition-colors"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>
-              チャット
-            </Link>
+            <div className="relative" ref={toolsRef}>
+              <button
+                onClick={() => setIsToolsOpen((v) => !v)}
+                className={`flex items-center gap-1 px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  isToolsOpen
+                    ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+                }`}
+              >
+                ツール
+                <svg
+                  xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  className={`transition-transform ${isToolsOpen ? 'rotate-180' : ''}`}
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+              {isToolsOpen && (
+                <div className="absolute right-0 mt-2 w-48 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg py-1.5 overflow-hidden">
+                  {TOOL_ITEMS.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      target={item.external ? '_blank' : undefined}
+                      rel={item.external ? 'noopener noreferrer' : undefined}
+                      onClick={() => setIsToolsOpen(false)}
+                      className="flex items-center gap-2 px-3.5 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${item.dot} shrink-0`}></span>
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
             <Link
               href="/admin/dashboard"
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
@@ -218,36 +245,23 @@ export default function NavBar() {
 
               <div className="my-2 border-t border-gray-200 dark:border-gray-700" />
 
-              <Link
-                href="/cast/login"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-600/10 transition-colors"
-              >
-                <span className="w-2 h-2 rounded-full bg-pink-400 shrink-0"></span>
-                キャストページ
-              </Link>
-              <Link
-                href="/photodiary/login"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-600/10 transition-colors"
-              >
-                <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0"></span>
-                写メ日記投稿
-              </Link>
-              <Link
-                href="/chat"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-600/10 transition-colors"
-              >
-                <span className="w-2 h-2 rounded-full bg-green-400 shrink-0"></span>
-                チャット
-              </Link>
+              <div className="px-4 pt-1 pb-1 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">ツール</div>
+              {TOOL_ITEMS.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  target={item.external ? '_blank' : undefined}
+                  rel={item.external ? 'noopener noreferrer' : undefined}
+                  onClick={() => setIsMenuOpen(false)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <span className={`w-2 h-2 rounded-full ${item.dot} shrink-0`}></span>
+                  {item.label}
+                </Link>
+              ))}
+
+              <div className="my-2 border-t border-gray-200 dark:border-gray-700" />
+
               <Link
                 href="/admin/dashboard"
                 onClick={() => setIsMenuOpen(false)}
