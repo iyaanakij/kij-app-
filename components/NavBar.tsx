@@ -15,6 +15,7 @@ const navItems = [
   { href: '/women-info', label: '女性情報' },
   { href: '/staff', label: 'キャスト' },
   { href: '/photodiary', label: '写メ日記' },
+  { href: '/admin/vanilla-blog', label: 'バニラブログ' },
   { href: '/hotels', label: 'ホテル料金' },
   { href: '/manual', label: 'マニュアル' },
 ]
