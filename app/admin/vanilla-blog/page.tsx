@@ -279,20 +279,11 @@ export default function VanillaBlogPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800">バニラ店長ブログ投稿</h1>
-          <p className="text-xs text-gray-400 mt-0.5">
-            M版/E版それぞれ入力すると、対応する4店舗へ自動でログイン・投稿予約します（固定8区分の時間帯）
-          </p>
-        </div>
-        <a
-          href="/admin/dashboard"
-          className="shrink-0 flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-600 border border-gray-200 hover:border-blue-300 rounded-lg px-3 py-2 bg-white transition-colors"
-        >
-          <span className="text-base leading-none">📊</span>
-          システム状態
-        </a>
+      <div className="mb-5">
+        <h1 className="text-xl font-bold text-gray-800">バニラ店長ブログ投稿</h1>
+        <p className="text-xs text-gray-400 mt-0.5">
+          M版/E版それぞれ入力すると、対応する4店舗へ自動でログイン・投稿予約します（固定8区分の時間帯）
+        </p>
       </div>
 
       <div className="space-y-4">
