@@ -8,6 +8,7 @@ export interface SendEmailOptions {
   to: string
   subject: string
   text: string
+  html?: string
   imageUrls?: string[]
 }
 
@@ -58,6 +59,7 @@ export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult
       to: opts.to,
       subject: opts.subject,
       text: opts.text,
+      html: opts.html,
       attachments,
     })
 

@@ -25,6 +25,7 @@ const TOOL_ITEMS = [
   { href: '/photodiary/login', label: '写メ日記投稿', external: true, dot: 'bg-purple-400' },
   { href: '/chat', label: 'チャット', external: true, dot: 'bg-green-400' },
   { href: '/admin/vanilla-blog', label: 'バニラブログ', external: false, dot: 'bg-rose-400' },
+  { href: '/admin/mail-campaigns', label: 'メルマガ配信', external: false, dot: 'bg-amber-400' },
 ]
 
 function ThemeToggle() {
