@@ -26,6 +26,14 @@ function loadEnvLine(line) {
 for (const p of ENV_PATHS) {
   if (fs.existsSync(p)) fs.readFileSync(p, 'utf8').split('\n').forEach(loadEnvLine)
 }
+// デーモン専用CS3アカウント G（2026-08-21追加、2026-08-21に命名をCS3_DAEMON_*から
+// 他アカウントと同じ文字ベース命名(CS3_ID_G/CS3_PASS_G)へ統一）。常時稼働のこのデーモンが
+// A account(CS3_ID、10分ごとのrun-sync.shと共用)にフォールバックしているとセッションを
+// 奪い合うため、専用のCS3_ID_G/CS3_PASS_Gがあれば最優先で使う。
+if (process.env.CS3_ID_G && process.env.CS3_PASS_G) {
+  process.env.CS3_LOGIN_ID = process.env.CS3_ID_G
+  process.env.CS3_PASSWORD = process.env.CS3_PASS_G
+}
 // VPS env var aliases (CS3_ID/CS3_PASS → CS3_LOGIN_ID/CS3_PASSWORD)
 if (!process.env.CS3_LOGIN_ID && process.env.CS3_ID) process.env.CS3_LOGIN_ID = process.env.CS3_ID
 if (!process.env.CS3_PASSWORD && process.env.CS3_PASS) process.env.CS3_PASSWORD = process.env.CS3_PASS
@@ -97,6 +105,30 @@ function httpsPost(hostname, path, body, extraHeaders = {}) {
   })
 }
 
+function httpsPostJson(hostname, path, payload, extraHeaders = {}) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify(payload)
+    const buf = Buffer.from(body)
+    const req = httpsReq({
+      hostname, path, method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': buf.length,
+        'User-Agent': USER_AGENT,
+        ...extraHeaders,
+      },
+    }, res => {
+      let data = ''
+      res.on('data', chunk => data += chunk)
+      res.on('end', () => resolve({ status: res.statusCode, body: data }))
+    })
+    req.setTimeout(CS3_TIMEOUT_MS, () => req.destroy(new Error(`HTTPS POST タイムアウト: ${hostname}${path}`)))
+    req.on('error', reject)
+    req.write(buf)
+    req.end()
+  })
+}
+
 function httpsGet(hostname, path, cookieStr) {
   return new Promise((resolve, reject) => {
     const req = httpsReq({
@@ -111,6 +143,112 @@ function httpsGet(hostname, path, cookieStr) {
     req.on('error', reject)
     req.end()
   })
+}
+
+function formatHHMM(value) {
+  if (value == null) return '--:--'
+  return String(value).padStart(4, '0').replace(/^(\d{2})(\d{2})$/, '$1:$2')
+}
+
+function buildReservationLineMessage(entry, section) {
+  const lines = [
+    '【新しい予約が入りました】',
+    `日時: ${entry.date} ${formatHHMM(entry.time)}-${formatHHMM(entry.checkoutTime)}`,
+    `店舗: ${section}`,
+    `コース: ${entry.courseDuration}分`,
+  ]
+  if (entry.nominationType) lines.push(`指名: ${entry.nominationType}`)
+  if (entry.area) lines.push(`エリア: ${entry.area}`)
+  if (entry.hotel) lines.push(`場所: ${entry.hotel}`)
+  lines.push('詳細は管理画面で確認してください。')
+  return lines.join('\n')
+}
+
+async function markReservationLineSkipped(entry, staffId, reason, error) {
+  const { data: existing } = await supabase
+    .from('cs3_reservation_line_notifications')
+    .select('status, line_sent_at')
+    .eq('cs3_id', entry.cs3Id)
+    .maybeSingle()
+  if (existing?.line_sent_at || existing?.status === 'sent') return
+
+  await supabase.from('cs3_reservation_line_notifications').upsert({
+    cs3_id: entry.cs3Id,
+    staff_id: staffId,
+    status: 'skipped',
+    skipped_reason: reason,
+    error: error ?? null,
+    attempted_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'cs3_id' })
+}
+
+async function sendLineMessage(lineUserId, message) {
+  const token = process.env.LINE_MESSAGING_ACCESS_TOKEN
+  if (!token) return false
+
+  const res = await httpsPostJson('api.line.me', '/v2/bot/message/push', {
+    to: lineUserId,
+    messages: [{ type: 'text', text: message }],
+  }, { Authorization: `Bearer ${token}` })
+
+  if (res.status < 200 || res.status >= 300) {
+    console.error(`[${ts()}] [LINE] push failed ${res.status}: ${res.body}`)
+    return false
+  }
+  return true
+}
+
+async function notifyReservationLine(entry, staffId, reservationId, section) {
+  const { data: existing } = await supabase
+    .from('cs3_reservation_line_notifications')
+    .select('status, line_sent_at')
+    .eq('cs3_id', entry.cs3Id)
+    .maybeSingle()
+
+  if (existing?.line_sent_at || existing?.status === 'sent') return 'duplicate'
+
+  const message = buildReservationLineMessage(entry, section)
+  const attemptedAt = new Date().toISOString()
+  await supabase.from('cs3_reservation_line_notifications').upsert({
+    cs3_id: entry.cs3Id,
+    reservation_id: reservationId,
+    staff_id: staffId,
+    status: 'pending',
+    skipped_reason: null,
+    message,
+    error: null,
+    attempted_at: attemptedAt,
+    updated_at: attemptedAt,
+  }, { onConflict: 'cs3_id' })
+
+  const { data: role } = await supabase
+    .from('user_roles')
+    .select('line_user_id')
+    .eq('staff_id', staffId)
+    .eq('role', 'cast')
+    .maybeSingle()
+
+  if (!role?.line_user_id) {
+    await markReservationLineSkipped(entry, staffId, 'no_line_id')
+    return 'no_line_id'
+  }
+
+  const ok = await sendLineMessage(role.line_user_id, message).catch(error => {
+    console.error(`[${ts()}] [LINE] push failed: ${error.message}`)
+    return false
+  })
+  const finishedAt = new Date().toISOString()
+  await supabase.from('cs3_reservation_line_notifications').update({
+    status: ok ? 'sent' : 'failed',
+    skipped_reason: null,
+    error: ok ? null : 'line_push_failed',
+    line_sent_at: ok ? finishedAt : null,
+    attempted_at: finishedAt,
+    updated_at: finishedAt,
+  }).eq('cs3_id', entry.cs3Id)
+
+  return ok ? 'sent' : 'failed'
 }
 
 // Vercel経由を廃止し、Supabaseに直接書き込む（Vercel 10秒タイムアウト回避）
@@ -132,19 +270,25 @@ async function upsertReservationsToSupabase(entries, successfulShops) {
 
   const toInsert = [], toUpdate = []
   let skipped = 0
+  let lineSent = 0, lineSkipped = 0, lineDuplicate = 0, lineFailed = 0
   const syncedKeys = []
 
   for (const entry of entries) {
     const staffId = nameToId.get(entry.castName) ?? null
-    if (!staffId) { skipped++; continue }
+    if (!staffId) {
+      skipped++
+      await markReservationLineSkipped(entry, null, 'staff_name_unmatched', entry.castName)
+      continue
+    }
 
     const isM = /^[MＭ]/.test(entry.nominationType ?? '')
+    const section = isM ? 'M' : 'E'
     const notesKey = `CS3:${entry.cs3Id}`
     syncedKeys.push(notesKey)
 
     const payload = {
       store_id: isM ? entry.storeId - 4 : entry.storeId,
-      date: entry.date, section: isM ? 'M' : 'E',
+      date: entry.date, section,
       time: entry.time, checkout_time: entry.checkoutTime,
       customer_name: entry.customerName, phone: entry.phone,
       area: entry.area, hotel: entry.hotel, room_number: entry.roomNumber,
@@ -166,18 +310,41 @@ async function upsertReservationsToSupabase(entries, successfulShops) {
 
     const existingId = existingMap.get(notesKey)
     if (existingId) toUpdate.push({ id: existingId, payload })
-    else toInsert.push({ ...payload, confirmed: false, communicated: false, arrival_confirmed: false, checked: false })
+    else {
+      toInsert.push({
+        entry,
+        staffId,
+        section,
+        payload: { ...payload, confirmed: false, communicated: false, arrival_confirmed: false, checked: false },
+      })
+    }
   }
 
   // 並列 update + 一括 insert
+  let insertedRows = []
   await Promise.all([
     ...toUpdate.map(({ id, payload }) =>
       supabase.from('reservations').update(payload).eq('id', id)
     ),
     toInsert.length > 0
-      ? supabase.from('reservations').insert(toInsert)
+      ? supabase.from('reservations').insert(toInsert.map(item => item.payload)).select('id, notes')
+        .then(({ data, error }) => {
+          if (error) throw error
+          insertedRows = data ?? []
+        })
       : Promise.resolve(),
   ])
+
+  const insertedIdByNotes = new Map(insertedRows.map(r => [r.notes, r.id]))
+  for (const item of toInsert) {
+    const reservationId = insertedIdByNotes.get(item.payload.notes)
+    if (!reservationId) continue
+    const result = await notifyReservationLine(item.entry, item.staffId, reservationId, item.section)
+    if (result === 'sent') lineSent++
+    else if (result === 'duplicate') lineDuplicate++
+    else if (result === 'failed') lineFailed++
+    else lineSkipped++
+  }
 
   // CS3Aliceから消えたレコードを削除（成功した店舗の store_id に限定）
   const toDelete = (existingRows ?? [])
@@ -187,7 +354,7 @@ async function upsertReservationsToSupabase(entries, successfulShops) {
     await supabase.from('reservations').delete().in('id', toDelete)
   }
 
-  return { synced: toUpdate.length + toInsert.length, skipped, deleted: toDelete.length }
+  return { synced: toUpdate.length + toInsert.length, skipped, deleted: toDelete.length, lineSent, lineSkipped, lineDuplicate, lineFailed }
 }
 
 async function loginForShop(shopCode) {
@@ -445,12 +612,16 @@ async function syncWork() {
     console.error(`[${ts()}] ⚠ customer_visit_recency 更新失敗: ${error.message}`)
     return { upserted: 0, skippedInvalid: 0, skippedFuture: 0, skippedOlder: 0, error: error.message }
   })
-  console.log(`[${ts()}] ✅ 完了 — 登録:${r.synced} スキップ:${r.skipped} 削除:${r.deleted} recency更新:${recency.upserted}`)
+  console.log(`[${ts()}] ✅ 完了 — 登録:${r.synced} スキップ:${r.skipped} 削除:${r.deleted} LINE送信:${r.lineSent} LINE未送信:${r.lineSkipped} LINE重複:${r.lineDuplicate} LINE失敗:${r.lineFailed} recency更新:${recency.upserted}`)
 
   await supabase.channel('cs3-sync').httpSend('sync-done', {
     synced: r.synced,
     skipped: r.skipped,
     deleted: r.deleted,
+    lineSent: r.lineSent,
+    lineSkipped: r.lineSkipped,
+    lineDuplicate: r.lineDuplicate,
+    lineFailed: r.lineFailed,
     recencyUpserted: recency.upserted,
     recencySkippedInvalid: recency.skippedInvalid,
     recencySkippedFuture: recency.skippedFuture,
