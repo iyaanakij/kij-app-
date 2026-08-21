@@ -452,6 +452,9 @@ export default function DashboardPage() {
           <button onClick={() => router.push('/admin/publish-rules')} className="text-gray-400 hover:text-gray-600 text-sm">
             ← 配信ルール
           </button>
+          <button onClick={() => router.push('/admin/vanilla-blog')} className="text-gray-400 hover:text-gray-600 text-sm">
+            バニラブログ
+          </button>
           <span className="text-gray-300">/</span>
           <h1 className="text-lg font-bold text-gray-800">システムダッシュボード</h1>
         </div>
