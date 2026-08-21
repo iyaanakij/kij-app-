@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 
 type CheckItem = {
   level: 'OK' | 'WARN' | 'CRIT'
@@ -361,7 +360,6 @@ function getRecoveryLabel(job: ActionJob, latest: HealthLog | null) {
 }
 
 export default function DashboardPage() {
-  const router = useRouter()
   const [logs, setLogs] = useState<HealthLog[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -449,10 +447,6 @@ export default function DashboardPage() {
       {/* ヘッダー */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/admin/publish-rules')} className="text-gray-400 hover:text-gray-600 text-sm">
-            ← 配信ルール
-          </button>
-          <span className="text-gray-300">/</span>
           <h1 className="text-lg font-bold text-gray-800">システムダッシュボード</h1>
         </div>
         <div className="flex items-center gap-3">
