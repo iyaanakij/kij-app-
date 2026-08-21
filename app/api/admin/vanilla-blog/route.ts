@@ -10,11 +10,20 @@ const IMAGE_BUCKET = 'vanilla-blog-images'
 const MAX_IMAGE_BYTES = 500 * 1024 // qzin.jp側の上限（縦300×横300・500KB以内）に合わせる
 const MAX_TITLE_LENGTH = 150 // qzin.jp側のタイトル欄上限
 
+// 稼働ボード等と同じJST日付判定（この画面では単純に暦日でよい。翌7時切り替えのような業務日概念は不要）
+function todayJST(): string {
+  const jst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
+  const y = jst.getFullYear()
+  const m = String(jst.getMonth() + 1).padStart(2, '0')
+  const d = String(jst.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 export async function GET(request: NextRequest) {
   const limit = Number(request.nextUrl.searchParams.get('limit') ?? '10')
   const { data, error } = await adminSupabase
     .from('vanilla_blog_jobs')
-    .select('id, brand, title, status, result, error_message, created_at, updated_at')
+    .select('id, brand, title, status, result, error_message, target_date, created_at, updated_at')
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -27,6 +36,7 @@ export async function POST(request: NextRequest) {
   const title = formData.get('title')
   const bodyHtml = formData.get('body_html')
   const image = formData.get('image')
+  const targetDateRaw = formData.get('target_date')
 
   if (brand !== 'M' && brand !== 'E') {
     return NextResponse.json({ error: 'brand は M または E を指定してください' }, { status: 400 })
@@ -45,6 +55,16 @@ export async function POST(request: NextRequest) {
   }
   if (image.size > MAX_IMAGE_BYTES) {
     return NextResponse.json({ error: '画像は500KB以内にしてください' }, { status: 400 })
+  }
+  let targetDate: string | null = null
+  if (typeof targetDateRaw === 'string' && targetDateRaw.trim()) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDateRaw)) {
+      return NextResponse.json({ error: '投稿日の形式が不正です' }, { status: 400 })
+    }
+    if (targetDateRaw < todayJST()) {
+      return NextResponse.json({ error: '投稿日には過去の日付を指定できません' }, { status: 400 })
+    }
+    targetDate = targetDateRaw
   }
 
   // 同時に処理中の同ブランドジョブがあれば連打防止（CP4/Venreyのクールダウンと同じ考え方）
@@ -75,6 +95,7 @@ export async function POST(request: NextRequest) {
       title: title.trim(),
       body_html: bodyHtml,
       image_storage_path: storagePath,
+      target_date: targetDate,
       status: 'pending',
       requested_by: 'admin',
     })

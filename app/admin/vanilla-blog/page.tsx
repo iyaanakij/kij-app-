@@ -16,8 +16,29 @@ type Job = {
   status: 'pending' | 'running' | 'done' | 'error'
   result: JobResult | null
   error_message: string | null
+  target_date: string | null
   created_at: string
   updated_at: string
+}
+
+function toDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function todayStr(): string {
+  return toDateStr(new Date())
+}
+
+// 初期値は「直近の金曜」（実運用の投稿曜日に合わせたデフォルト。編集は自由）
+function nextFridayStr(): string {
+  const now = new Date()
+  const diff = (5 - now.getDay() + 7) % 7
+  const target = new Date(now)
+  target.setDate(now.getDate() + diff)
+  return toDateStr(target)
 }
 
 const ACCOUNT_LABELS: Record<string, string> = {
@@ -60,6 +81,7 @@ function BrandForm({
 }) {
   const [title, setTitle] = useState('')
   const [bodyHtml, setBodyHtml] = useState('')
+  const [targetDate, setTargetDate] = useState(nextFridayStr())
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -84,6 +106,7 @@ function BrandForm({
     formData.set('title', title.trim())
     formData.set('body_html', bodyHtml)
     formData.set('image', imageFile)
+    formData.set('target_date', targetDate)
 
     const res = await fetch('/api/admin/vanilla-blog', { method: 'POST', body: formData })
     const json = await res.json()
@@ -93,6 +116,7 @@ function BrandForm({
     setSuccess(true)
     setTitle('')
     setBodyHtml('')
+    setTargetDate(nextFridayStr())
     handleImageChange(null)
     onSubmitted()
   }
@@ -111,6 +135,17 @@ function BrandForm({
             maxLength={150}
             className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
             placeholder="例: お仕事内容について、正直にお話しします"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">投稿予約日（各アカウント固定の時間帯で予約します）</label>
+          <input
+            type="date"
+            value={targetDate}
+            min={todayStr()}
+            onChange={(e) => setTargetDate(e.target.value)}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
           />
         </div>
 
@@ -173,6 +208,7 @@ function JobRow({ job }: { job: Job }) {
         <div className="flex items-center gap-2 min-w-0">
           <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 font-mono">{job.brand}</span>
           <span className="truncate text-gray-700">{job.title}</span>
+          {job.target_date && <span className="shrink-0 text-gray-400">{job.target_date}</span>}
         </div>
         <span className={`shrink-0 font-medium ${STATUS_COLOR[job.status]}`}>
           {STATUS_LABEL[job.status]}
