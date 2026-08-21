@@ -247,6 +247,90 @@ function parseDatetime(str) {
   return { time: sh * 100 + sm, checkoutTime: eh * 100 + em, courseDuration: endMin - startMin }
 }
 
+function normalizePhone(value) {
+  const digits = String(value ?? '').replace(/\D/g, '')
+  return digits.length >= 7 ? digits : null
+}
+
+function reservationCheckoutIso(entry) {
+  if (!entry.date || entry.time == null || entry.checkoutTime == null) return null
+  const m = entry.date.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return null
+  const y = Number(m[1]), month = Number(m[2]), d = Number(m[3])
+  const startHour = Math.floor(entry.time / 100)
+  const startMinute = entry.time % 100
+  const endHour = Math.floor(entry.checkoutTime / 100)
+  const endMinute = entry.checkoutTime % 100
+  const startMinutes = startHour * 60 + startMinute
+  const endMinutes = endHour * 60 + endMinute
+  const dayOffset = endMinutes <= startMinutes ? 1 : 0
+  const utcMs = Date.UTC(y, month - 1, d + dayOffset, endHour - 9, endMinute, 0)
+  const visitedAt = new Date(utcMs)
+  if (Number.isNaN(visitedAt.getTime()) || visitedAt.getTime() > Date.now()) return null
+  return visitedAt.toISOString()
+}
+
+async function upsertCustomerVisitRecency(entries) {
+  const latestByPhone = new Map()
+  let skippedInvalid = 0
+  let skippedFuture = 0
+
+  for (const entry of entries) {
+    const phone = normalizePhone(entry.phone)
+    if (!phone) { skippedInvalid++; continue }
+
+    const lastVisitedAt = reservationCheckoutIso(entry)
+    if (!lastVisitedAt) { skippedFuture++; continue }
+
+    const existing = latestByPhone.get(phone)
+    if (!existing || lastVisitedAt > existing.last_visited_at) {
+      latestByPhone.set(phone, { phone, last_visited_at: lastVisitedAt })
+    }
+  }
+
+  const candidates = [...latestByPhone.values()]
+  if (candidates.length === 0) {
+    return { upserted: 0, skippedInvalid, skippedFuture, skippedOlder: 0 }
+  }
+
+  const { data: existingRows, error: fetchError } = await supabase
+    .from('customer_visit_recency')
+    .select('phone, last_visited_at, visit_count')
+    .in('phone', candidates.map(c => c.phone))
+  if (fetchError) throw fetchError
+
+  const existingByPhone = new Map((existingRows ?? []).map(r => [r.phone, r]))
+  const now = new Date().toISOString()
+  let skippedOlder = 0
+  const rows = []
+
+  for (const candidate of candidates) {
+    const existing = existingByPhone.get(candidate.phone)
+    if (existing && candidate.last_visited_at <= existing.last_visited_at) {
+      skippedOlder++
+      continue
+    }
+    rows.push({
+      phone: candidate.phone,
+      last_visited_at: candidate.last_visited_at,
+      visit_count: existing ? Number(existing.visit_count ?? 0) + 1 : 1,
+      last_seen_at: now,
+      updated_at: now,
+    })
+  }
+
+  if (rows.length === 0) {
+    return { upserted: 0, skippedInvalid, skippedFuture, skippedOlder }
+  }
+
+  const { error: upsertError } = await supabase
+    .from('customer_visit_recency')
+    .upsert(rows, { onConflict: 'phone' })
+  if (upsertError) throw upsertError
+
+  return { upserted: rows.length, skippedInvalid, skippedFuture, skippedOlder }
+}
+
 function parseReservations(html) {
   const entries = []
   const rowRe = /<tr[^>]+class="[^"]*reservation_section[^"]*"([^>]*?)>([\s\S]*?)<\/tr>/g
@@ -357,10 +441,22 @@ async function syncWork() {
   const entries = allEntries.filter(e => { if (seen.has(e.cs3Id)) return false; seen.add(e.cs3Id); return true })
 
   const r = await upsertReservationsToSupabase(entries, successfulShops)
-  console.log(`[${ts()}] ✅ 完了 — 登録:${r.synced} スキップ:${r.skipped} 削除:${r.deleted}`)
+  const recency = await upsertCustomerVisitRecency(entries).catch(error => {
+    console.error(`[${ts()}] ⚠ customer_visit_recency 更新失敗: ${error.message}`)
+    return { upserted: 0, skippedInvalid: 0, skippedFuture: 0, skippedOlder: 0, error: error.message }
+  })
+  console.log(`[${ts()}] ✅ 完了 — 登録:${r.synced} スキップ:${r.skipped} 削除:${r.deleted} recency更新:${recency.upserted}`)
 
   await supabase.channel('cs3-sync').httpSend('sync-done', {
-    synced: r.synced, skipped: r.skipped, deleted: r.deleted, at: new Date().toISOString(),
+    synced: r.synced,
+    skipped: r.skipped,
+    deleted: r.deleted,
+    recencyUpserted: recency.upserted,
+    recencySkippedInvalid: recency.skippedInvalid,
+    recencySkippedFuture: recency.skippedFuture,
+    recencySkippedOlder: recency.skippedOlder,
+    recencyError: recency.error,
+    at: new Date().toISOString(),
   }).catch(() => {})
 }
 
