@@ -154,7 +154,61 @@ async function loadCampaigns(limit: number) {
   }))
 }
 
+async function loadCampaignDetail(campaignId: number) {
+  const { data: recipients, error } = await sb
+    .from('mail_campaign_recipients')
+    .select('id, phone, email, name, sent_at, opened_at, open_count, first_clicked_at, click_count')
+    .eq('campaign_id', campaignId)
+    .order('sent_at', { ascending: false, nullsFirst: false })
+  if (error) throw error
+
+  const rows = (recipients ?? []) as Array<{
+    id: number; phone: string; email: string; name: string | null
+    sent_at: string | null; opened_at: string | null; open_count: number
+    first_clicked_at: string | null; click_count: number
+  }>
+
+  const { data: clicks, error: clickError } = await sb
+    .from('mail_campaign_link_clicks')
+    .select('url')
+    .eq('campaign_id', campaignId)
+  if (clickError) throw clickError
+
+  const linkCounts = new Map<string, number>()
+  for (const { url } of (clicks ?? []) as Array<{ url: string }>) {
+    linkCounts.set(url, (linkCounts.get(url) ?? 0) + 1)
+  }
+  const linkClicks = [...linkCounts.entries()]
+    .map(([url, count]) => ({ url, count }))
+    .sort((a, b) => b.count - a.count)
+
+  return {
+    recipients: rows.map(r => ({
+      id: r.id,
+      is_test: r.phone.startsWith('test:'),
+      email: r.email,
+      name: r.name,
+      sent_at: r.sent_at,
+      opened_at: r.opened_at,
+      open_count: r.open_count,
+      first_clicked_at: r.first_clicked_at,
+      click_count: r.click_count,
+    })),
+    link_clicks: linkClicks,
+  }
+}
+
 export async function GET(request: NextRequest) {
+  const campaignDetailId = Number(request.nextUrl.searchParams.get('campaign_detail') ?? '0')
+  if (campaignDetailId > 0) {
+    try {
+      const detail = await loadCampaignDetail(campaignDetailId)
+      return NextResponse.json(detail)
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
+    }
+  }
+
   const previewMonths = Number(request.nextUrl.searchParams.get('preview_months') ?? '0')
   if (previewMonths > 0) {
     try {

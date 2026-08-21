@@ -22,6 +22,22 @@ type Campaign = {
   recipient_stats: { total: number; sent: number; opened: number; clicked: number; tests: number }
 }
 
+type RecipientDetail = {
+  id: number
+  is_test: boolean
+  email: string
+  name: string | null
+  sent_at: string | null
+  opened_at: string | null
+  open_count: number
+  first_clicked_at: string | null
+  click_count: number
+}
+
+type LinkClick = { url: string; count: number }
+
+type CampaignDetail = { recipients: RecipientDetail[]; link_clicks: LinkClick[] }
+
 const STATUS_LABEL: Record<Campaign['status'], string> = {
   draft: '下書き',
   queued: '待機中',
@@ -40,7 +56,21 @@ function CampaignRow({ campaign, onChanged }: { campaign: Campaign; onChanged: (
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [detail, setDetail] = useState<CampaignDetail | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
   const s = campaign.recipient_stats
+
+  const toggleDetail = async () => {
+    if (detailOpen) { setDetailOpen(false); return }
+    setDetailOpen(true)
+    if (detail) return
+    setDetailLoading(true)
+    const res = await fetch(`/api/admin/mail-campaigns?campaign_detail=${campaign.id}`)
+    const json = await res.json()
+    setDetailLoading(false)
+    if (res.ok) setDetail(json)
+  }
 
   const sendTest = async () => {
     setBusy(true)
@@ -118,11 +148,70 @@ function CampaignRow({ campaign, onChanged }: { campaign: Campaign; onChanged: (
             実配信キューへ投入
           </button>
         )}
+        <button
+          onClick={toggleDetail}
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700"
+        >
+          {detailOpen ? '詳細を閉じる' : '詳細を見る'}
+        </button>
       </div>
       {s.tests > 0 && <p className="mt-1 text-xs text-gray-400">テスト送信 {s.tests}件</p>}
       {message && <p className="mt-2 text-xs text-green-600">{message}</p>}
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       {campaign.error_message && <p className="mt-2 text-xs text-red-600">{campaign.error_message}</p>}
+
+      {detailOpen && (
+        <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+          {detailLoading && <p className="text-xs text-gray-400">読み込み中...</p>}
+          {detail && (
+            <>
+              <div className="mb-3">
+                <p className="mb-1 text-xs font-semibold text-gray-600">リンク別クリック数</p>
+                {detail.link_clicks.length === 0 ? (
+                  <p className="text-xs text-gray-400">クリックはまだありません</p>
+                ) : (
+                  <div className="space-y-1">
+                    {detail.link_clicks.map(lc => (
+                      <div key={lc.url} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="truncate text-gray-600" title={lc.url}>{lc.url}</span>
+                        <span className="shrink-0 font-semibold text-gray-800">{lc.count}回</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-semibold text-gray-600">受信者別状況（{detail.recipients.length}件）</p>
+                <div className="max-h-72 overflow-y-auto rounded border border-gray-200 bg-white">
+                  <table className="w-full text-left text-xs">
+                    <thead className="sticky top-0 bg-gray-100 text-gray-500">
+                      <tr>
+                        <th className="px-2 py-1 font-medium">宛先</th>
+                        <th className="px-2 py-1 font-medium">送信</th>
+                        <th className="px-2 py-1 font-medium">開封</th>
+                        <th className="px-2 py-1 font-medium">クリック</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detail.recipients.map(r => (
+                        <tr key={r.id} className="border-t border-gray-100">
+                          <td className="max-w-[220px] truncate px-2 py-1">
+                            {r.name ?? '名前なし'} / {r.email}
+                            {r.is_test && <span className="ml-1 rounded bg-yellow-100 px-1 text-[10px] text-yellow-700">test</span>}
+                          </td>
+                          <td className="px-2 py-1 text-gray-500">{r.sent_at ? new Date(r.sent_at).toLocaleString('ja-JP') : '—'}</td>
+                          <td className="px-2 py-1 text-gray-500">{r.opened_at ? `${new Date(r.opened_at).toLocaleString('ja-JP')} (${r.open_count}回)` : '—'}</td>
+                          <td className="px-2 py-1 text-gray-500">{r.first_clicked_at ? `${new Date(r.first_clicked_at).toLocaleString('ja-JP')} (${r.click_count}回)` : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -27,20 +27,30 @@ export async function GET(request: NextRequest) {
   if (/^[a-f0-9]{48,128}$/i.test(token)) {
     const { data } = await sb
       .from('mail_campaign_recipients')
-      .select('id, click_count, first_clicked_at')
+      .select('id, campaign_id, click_count, first_clicked_at')
       .eq('token', token)
       .maybeSingle()
 
     if (data) {
       const now = new Date().toISOString()
-      await sb
-        .from('mail_campaign_recipients')
-        .update({
-          first_clicked_at: data.first_clicked_at ?? now,
-          click_count: Number(data.click_count ?? 0) + 1,
-          updated_at: now,
-        })
-        .eq('id', data.id)
+      await Promise.all([
+        sb
+          .from('mail_campaign_recipients')
+          .update({
+            first_clicked_at: data.first_clicked_at ?? now,
+            click_count: Number(data.click_count ?? 0) + 1,
+            updated_at: now,
+          })
+          .eq('id', data.id),
+        sb
+          .from('mail_campaign_link_clicks')
+          .insert({
+            campaign_id: data.campaign_id,
+            recipient_id: data.id,
+            url: targetUrl.toString(),
+            clicked_at: now,
+          }),
+      ])
     }
   }
 
