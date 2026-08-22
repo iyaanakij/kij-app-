@@ -38,6 +38,17 @@ type LinkClick = { url: string; count: number }
 
 type CampaignDetail = { recipients: RecipientDetail[]; link_clicks: LinkClick[] }
 
+type LpSignup = {
+  id: number
+  email: string
+  coupon_code: string
+  confirmation_sent_at: string | null
+  confirmation_error: string | null
+  matched_phone: string | null
+  matched_at: string | null
+  created_at: string
+}
+
 const STATUS_LABEL: Record<Campaign['status'], string> = {
   draft: '下書き',
   queued: '待機中',
@@ -216,6 +227,76 @@ function CampaignRow({ campaign, onChanged }: { campaign: Campaign; onChanged: (
   )
 }
 
+function LpSignupsSection() {
+  const [signups, setSignups] = useState<LpSignup[]>([])
+  const [loaded, setLoaded] = useState(false)
+
+  const load = useCallback(async () => {
+    const res = await fetch('/api/admin/lp-signups?limit=50')
+    const json = await res.json()
+    setLoaded(true)
+    if (res.ok) setSignups(json.signups ?? [])
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { load() }, 0)
+    return () => window.clearTimeout(timer)
+  }, [load])
+
+  const remove = async (id: number) => {
+    if (!window.confirm('この登録を削除しますか？')) return
+    await fetch(`/api/admin/lp-signups/${id}`, { method: 'DELETE' })
+    await load()
+  }
+
+  return (
+    <section className="mt-6">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-bold text-gray-800">LP登録リード（/group/discount/）</h2>
+        <button onClick={load} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700">更新</button>
+      </div>
+      {!loaded && <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-500">読み込み中...</p>}
+      {loaded && signups.length === 0 && (
+        <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-500">登録はありません</p>
+      )}
+      {signups.length > 0 && (
+        <div className="overflow-x-auto rounded-md border border-gray-200 bg-white">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-gray-100 text-gray-500">
+              <tr>
+                <th className="px-2 py-1 font-medium">メール</th>
+                <th className="px-2 py-1 font-medium">クーポンコード</th>
+                <th className="px-2 py-1 font-medium">確認メール</th>
+                <th className="px-2 py-1 font-medium">紐付け</th>
+                <th className="px-2 py-1 font-medium">登録日時</th>
+                <th className="px-2 py-1 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {signups.map(s => (
+                <tr key={s.id} className="border-t border-gray-100">
+                  <td className="max-w-[220px] truncate px-2 py-1">{s.email}</td>
+                  <td className="px-2 py-1 font-mono">{s.coupon_code}</td>
+                  <td className="px-2 py-1 text-gray-500">
+                    {s.confirmation_sent_at
+                      ? new Date(s.confirmation_sent_at).toLocaleString('ja-JP')
+                      : s.confirmation_error ? <span className="text-red-600">失敗</span> : '—'}
+                  </td>
+                  <td className="px-2 py-1 text-gray-500">{s.matched_phone ?? '—'}</td>
+                  <td className="px-2 py-1 text-gray-500">{new Date(s.created_at).toLocaleString('ja-JP')}</td>
+                  <td className="px-2 py-1">
+                    <button onClick={() => remove(s.id)} className="text-red-600 hover:underline">削除</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
 export default function MailCampaignsPage() {
   const [filterMonths, setFilterMonths] = useState(6)
   const [subject, setSubject] = useState('')
@@ -378,6 +459,8 @@ export default function MailCampaignsPage() {
           {campaigns.length === 0 && <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-500">キャンペーンはありません</p>}
         </div>
       </section>
+
+      <LpSignupsSection />
     </main>
   )
 }

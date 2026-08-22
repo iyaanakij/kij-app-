@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { formatShiftTime } from '@/lib/types'
+import { corsHeaders } from '@/lib/publicCors'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,22 +18,6 @@ const HP_BASE: Record<number, string> = {
   6: 'https://www.iyashitakute.com/chiba',
   7: 'https://www.iyashitakute.com/funabashi',
   8: 'https://www.iyashitakute.com/kinshicho',
-}
-
-const ALLOWED_ORIGINS = [
-  'https://www.m-kairaku.com',
-  'https://m-kairaku.com',
-  'https://www.iyashitakute.com',
-  'https://iyashitakute.com',
-]
-
-function corsHeaders(origin: string | null): Record<string, string> {
-  const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
-  return {
-    'Access-Control-Allow-Origin': allowed,
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-  }
 }
 
 // Vercel は UTC なので +9h → JST。営業日は 7:00 JST 切り替え

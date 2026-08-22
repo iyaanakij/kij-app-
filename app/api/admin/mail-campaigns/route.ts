@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/emailProvider'
 import { addMailTracking, htmlToText } from '@/lib/mailCampaignTracking'
+import { isEmail } from '@/lib/email'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,10 +26,6 @@ function cutoffIso(filterMonths: number): string {
   const d = new Date()
   d.setMonth(d.getMonth() - filterMonths)
   return d.toISOString()
-}
-
-function isEmail(value: unknown): value is string {
-  return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 }
 
 function campaignBaseUrl(request: NextRequest): string {
