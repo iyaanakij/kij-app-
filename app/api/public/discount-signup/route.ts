@@ -28,6 +28,14 @@ function confirmationEmailHtml(couponCode: string): string {
 
 type SignupRow = { id: number; coupon_code: string }
 
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    return String((error as { message: unknown }).message)
+  }
+  return String(error)
+}
+
 export async function OPTIONS(request: NextRequest) {
   const origin = request.headers.get('origin')
   return new NextResponse(null, { status: 204, headers: corsHeaders(origin, 'POST, OPTIONS') })
@@ -137,6 +145,6 @@ export async function POST(request: NextRequest) {
       { headers }
     )
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500, headers })
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500, headers })
   }
 }
