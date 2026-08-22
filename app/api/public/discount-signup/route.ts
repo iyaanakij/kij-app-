@@ -5,6 +5,7 @@ import { corsHeaders } from '@/lib/publicCors'
 import { isEmail } from '@/lib/email'
 import { sendEmail } from '@/lib/emailProvider'
 import { htmlToText } from '@/lib/mailCampaignTracking'
+import { errorMessage } from '@/lib/errors'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,14 +28,6 @@ function confirmationEmailHtml(couponCode: string): string {
 }
 
 type SignupRow = { id: number; coupon_code: string }
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'object' && error !== null && 'message' in error) {
-    return String((error as { message: unknown }).message)
-  }
-  return String(error)
-}
 
 export async function OPTIONS(request: NextRequest) {
   const origin = request.headers.get('origin')

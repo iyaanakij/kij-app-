@@ -230,6 +230,11 @@ function CampaignRow({ campaign, onChanged }: { campaign: Campaign; onChanged: (
 function LpSignupsSection() {
   const [signups, setSignups] = useState<LpSignup[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [redeemPhone, setRedeemPhone] = useState('')
+  const [redeemCode, setRedeemCode] = useState('')
+  const [redeemBusy, setRedeemBusy] = useState(false)
+  const [redeemMessage, setRedeemMessage] = useState<string | null>(null)
+  const [redeemError, setRedeemError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const res = await fetch('/api/admin/lp-signups?limit=50')
@@ -249,12 +254,62 @@ function LpSignupsSection() {
     await load()
   }
 
+  const redeem = async () => {
+    setRedeemBusy(true)
+    setRedeemMessage(null)
+    setRedeemError(null)
+    const res = await fetch('/api/admin/lp-signups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'redeem', coupon_code: redeemCode, phone: redeemPhone }),
+    })
+    const json = await res.json()
+    setRedeemBusy(false)
+    if (!res.ok) { setRedeemError(json.error ?? '紐付けに失敗しました'); return }
+    setRedeemMessage(
+      json.previously_matched_phone
+        ? `紐付けました（以前は ${json.previously_matched_phone} に紐付いていました）`
+        : '紐付けました'
+    )
+    setRedeemPhone('')
+    setRedeemCode('')
+    await load()
+  }
+
   return (
     <section className="mt-6">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-bold text-gray-800">LP登録リード（/group/discount/）</h2>
         <button onClick={load} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700">更新</button>
       </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-md border border-gray-200 bg-white p-3">
+        <span className="text-xs text-gray-500">クーポン紐付け：</span>
+        <input
+          type="text"
+          value={redeemPhone}
+          onChange={(e) => setRedeemPhone(e.target.value)}
+          className="w-40 rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+          placeholder="電話番号"
+        />
+        <input
+          type="text"
+          value={redeemCode}
+          onChange={(e) => setRedeemCode(e.target.value)}
+          className="w-32 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-mono"
+          placeholder="クーポンコード"
+        />
+        <button
+          onClick={redeem}
+          disabled={redeemBusy || !redeemPhone || !redeemCode}
+          className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        >
+          紐付け
+        </button>
+        {redeemMessage && <p className="w-full text-xs text-green-600">{redeemMessage}</p>}
+        {redeemError && <p className="w-full text-xs text-red-600">{redeemError}</p>}
+      </div>
+
       {!loaded && <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-500">読み込み中...</p>}
       {loaded && signups.length === 0 && (
         <p className="rounded-md border border-gray-200 bg-white p-4 text-sm text-gray-500">登録はありません</p>
