@@ -36,6 +36,20 @@ interface TransactionRow {
   date: string
   data_type: string | null
   nomination_label: string | null
+  cast_name: string | null
+  revenue: number | null
+}
+
+interface StaffRow {
+  id: number
+  name: string
+}
+
+interface ShiftRow {
+  staff_id: number
+  date: string
+  start_time: number
+  end_time: number
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -223,12 +237,203 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'monthly', label: '月次' },
 ]
 
+// ── ②キャスト比較 ──────────────────────────────────────────
+
+interface CastAgg {
+  revenue: number
+  count: number
+  nominations: number
+  shiftMinutes: number
+}
+
+function emptyCastAgg(): CastAgg {
+  return { revenue: 0, count: 0, nominations: 0, shiftMinutes: 0 }
+}
+
+// shifts は (staff_id, date) が重複しうる（HP同期/CS3同期が別store_idで書くため）。
+// 既存 /ranking と同じく、当日最長のシフトだけを採用してdedupする。
+function dedupLongestShift(shifts: ShiftRow[]): ShiftRow[] {
+  const byKey = new Map<string, ShiftRow>()
+  for (const sh of shifts) {
+    const key = `${sh.staff_id}:${sh.date}`
+    const current = byKey.get(key)
+    if (!current || (sh.end_time - sh.start_time) > (current.end_time - current.start_time)) {
+      byKey.set(key, sh)
+    }
+  }
+  return [...byKey.values()]
+}
+
+function computeCastStats(
+  txRows: TransactionRow[],
+  staffRows: StaffRow[],
+  shiftRows: ShiftRow[],
+  areaId: number | null,
+  range: DateRange,
+) {
+  const nameToId = new Map(staffRows.map(s => [s.name, s.id]))
+  const byCast = new Map<string, CastAgg>()
+
+  for (const t of txRows) {
+    if (!t.cast_name || t.data_type !== '成約') continue
+    if (areaId != null && t.area_id !== areaId) continue
+    if (t.date < range.start || t.date > range.end) continue
+    const agg = byCast.get(t.cast_name) ?? emptyCastAgg()
+    agg.revenue += t.revenue ?? 0
+    agg.count += 1
+    if (t.nomination_label && /本|写/.test(t.nomination_label)) agg.nominations += 1
+    byCast.set(t.cast_name, agg)
+  }
+
+  const dedupedShifts = dedupLongestShift(
+    shiftRows.filter(sh => sh.date >= range.start && sh.date <= range.end)
+  )
+  const shiftMinByStaffId = new Map<number, number>()
+  for (const sh of dedupedShifts) {
+    const min = Math.max(0, sh.end_time - sh.start_time) * 60
+    shiftMinByStaffId.set(sh.staff_id, (shiftMinByStaffId.get(sh.staff_id) ?? 0) + min)
+  }
+  for (const [castName, agg] of byCast.entries()) {
+    const staffId = nameToId.get(castName)
+    if (staffId != null) agg.shiftMinutes = shiftMinByStaffId.get(staffId) ?? 0
+  }
+
+  return byCast
+}
+
+interface CastTableRow {
+  name: string
+  revenue: number
+  count: number
+  unitPrice: number
+  nominations: number
+  nominationRate: number
+  shiftHours: number
+  revenuePerHour: number
+  prevRevenue: number
+  prevCount: number
+  prevUnitPrice: number
+  prevNominationRate: number
+  prevShiftHours: number
+}
+
+function formatHours(min: number) { return `${(min / 60).toFixed(1)}h` }
+
+function buildCastTableRows(current: Map<string, CastAgg>, previous: Map<string, CastAgg>): CastTableRow[] {
+  const names = new Set([...current.keys()])
+  const rows: CastTableRow[] = []
+  for (const name of names) {
+    const cur = current.get(name) ?? emptyCastAgg()
+    const prev = previous.get(name) ?? emptyCastAgg()
+    if (cur.count === 0) continue
+    rows.push({
+      name,
+      revenue: cur.revenue,
+      count: cur.count,
+      unitPrice: cur.count > 0 ? cur.revenue / cur.count : 0,
+      nominations: cur.nominations,
+      nominationRate: cur.count > 0 ? (cur.nominations / cur.count) * 100 : 0,
+      shiftHours: cur.shiftMinutes / 60,
+      revenuePerHour: cur.shiftMinutes > 0 ? cur.revenue / (cur.shiftMinutes / 60) : 0,
+      prevRevenue: prev.revenue,
+      prevCount: prev.count,
+      prevUnitPrice: prev.count > 0 ? prev.revenue / prev.count : 0,
+      prevNominationRate: prev.count > 0 ? (prev.nominations / prev.count) * 100 : 0,
+      prevShiftHours: prev.shiftMinutes / 60,
+    })
+  }
+  return rows.sort((a, b) => b.revenue - a.revenue)
+}
+
+function CastComparisonTable({
+  txRows, staffRows, shiftRows, areaId, pair,
+}: {
+  txRows: TransactionRow[]
+  staffRows: StaffRow[]
+  shiftRows: ShiftRow[]
+  areaId: number | null
+  pair: PeriodPair
+}) {
+  const current = computeCastStats(txRows, staffRows, shiftRows, areaId, pair.current)
+  const previous = computeCastStats(txRows, staffRows, shiftRows, areaId, pair.previous)
+  const rows = buildCastTableRows(current, previous)
+
+  if (rows.length === 0) {
+    return <div className="text-sm text-gray-400 dark:text-gray-500 py-6 text-center">対象期間の実績データがありません</div>
+  }
+
+  const th = 'text-left font-medium text-gray-500 dark:text-gray-400 px-3 py-2 whitespace-nowrap'
+  const td = 'px-3 py-2 whitespace-nowrap text-gray-900 dark:text-white tabular-nums'
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <table className="min-w-full text-sm">
+        <thead className="border-b border-gray-200 dark:border-gray-700">
+          <tr>
+            <th className={th}>キャスト</th>
+            <th className={th}>売上</th>
+            <th className={th}>本数</th>
+            <th className={th}>客単価</th>
+            <th className={th}>指名</th>
+            <th className={th}>指名率</th>
+            <th className={th}>出勤時間</th>
+            <th className={th}>時間売上</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          {rows.map(r => (
+            <tr key={r.name}>
+              <td className={`${td} font-medium`}>{r.name}</td>
+              <td className={td}>
+                <div className="flex items-center gap-1.5">
+                  {formatYen(r.revenue)}
+                  <DiffBadge current={r.revenue} previous={r.prevRevenue} />
+                </div>
+              </td>
+              <td className={td}>
+                <div className="flex items-center gap-1.5">
+                  {r.count}
+                  <DiffBadge current={r.count} previous={r.prevCount} />
+                </div>
+              </td>
+              <td className={td}>
+                <div className="flex items-center gap-1.5">
+                  {formatYen(r.unitPrice)}
+                  <DiffBadge current={r.unitPrice} previous={r.prevUnitPrice} />
+                </div>
+              </td>
+              <td className={td}>{r.nominations}</td>
+              <td className={td}>
+                <div className="flex items-center gap-1.5">
+                  {formatPct(r.nominationRate)}
+                  <DiffBadge current={r.nominationRate} previous={r.prevNominationRate} />
+                </div>
+              </td>
+              <td className={td}>
+                <div className="flex items-center gap-1.5">
+                  {formatHours(r.shiftHours * 60)}
+                  <DiffBadge current={r.shiftHours} previous={r.prevShiftHours} />
+                </div>
+              </td>
+              <td className={td}>{r.shiftHours > 0 ? formatYen(r.revenuePerHour) : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export default function KpiDashboardPage() {
   useEffect(() => { document.title = '経営KPIダッシュボード | KIJ管理' }, [])
 
+  const [view, setView] = useState<'store' | 'cast'>('store')
   const [tab, setTab] = useState<TabKey>('daily')
+  const [castAreaId, setCastAreaId] = useState<number | null>(null)
   const [kpiRows, setKpiRows] = useState<StoreDailyKpiRow[]>([])
   const [txRows, setTxRows] = useState<TransactionRow[]>([])
+  const [staffRows, setStaffRows] = useState<StaffRow[]>([])
+  const [shiftRows, setShiftRows] = useState<ShiftRow[]>([])
   const [loading, setLoading] = useState(true)
 
   const today = todayString()
@@ -255,7 +460,7 @@ export default function KpiDashboardPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [kpi, tx] = await Promise.all([
+    const [kpi, tx, staff] = await Promise.all([
       fetchAllPaginated<StoreDailyKpiRow>((from, to) =>
         supabase.from('store_daily_kpi')
           .select('area_id, date, close_count, reserve_count, cancel_count, change_count, other_count, revenue_total, committee_fee_total, store_profit_total, contracts_all_count, new_customers, repeat_customers, inbound_calls_total')
@@ -264,13 +469,30 @@ export default function KpiDashboardPage() {
       ),
       fetchAllPaginated<TransactionRow>((from, to) =>
         supabase.from('daily_report_transactions')
-          .select('area_id, date, data_type, nomination_label')
+          .select('area_id, date, data_type, nomination_label, cast_name, revenue')
           .gte('date', fetchRange.start).lte('date', fetchRange.end)
           .range(from, to)
+      ),
+      fetchAllPaginated<StaffRow>((from, to) =>
+        supabase.from('staff').select('id, name').range(from, to)
       ),
     ])
     setKpiRows(kpi)
     setTxRows(tx)
+    setStaffRows(staff)
+
+    const staffIds = staff.map(s => s.id)
+    const shifts = staffIds.length > 0
+      ? await fetchAllPaginated<ShiftRow>((from, to) =>
+          supabase.from('shifts')
+            .select('staff_id, date, start_time, end_time')
+            .in('staff_id', staffIds)
+            .neq('status', 'x')
+            .gte('date', fetchRange.start).lte('date', fetchRange.end)
+            .range(from, to)
+        )
+      : []
+    setShiftRows(shifts)
     setLoading(false)
   }, [fetchRange])
 
@@ -285,25 +507,43 @@ export default function KpiDashboardPage() {
         <div className="text-sm text-gray-500 dark:text-gray-400">本日 {today}・データ基準日 {asOf}（前日分まで反映）</div>
       </div>
 
-      <div className="flex gap-1 mb-4">
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              tab === t.key
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex gap-1">
+          {([{ key: 'store', label: '①店舗KPI' }, { key: 'cast', label: '②キャスト比較' }] as const).map(v => (
+            <button
+              key={v.key}
+              onClick={() => setView(v.key)}
+              className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                view === v.key
+                  ? 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 shadow-sm'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+              }`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-1">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                tab === t.key
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
         <div className="text-sm text-gray-500 dark:text-gray-400">読み込み中...</div>
-      ) : (
+      ) : view === 'store' ? (
         <div className="space-y-6">
           <div className="text-sm text-gray-500 dark:text-gray-400">
             {activePair.label}（{activePair.current.start}〜{activePair.current.end}） vs {activePair.compareLabel}（{activePair.previous.start}〜{activePair.previous.end}）
@@ -322,6 +562,34 @@ export default function KpiDashboardPage() {
 
           <div className="text-xs text-gray-400 dark:text-gray-500">
             ※ データは2026-08-22以降の日次スナップショットのみ蓄積されています。過去分の週次/月次/前年同月比較は、データが十分に貯まるまで参考値になりません。
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              {activePair.label}（{activePair.current.start}〜{activePair.current.end}） vs {activePair.compareLabel}（{activePair.previous.start}〜{activePair.previous.end}）・売上降順
+            </div>
+            <select
+              value={castAreaId ?? ''}
+              onChange={e => setCastAreaId(e.target.value === '' ? null : Number(e.target.value))}
+              className="px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+            >
+              <option value="">全エリア</option>
+              {AREAS.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+
+          <CastComparisonTable
+            txRows={txRows}
+            staffRows={staffRows}
+            shiftRows={shiftRows}
+            areaId={castAreaId}
+            pair={activePair}
+          />
+
+          <div className="text-xs text-gray-400 dark:text-gray-500">
+            ※ 客単価・時間売上はCS3デイリーレポート明細（成約のみ）と出勤シフトの突き合わせによる概算です。出勤時間はキャスト名でstaffテーブルと名寄せしており、名前が一致しない場合は0時間扱いになります。
           </div>
         </div>
       )}
