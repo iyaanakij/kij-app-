@@ -35,6 +35,7 @@ export default function CastReservationsPage() {
       .from('reservations')
       .select('*')
       .eq('staff_id', user.staff_id)
+      .neq('status', 'cancelled')
       .order('date', { ascending: filter === 'upcoming' })
       .order('time', { ascending: true })
 

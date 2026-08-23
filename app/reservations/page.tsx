@@ -144,6 +144,7 @@ export default function ReservationsPage() {
       .from('reservations')
       .select('*, staff(id, name)')
       .eq('date', selectedDate)
+      .neq('status', 'cancelled')
       .order('section')
       .order('row_number')
       .order('time')

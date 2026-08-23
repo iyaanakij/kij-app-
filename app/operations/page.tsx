@@ -296,7 +296,7 @@ const [currentTimeDecimal, setCurrentTimeDecimal] = useState<number | null>(null
     const [staffRes, shiftsRes, reservationsRes, annotationsRes] = await Promise.all([
       supabase.from('staff').select('*').order('name'),
       supabase.from('shifts').select('*').eq('date', selectedDate).in('store_id', area.storeIds).neq('status', 'x'),
-      supabase.from('reservations').select('*').eq('date', selectedDate).in('store_id', area.storeIds),
+      supabase.from('reservations').select('*').eq('date', selectedDate).in('store_id', area.storeIds).neq('status', 'cancelled'),
       supabase.from('board_annotations').select('*').eq('date', selectedDate).in('store_id', area.storeIds),
     ])
     if (staffRes.data) setStaffList(staffRes.data)

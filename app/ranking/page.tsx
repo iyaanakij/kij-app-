@@ -219,6 +219,7 @@ export default function RankingPage() {
             .lte('date', dateTo)
             .not('staff_id', 'is', null)
             .like('notes', 'CS3:%')
+            .neq('status', 'cancelled')
             .range(from, to)
         )
 

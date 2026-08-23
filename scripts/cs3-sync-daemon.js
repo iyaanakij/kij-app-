@@ -305,6 +305,7 @@ async function upsertReservationsToSupabase(entries, successfulShops) {
       extension: entry.extensionFee ?? 0,
       discount: entry.discountAmount ?? 0,
       cs3_cast_fee: entry.castFeeCs3 ?? null,
+      status: entry.status,
       notes: notesKey,
     }
 
@@ -339,6 +340,7 @@ async function upsertReservationsToSupabase(entries, successfulShops) {
   for (const item of toInsert) {
     const reservationId = insertedIdByNotes.get(item.payload.notes)
     if (!reservationId) continue
+    if (item.payload.status === 'cancelled') { lineSkipped++; continue }
     const result = await notifyReservationLine(item.entry, item.staffId, reservationId, item.section)
     if (result === 'sent') lineSent++
     else if (result === 'duplicate') lineDuplicate++
@@ -510,9 +512,12 @@ function parseReservations(html) {
     const storeId = SHOP_TO_STORE[shopCode]
     if (!storeId) continue
     // CS3側でキャンセル済みの予約はreservation_list_value_typeが「キャンセル」になる。
-    // 行自体はhistory扱いで残り続けるため、ここで除外しないと同期のdeleteロジックが働かず残り続ける。
+    // 行自体はCS3側でhistory扱いで残り続ける。以前はここで除外していたため
+    // キャンセルの履歴が一切残らなかった。KPI集計でキャンセル数を出すため、
+    // 除外せずstatus='cancelled'として保存する（既存の同期delete判定にも
+    // 引っかからなくなり、行として残り続ける）。
     const typeText = extractTdText(rowHtml, 'reservation_list_value_type')
-    if (typeText.includes('キャンセル')) continue
+    const status = typeText.includes('キャンセル') ? 'cancelled' : 'confirmed'
     const datetimeStr = extractTdText(rowHtml, 'reservation_list_value_datetime')
     const times = parseDatetime(datetimeStr)
     if (!times) continue
@@ -533,7 +538,7 @@ function parseReservations(html) {
     const feePre    = parseInt(extractTdText(rowHtml, 'reservation_list_value_fee_pre').replace(/[^\d]/g, '')) || 0
     const castFeeCs3 = feeActual > 0 ? feeActual : (feePre > 0 ? feePre : null)
     entries.push({
-      cs3Id, storeId, date,
+      cs3Id, storeId, date, status,
       time: times.time, checkoutTime: times.checkoutTime,
       courseDuration: baseCourse || times.courseDuration,
       castName,
@@ -608,7 +613,9 @@ async function syncWork() {
   const entries = allEntries.filter(e => { if (seen.has(e.cs3Id)) return false; seen.add(e.cs3Id); return true })
 
   const r = await upsertReservationsToSupabase(entries, successfulShops)
-  const recency = await upsertCustomerVisitRecency(entries).catch(error => {
+  // キャンセルは実際の来店ではないため、来店履歴(customer_visit_recency)には反映しない
+  const confirmedEntries = entries.filter(e => e.status !== 'cancelled')
+  const recency = await upsertCustomerVisitRecency(confirmedEntries).catch(error => {
     console.error(`[${ts()}] ⚠ customer_visit_recency 更新失敗: ${error.message}`)
     return { upserted: 0, skippedInvalid: 0, skippedFuture: 0, skippedOlder: 0, error: error.message }
   })

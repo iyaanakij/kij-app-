@@ -66,6 +66,7 @@ export interface Reservation {
   cs3_cast_fee: number | null
   checkout_time: number | null
   arrival_confirmed: boolean
+  status: 'confirmed' | 'cancelled'
   notes: string | null
   media: string | null
   checked: boolean

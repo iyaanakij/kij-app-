@@ -149,6 +149,7 @@ export default function SalesGoalPage() {
           .select('id', { count: 'exact', head: true })
           .in('store_id', area.storeIds)
           .eq('date', today)
+          .neq('status', 'cancelled')
         liveMap[area.id] = count ?? 0
       })
     )
