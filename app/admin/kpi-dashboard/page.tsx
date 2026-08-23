@@ -38,6 +38,7 @@ interface TransactionRow {
   nomination_label: string | null
   cast_name: string | null
   revenue: number | null
+  used_at: string | null
 }
 
 interface StaffRow {
@@ -227,6 +228,201 @@ function ComparisonGrid({ kpiRows, txRows, pair }: { kpiRows: StoreDailyKpiRow[]
           previous={aggregate(kpiRows, txRows, area.id, pair.previous)}
         />
       ))}
+    </div>
+  )
+}
+
+// ── ③曜日・時間帯分析 / ④女性×曜日 共通 ──────────────────────────
+
+const WEEKDAY_LABELS = ['月', '火', '水', '木', '金', '土', '日']
+
+// timestamptz(UTC保存)からJSTの曜日(0=月..6=日)と時刻を求める。
+// ブラウザのローカルタイムゾーンに依存しないよう明示的に+9時間する。
+function toJstWeekdayHour(iso: string): { weekday: number; hour: number } {
+  const jst = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000)
+  return { weekday: (jst.getUTCDay() + 6) % 7, hour: jst.getUTCHours() }
+}
+
+function dateWeekday(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return (new Date(y, m - 1, d).getDay() + 6) % 7
+}
+
+// ── ③曜日・時間帯ヒートマップ ──
+
+interface HeatCell { reservations: number; workingCasts: number }
+
+const HOUR_BUCKETS = 12 // 2時間刻み×12
+
+function computeHeatmap(txRows: TransactionRow[], shiftRows: ShiftRow[], areaId: number | null, range: DateRange): HeatCell[][] {
+  const grid: HeatCell[][] = Array.from({ length: 7 }, () => Array.from({ length: HOUR_BUCKETS }, () => ({ reservations: 0, workingCasts: 0 })))
+
+  for (const t of txRows) {
+    if (t.data_type !== '成約' || !t.used_at) continue
+    if (areaId != null && t.area_id !== areaId) continue
+    if (t.date < range.start || t.date > range.end) continue
+    const { weekday, hour } = toJstWeekdayHour(t.used_at)
+    const bucket = Math.min(HOUR_BUCKETS - 1, Math.floor(hour / 2))
+    grid[weekday][bucket].reservations += 1
+  }
+
+  // シフトが24時を跨ぐ場合（例: 22.0〜29.0）、24時以降の部分は翌日扱いとして
+  // 集計から除外する（このダッシュボードでは日をまたぐ按分まではしない簡易実装）
+  for (const sh of shiftRows) {
+    if (sh.date < range.start || sh.date > range.end) continue
+    const weekday = dateWeekday(sh.date)
+    const clampedEnd = Math.min(sh.end_time, 24)
+    for (let b = 0; b < HOUR_BUCKETS; b++) {
+      const bucketStart = b * 2
+      const bucketEnd = bucketStart + 2
+      if (sh.start_time < bucketEnd && clampedEnd > bucketStart) {
+        grid[weekday][b].workingCasts += 1
+      }
+    }
+  }
+
+  return grid
+}
+
+function HeatmapTable({ grid }: { grid: HeatCell[][] }) {
+  const max = Math.max(1, ...grid.flat().map(c => c.reservations))
+  return (
+    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
+      <table className="min-w-full text-xs border-separate border-spacing-1">
+        <thead>
+          <tr>
+            <th className="w-10"></th>
+            {Array.from({ length: HOUR_BUCKETS }, (_, b) => (
+              <th key={b} className="font-medium text-gray-500 dark:text-gray-400 text-center whitespace-nowrap px-1">
+                {b * 2}時
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {WEEKDAY_LABELS.map((label, wd) => (
+            <tr key={label}>
+              <td className="font-semibold text-gray-700 dark:text-gray-300 text-center">{label}</td>
+              {grid[wd].map((cell, b) => {
+                const ratio = cell.reservations / max
+                const rate = cell.workingCasts > 0 ? Math.round((cell.reservations / cell.workingCasts) * 100) : null
+                return (
+                  <td
+                    key={b}
+                    className="rounded-md text-center py-1.5 min-w-[46px]"
+                    style={{ backgroundColor: cell.reservations > 0 ? `rgba(37, 99, 235, ${0.12 + ratio * 0.55})` : undefined }}
+                  >
+                    <div className="font-semibold text-gray-900 dark:text-white">{cell.reservations || ''}</div>
+                    {cell.workingCasts > 0 && (
+                      <div className="text-[9px] text-gray-500 dark:text-gray-400">
+                        稼働{cell.workingCasts}{rate != null ? `・${rate}%` : ''}
+                      </div>
+                    )}
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="mt-2 text-[11px] text-gray-400 dark:text-gray-500">
+        各セル: 予約数（太字）／稼働{'{'}稼働キャスト数{'}'}・予約率（予約数÷稼働キャスト数）。色が濃いほど予約数が多い時間帯。
+      </div>
+    </div>
+  )
+}
+
+// ── ④女性×曜日マトリクス ──
+
+type Tier = '◎' | '○' | '△'
+
+interface CastWeekdayAgg { revenue: number; dates: Set<string> }
+
+function computeCastWeekdayMatrix(txRows: TransactionRow[], areaId: number | null, range: DateRange): Map<string, CastWeekdayAgg[]> {
+  const byCast = new Map<string, CastWeekdayAgg[]>()
+  for (const t of txRows) {
+    if (t.data_type !== '成約' || !t.cast_name || !t.used_at) continue
+    if (areaId != null && t.area_id !== areaId) continue
+    if (t.date < range.start || t.date > range.end) continue
+    const { weekday } = toJstWeekdayHour(t.used_at)
+    let cells = byCast.get(t.cast_name)
+    if (!cells) {
+      cells = Array.from({ length: 7 }, () => ({ revenue: 0, dates: new Set<string>() }))
+      byCast.set(t.cast_name, cells)
+    }
+    cells[weekday].revenue += t.revenue ?? 0
+    cells[weekday].dates.add(t.date)
+  }
+  return byCast
+}
+
+// その女性自身の曜日別「1稼働日あたり平均売上」を比較し、上位/下位を◎/△とする
+// （店舗全体との比較ではなく、あくまで本人内の強い曜日・弱い曜日を見るための指標）
+function tierForCast(avgByWeekday: (number | null)[]): (Tier | null)[] {
+  const withData = avgByWeekday
+    .map((v, i) => ({ v, i }))
+    .filter((x): x is { v: number; i: number } => x.v != null)
+  if (withData.length < 3) return avgByWeekday.map(v => (v == null ? null : '○'))
+  const sorted = [...withData].sort((a, b) => b.v - a.v)
+  const edgeCount = Math.max(1, Math.ceil(sorted.length / 3))
+  const topSet = new Set(sorted.slice(0, edgeCount).map(x => x.i))
+  const bottomSet = new Set(sorted.slice(-edgeCount).map(x => x.i))
+  return avgByWeekday.map((v, i) => (v == null ? null : topSet.has(i) ? '◎' : bottomSet.has(i) ? '△' : '○'))
+}
+
+const TIER_STYLE: Record<Tier, string> = {
+  '◎': 'text-rose-600 dark:text-rose-400',
+  '○': 'text-gray-500 dark:text-gray-400',
+  '△': 'text-blue-500 dark:text-blue-400',
+}
+
+function CastWeekdayMatrixTable({ byCast }: { byCast: Map<string, CastWeekdayAgg[]> }) {
+  const rows = [...byCast.entries()]
+    .map(([name, cells]) => {
+      const avg = cells.map(c => (c.dates.size > 0 ? c.revenue / c.dates.size : null))
+      const totalRevenue = cells.reduce((sum, c) => sum + c.revenue, 0)
+      return { name, avg, tiers: tierForCast(avg), totalRevenue }
+    })
+    .filter(r => r.totalRevenue > 0)
+    .sort((a, b) => b.totalRevenue - a.totalRevenue)
+
+  if (rows.length === 0) {
+    return <div className="text-sm text-gray-400 dark:text-gray-500 py-6 text-center">対象期間の実績データがありません</div>
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+      <table className="min-w-full text-sm">
+        <thead className="border-b border-gray-200 dark:border-gray-700">
+          <tr>
+            <th className="text-left font-medium text-gray-500 dark:text-gray-400 px-3 py-2 whitespace-nowrap">キャスト</th>
+            {WEEKDAY_LABELS.map(l => (
+              <th key={l} className="font-medium text-gray-500 dark:text-gray-400 px-3 py-2 text-center">{l}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          {rows.map(r => (
+            <tr key={r.name}>
+              <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900 dark:text-white">{r.name}</td>
+              {r.tiers.map((tier, i) => (
+                <td key={i} className="px-3 py-2 text-center">
+                  {tier ? (
+                    <span className={`text-base font-bold ${TIER_STYLE[tier]}`} title={r.avg[i] != null ? formatYen(r.avg[i]!) : ''}>
+                      {tier}
+                    </span>
+                  ) : (
+                    <span className="text-gray-300 dark:text-gray-700">—</span>
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="p-3 text-[11px] text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-800">
+        ◎○△は店舗全体との比較ではなく、そのキャスト自身の曜日別「1稼働日あたり平均売上」の中での相対順位（上位3分の1=◎、下位3分の1=△）。セルにカーソルを合わせると平均売上を表示。
+      </div>
     </div>
   )
 }
@@ -427,7 +623,7 @@ function CastComparisonTable({
 export default function KpiDashboardPage() {
   useEffect(() => { document.title = '経営KPIダッシュボード | KIJ管理' }, [])
 
-  const [view, setView] = useState<'store' | 'cast'>('store')
+  const [view, setView] = useState<'store' | 'cast' | 'weekday'>('store')
   const [tab, setTab] = useState<TabKey>('daily')
   const [castAreaId, setCastAreaId] = useState<number | null>(null)
   const [kpiRows, setKpiRows] = useState<StoreDailyKpiRow[]>([])
@@ -469,7 +665,7 @@ export default function KpiDashboardPage() {
       ),
       fetchAllPaginated<TransactionRow>((from, to) =>
         supabase.from('daily_report_transactions')
-          .select('area_id, date, data_type, nomination_label, cast_name, revenue')
+          .select('area_id, date, data_type, nomination_label, cast_name, revenue, used_at')
           .gte('date', fetchRange.start).lte('date', fetchRange.end)
           .range(from, to)
       ),
@@ -509,7 +705,7 @@ export default function KpiDashboardPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex gap-1">
-          {([{ key: 'store', label: '①店舗KPI' }, { key: 'cast', label: '②キャスト比較' }] as const).map(v => (
+          {([{ key: 'store', label: '①店舗KPI' }, { key: 'cast', label: '②キャスト比較' }, { key: 'weekday', label: '③④曜日分析' }] as const).map(v => (
             <button
               key={v.key}
               onClick={() => setView(v.key)}
@@ -564,7 +760,7 @@ export default function KpiDashboardPage() {
             ※ データは2026-08-22以降の日次スナップショットのみ蓄積されています。過去分の週次/月次/前年同月比較は、データが十分に貯まるまで参考値になりません。
           </div>
         </div>
-      ) : (
+      ) : view === 'cast' ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-sm text-gray-500 dark:text-gray-400">
@@ -590,6 +786,36 @@ export default function KpiDashboardPage() {
 
           <div className="text-xs text-gray-400 dark:text-gray-500">
             ※ 客単価・時間売上はCS3デイリーレポート明細（成約のみ）と出勤シフトの突き合わせによる概算です。出勤時間はキャスト名でstaffテーブルと名寄せしており、名前が一致しない場合は0時間扱いになります。
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              {activePair.label}（{activePair.current.start}〜{activePair.current.end}）
+            </div>
+            <select
+              value={castAreaId ?? ''}
+              onChange={e => setCastAreaId(e.target.value === '' ? null : Number(e.target.value))}
+              className="px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+            >
+              <option value="">全エリア</option>
+              {AREAS.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <h2 className="font-semibold text-gray-900 dark:text-white mb-3">③曜日・時間帯分析</h2>
+            <HeatmapTable grid={computeHeatmap(txRows, shiftRows, castAreaId, activePair.current)} />
+          </div>
+
+          <div>
+            <h2 className="font-semibold text-gray-900 dark:text-white mb-3">④女性×曜日</h2>
+            <CastWeekdayMatrixTable byCast={computeCastWeekdayMatrix(txRows, castAreaId, activePair.current)} />
+          </div>
+
+          <div className="text-xs text-gray-400 dark:text-gray-500">
+            ※ 曜日パターンは短期間だと偏りが出やすいため、週次〜月次タブでの参照を推奨します。シフトが24時を跨ぐ場合、24時以降の部分（翌日扱い）は稼働キャスト数の集計から除外される簡易実装です。
           </div>
         </div>
       )}
