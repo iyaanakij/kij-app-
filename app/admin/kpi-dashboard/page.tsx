@@ -621,7 +621,7 @@ function CastComparisonTable({
 }
 
 export default function KpiDashboardPage() {
-  useEffect(() => { document.title = '経営KPIダッシュボード | KIJ管理' }, [])
+  useEffect(() => { document.title = 'KPIダッシュボード | KIJ管理' }, [])
 
   const [view, setView] = useState<'store' | 'cast' | 'weekday'>('store')
   const [tab, setTab] = useState<TabKey>('daily')
