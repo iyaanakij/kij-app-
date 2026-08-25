@@ -48,6 +48,7 @@ interface StaffRow {
 
 interface ShiftRow {
   staff_id: number
+  store_id: number
   date: string
   start_time: number
   end_time: number
@@ -248,6 +249,13 @@ function dateWeekday(dateStr: string): number {
   return (new Date(y, m - 1, d).getDay() + 6) % 7
 }
 
+// シフトのstore_idが指定エリアに属するか（areaId=nullなら全エリア対象）
+function shiftMatchesArea(sh: ShiftRow, areaId: number | null): boolean {
+  if (areaId == null) return true
+  const area = AREAS.find((a) => a.id === areaId)
+  return area ? area.storeIds.includes(sh.store_id) : false
+}
+
 // ── ③曜日・時間帯ヒートマップ ──
 
 interface HeatCell { reservations: number; workingCasts: number }
@@ -270,6 +278,7 @@ function computeHeatmap(txRows: TransactionRow[], shiftRows: ShiftRow[], areaId:
   // 集計から除外する（このダッシュボードでは日をまたぐ按分まではしない簡易実装）
   for (const sh of shiftRows) {
     if (sh.date < range.start || sh.date > range.end) continue
+    if (!shiftMatchesArea(sh, areaId)) continue
     const weekday = dateWeekday(sh.date)
     const clampedEnd = Math.min(sh.end_time, 24)
     for (let b = 0; b < HOUR_BUCKETS; b++) {
@@ -482,7 +491,7 @@ function computeCastStats(
   }
 
   const dedupedShifts = dedupLongestShift(
-    shiftRows.filter(sh => sh.date >= range.start && sh.date <= range.end)
+    shiftRows.filter(sh => sh.date >= range.start && sh.date <= range.end && shiftMatchesArea(sh, areaId))
   )
   const shiftMinByStaffId = new Map<number, number>()
   for (const sh of dedupedShifts) {
@@ -681,7 +690,7 @@ export default function KpiDashboardPage() {
     const shifts = staffIds.length > 0
       ? await fetchAllPaginated<ShiftRow>((from, to) =>
           supabase.from('shifts')
-            .select('staff_id, date, start_time, end_time')
+            .select('staff_id, store_id, date, start_time, end_time')
             .in('staff_id', staffIds)
             .neq('status', 'x')
             .gte('date', fetchRange.start).lte('date', fetchRange.end)
