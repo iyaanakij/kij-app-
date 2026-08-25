@@ -26,6 +26,7 @@ const TOOL_ITEMS = [
   { href: '/chat', label: 'チャット', external: true, dot: 'bg-green-400' },
   { href: '/admin/vanilla-blog', label: 'バニラブログ', external: false, dot: 'bg-rose-400' },
   { href: '/admin/mail-campaigns', label: 'メルマガ配信', external: false, dot: 'bg-amber-400' },
+  { href: '/admin/kpi-dashboard', label: 'KPIダッシュボード', external: false, dot: 'bg-indigo-400' },
 ]
 
 function ThemeToggle() {

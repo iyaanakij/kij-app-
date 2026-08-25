@@ -1,5 +1,4 @@
 const pageLinks = [
-  { href: '/admin/kpi-dashboard', label: '経営KPIダッシュボード', use: '売上・店落ち・新規/リピーター・指名率等の日次/週次/月次比較' },
   { href: '/sales-goal', label: '売上目標', use: '月間目標・損益分岐の進捗を見る' },
   { href: '/reservations', label: '予約管理', use: 'CS3予約の当日確認、メモ、給与計算の確認' },
   { href: '/operations', label: '稼働ボード', use: '出勤中キャストの受付状況、CP4/Venreyのリアルタイム更新' },
