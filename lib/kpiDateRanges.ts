@@ -23,7 +23,7 @@ function formatISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function addDays(dateStr: string, days: number): string {
+export function addDays(dateStr: string, days: number): string {
   const d = parseISO(dateStr)
   d.setDate(d.getDate() + days)
   return formatISO(d)

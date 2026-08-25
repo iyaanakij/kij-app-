@@ -12,6 +12,7 @@ import {
   buildYearOverYearPair,
   unionRange,
   pctChange,
+  addDays,
 } from '@/lib/kpiDateRanges'
 
 interface StoreDailyKpiRow {
@@ -442,6 +443,10 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'monthly', label: '月次' },
 ]
 
+// バックフィル済みデータの開始日（2026-08-23実施、2025-08-23〜の1年分）。
+// これより前は日付ピッカーで選んでもデータが存在しない。
+const MIN_ASOF = '2025-08-23'
+
 // ── ②キャスト比較 ──────────────────────────────────────────
 
 interface CastAgg {
@@ -643,12 +648,10 @@ export default function KpiDashboardPage() {
 
   const today = todayString()
   // store_daily_kpiは毎朝、前日分のみ追加される（当日分は存在しない）ため、
-  // 「直近の確定日」＝前日を集計の基準日にする
-  const asOf = useMemo(() => {
-    const [y, m, d] = today.split('-').map(Number)
-    const prev = new Date(y, m - 1, d - 1)
-    return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}-${String(prev.getDate()).padStart(2, '0')}`
-  }, [today])
+  // 「直近の確定日」＝前日をデフォルトの集計基準日にする。ユーザーが日付ピッカーで
+  // 過去の基準日を選べば、日次/週次/月次すべてその日を起点に遡って計算し直す。
+  const maxAsOf = useMemo(() => addDays(today, -1), [today])
+  const [asOf, setAsOf] = useState(maxAsOf)
   const dailyPair = useMemo(() => buildDailyPair(asOf), [asOf])
   const weeklyPair = useMemo(() => buildWeeklyPair(asOf), [asOf])
   const monthlyPair = useMemo(() => buildMonthlyPair(asOf), [asOf])
@@ -709,7 +712,44 @@ export default function KpiDashboardPage() {
     <div className="p-4 md:p-6 max-w-7xl mx-auto">
       <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
         <h1 className="text-xl font-bold text-gray-900 dark:text-white">経営KPIダッシュボード</h1>
-        <div className="text-sm text-gray-500 dark:text-gray-400">本日 {today}・データ基準日 {asOf}（前日分まで反映）</div>
+        <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+          <span>データ基準日</span>
+          <button
+            onClick={() => setAsOf(d => addDays(d, -1))}
+            disabled={asOf <= MIN_ASOF}
+            className="px-2 py-1 rounded-md border border-gray-300 dark:border-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+            aria-label="前日"
+          >
+            ◀
+          </button>
+          <input
+            type="date"
+            value={asOf}
+            min={MIN_ASOF}
+            max={maxAsOf}
+            onChange={e => {
+              const v = e.target.value
+              if (v) setAsOf(v < MIN_ASOF ? MIN_ASOF : v > maxAsOf ? maxAsOf : v)
+            }}
+            className="px-2 py-1 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+          />
+          <button
+            onClick={() => setAsOf(d => addDays(d, 1))}
+            disabled={asOf >= maxAsOf}
+            className="px-2 py-1 rounded-md border border-gray-300 dark:border-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-800"
+            aria-label="翌日"
+          >
+            ▶
+          </button>
+          {asOf !== maxAsOf && (
+            <button
+              onClick={() => setAsOf(maxAsOf)}
+              className="px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              最新に戻す
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -766,7 +806,7 @@ export default function KpiDashboardPage() {
           )}
 
           <div className="text-xs text-gray-400 dark:text-gray-500">
-            ※ データは2026-08-22以降の日次スナップショットのみ蓄積されています。過去分の週次/月次/前年同月比較は、データが十分に貯まるまで参考値になりません。
+            ※ データは{MIN_ASOF}以降の日次スナップショットを保持しています（錦糸町店のみ2026-03-12以降）。上部のデータ基準日を変更すると過去の期間に遡って閲覧できます。
           </div>
         </div>
       ) : view === 'cast' ? (
