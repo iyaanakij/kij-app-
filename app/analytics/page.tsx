@@ -697,6 +697,60 @@ function ContentSeoThemeTable({ themes }: { themes: ContentSeoThemeRow[] }) {
   )
 }
 
+function ContentSeoPageTable({ pages }: { pages: ContentSeoPageRow[] }) {
+  const sorted = [...pages].sort((a, b) => a.theme.localeCompare(b.theme, 'ja') || a.store_name.localeCompare(b.store_name, 'ja'))
+  return (
+    <div className="overflow-x-auto rounded border bg-white">
+      <table className="min-w-full text-left text-xs">
+        <thead className="border-b bg-gray-50 text-gray-500">
+          <tr>
+            <th className="px-2 py-1.5 font-medium">テーマ</th>
+            <th className="px-2 py-1.5 font-medium">店舗</th>
+            <th className="px-2 py-1.5 font-medium">GSCクリック</th>
+            <th className="px-2 py-1.5 font-medium">GSC表示回数</th>
+            <th className="px-2 py-1.5 font-medium">GSC CTR</th>
+            <th className="px-2 py-1.5 font-medium">GSC平均順位</th>
+            <th className="px-2 py-1.5 font-medium">GA4電話CTA</th>
+            <th className="px-2 py-1.5 font-medium">GA4 WEB予約CTA</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map(p => (
+            <tr key={`${p.theme}-${p.store_name}`} className="border-b last:border-b-0">
+              <td className="whitespace-nowrap px-2 py-1.5 font-medium text-gray-900">
+                <a href={p.page} target="_blank" rel="noreferrer" className="hover:underline">
+                  {p.theme}
+                </a>
+                <MeasurementPhaseBadge phase={p.measurement_phase} />
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-500">{p.store_name}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">
+                {p.gsc_clicks.toLocaleString()} <SignedValue value={p.gsc_clicks_diff_pct} suffix="%" />
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">
+                {p.gsc_impressions.toLocaleString()} <SignedValue value={p.gsc_impressions_diff_pct} suffix="%" />
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">
+                {p.gsc_ctr}% <SignedValue value={p.gsc_ctr_diff} suffix="pt" />
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">
+                {p.gsc_average_position} <SignedValue value={p.gsc_average_position_diff} invert />
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">
+                {p.ga4_phone_click.toLocaleString()} <SignedValue value={p.ga4_phone_click_diff_pct} suffix="%" />
+                <ContentSeoNoisyBadge show={p.phone_click_is_noisy} />
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">
+                {p.ga4_reservation_click.toLocaleString()} <SignedValue value={p.ga4_reservation_click_diff_pct} suffix="%" />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 const CONTENT_SEO_ALERT_LABELS: Record<keyof ContentSeoAlerts, string> = {
   grown: '伸びたページ',
   dropped: '落ちたページ',
@@ -1384,8 +1438,13 @@ export default function AnalyticsPage() {
               </section>
 
               <section>
-                <h3 className="mb-2 text-sm font-semibold text-gray-700">テーマ別</h3>
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">テーマ別（4店舗合算）</h3>
                 <ContentSeoThemeTable themes={contentSeoPeriod.themes} />
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">店舗別・記事別内訳（{contentSeoPeriod.pages.length}件）</h3>
+                <ContentSeoPageTable pages={contentSeoPeriod.pages} />
               </section>
 
               <section>
