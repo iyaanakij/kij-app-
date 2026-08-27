@@ -28,6 +28,7 @@ const TOOL_ITEMS = [
   { href: '/admin/mail-campaigns', label: 'メルマガ配信', external: false, dot: 'bg-amber-400' },
   { href: '/admin/kpi-dashboard', label: 'KPIダッシュボード', external: false, dot: 'bg-indigo-400' },
   { href: '/admin/customer-portal', label: 'マイページ連携', external: false, dot: 'bg-teal-400' },
+  { href: '/admin/cast-tenure', label: '在籍期間データ', external: false, dot: 'bg-fuchsia-400' },
 ]
 
 function ThemeToggle() {
