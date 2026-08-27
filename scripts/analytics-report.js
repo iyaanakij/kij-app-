@@ -723,7 +723,33 @@ function buildGa4Summary(ga4Results) {
   return result
 }
 
-async function buildGroupPageSummary(accessToken, ranges) {
+// グループページ（/group/discount/）の注意アラート。ページ単体のためcontentSeoのようなカテゴリ別配列ではなく1本のリストで返す
+function buildGroupPageAlerts(page) {
+  const alerts = []
+  const scCurr = page.searchConsole.current.summary
+  const scPrev = page.searchConsole.previous.summary
+  const scClicksDiffPct = percentDiff(scCurr.clicks, scPrev.clicks)
+  const scImpressionsDiffPct = percentDiff(scCurr.impressions, scPrev.impressions)
+
+  if (page.diff_pct.sessions !== null && page.diff_pct.sessions <= -30) {
+    alerts.push({ category: 'sessions_dropped', sessions: page.current.sessions, sessions_diff_pct: page.diff_pct.sessions })
+  }
+  if (page.diff_pct.sessions !== null && page.diff_pct.sessions >= 30) {
+    alerts.push({ category: 'sessions_grown', sessions: page.current.sessions, sessions_diff_pct: page.diff_pct.sessions })
+  }
+  if (page.current.sessions >= 20 && page.current.phone_click === 0 && page.current.reservation_click === 0) {
+    alerts.push({ category: 'cvr_zero_traffic_exists', sessions: page.current.sessions })
+  }
+  if (scCurr.impressions >= 20 && scImpressionsDiffPct !== null && scImpressionsDiffPct >= 15 && scCurr.ctr < 10) {
+    alerts.push({ category: 'impressions_up_ctr_low', impressions: scCurr.impressions, impressions_diff_pct: scImpressionsDiffPct, ctr: scCurr.ctr })
+  }
+  if (scPrev.clicks >= 3 && scClicksDiffPct !== null && scClicksDiffPct <= -30) {
+    alerts.push({ category: 'gsc_clicks_dropped', clicks: scCurr.clicks, clicks_diff_pct: scClicksDiffPct })
+  }
+  return alerts
+}
+
+async function buildGroupPagePeriod(accessToken, ranges) {
   const pages = await Promise.all(GA4_GROUP_PAGES.map(async page => {
     const metadata = await fetchGA4Metadata(page.id, accessToken)
     const shopDimension = findShopCustomDimension(metadata)
@@ -775,7 +801,7 @@ async function buildGroupPageSummary(accessToken, ranges) {
     const previousEvents = summarizeGroupEvents(eventsPrev)
     const calcCVR = (count, sessions) => sessions > 0 ? round1(count / sessions * 100) : 0
 
-    return {
+    const pageResult = {
       id: page.id,
       measurement_id: page.measurement_id,
       name: page.name,
@@ -831,14 +857,24 @@ async function buildGroupPageSummary(accessToken, ranges) {
         },
       },
     }
+    pageResult.alerts = buildGroupPageAlerts(pageResult)
+    return pageResult
   }))
 
   return { pages }
 }
 
-function formatGroupPageDryRunSection(groupPageSummary) {
-  const lines = ['### グループページ実績（M性感4店舗合計とは別集計）']
-  for (const page of groupPageSummary.pages || []) {
+async function buildGroupPage(accessToken, ranges) {
+  const [weekly, rolling28] = await Promise.all([
+    buildGroupPagePeriod(accessToken, ranges.weekly),
+    buildGroupPagePeriod(accessToken, ranges.rolling28),
+  ])
+  return { weekly, rolling28 }
+}
+
+function formatGroupPageDryRunSection(groupPage) {
+  const lines = ['### グループページ実績（M性感4店舗合計とは別集計・隔離7日間）']
+  for (const page of groupPage.weekly.pages || []) {
     lines.push(`- ${page.name} ${page.page_url}`)
     lines.push(`  - sessions: ${page.current.sessions}（前週比 ${page.diff_pct.sessions ?? '前週データなし'}%）`)
     lines.push(`  - phone_click: ${page.current.phone_click} / phone_cvr: ${page.current.phone_cvr}%（前週比 ${page.diff_pct.phone_click ?? '前週データなし'}%）`)
@@ -852,7 +888,9 @@ function formatGroupPageDryRunSection(groupPageSummary) {
     } else {
       lines.push('  - shopカスタムディメンション: 未登録。店舗別クリック内訳はスキップ')
     }
+    lines.push(`  - alerts: ${page.alerts.length ? page.alerts.map(a => a.category).join(', ') : 'なし'}`)
   }
+  lines.push(`### 28日ローリング alerts: ${(groupPage.rolling28.pages[0]?.alerts || []).map(a => a.category).join(', ') || 'なし'}`)
   return lines.join('\n')
 }
 
@@ -2012,11 +2050,20 @@ async function main() {
   })
   console.log(' コンテンツSEO完了')
 
-  const groupPageSummary = await buildGroupPageSummary(token, {
-    ga4Current: { startDate, endDate },
-    ga4Previous: { startDate: prevStart, endDate: prevEnd },
-    scCurrent: { startDate: scStartDate, endDate: scEndDate },
-    scPrevious: { startDate: scPrevStartDate, endDate: scPrevEndDate },
+  process.stdout.write('グループページ定点観測取得中(/group/discount/)')
+  const groupPage = await buildGroupPage(token, {
+    weekly: {
+      ga4Current: { startDate, endDate },
+      ga4Previous: { startDate: prevStart, endDate: prevEnd },
+      scCurrent: { startDate: scStartDate, endDate: scEndDate },
+      scPrevious: { startDate: scPrevStartDate, endDate: scPrevEndDate },
+    },
+    rolling28: {
+      ga4Current: { startDate: r28Start, endDate: r28End },
+      ga4Previous: { startDate: r28PrevStart, endDate: r28PrevEnd },
+      scCurrent: { startDate: scR28Start, endDate: scR28End },
+      scPrevious: { startDate: scR28PrevStart, endDate: scR28PrevEnd },
+    },
   })
   console.log(' グループページ完了')
 
@@ -2038,11 +2085,11 @@ async function main() {
     }, null, 2))
     console.log('--- DRY RUN: contentSeo.rolling28 themes（measurement_phase確認用）---')
     console.log(JSON.stringify(contentSeo.rolling28.themes.map(t => ({ theme: t.theme, theme_group: t.theme_group, measurement_phase: t.measurement_phase })), null, 2))
-    console.log('--- DRY RUN: グループページ実績（4店舗合計とは別集計）---')
-    console.log(formatGroupPageDryRunSection(groupPageSummary))
-    console.log(JSON.stringify(groupPageSummary, null, 2))
+    console.log('--- DRY RUN: グループページ定点観測（4店舗合計とは別集計）---')
+    console.log(formatGroupPageDryRunSection(groupPage))
+    console.log(JSON.stringify(groupPage, null, 2))
     console.log('--- DRY RUN: raw_data 構造プレビュー (先頭6000文字) ---')
-    console.log(JSON.stringify({ ga4: ga4Results, ga4Summary, groupPages: groupPageSummary, searchConsole: scResults, pageSeo: pageSeoResults, marketing }, null, 2).slice(0, 6000))
+    console.log(JSON.stringify({ ga4: ga4Results, ga4Summary, groupPage, searchConsole: scResults, pageSeo: pageSeoResults, marketing }, null, 2).slice(0, 6000))
     console.log('\n[analytics-report] DRY RUN 完了 ✓（Claude呼び出し・Supabase保存スキップ）')
     return
   }
@@ -2057,7 +2104,7 @@ async function main() {
   const promptData = {
     ga4: ga4Results,
     ga4Summary,
-    groupPages: groupPageSummary,
+    groupPages: groupPage.weekly,
     searchConsole: scResults,
     marketing,
     pageSeoSummary: pageSeoResults.map(page => ({
@@ -2196,7 +2243,7 @@ marketing.actionItems から優先度A/Bを中心に最大5件。各項目は以
       raw_data: {
         ga4: ga4Results,
         ga4Summary,
-        groupPages: groupPageSummary,
+        groupPage,
         searchConsole: scResults,
         pageSeo: pageSeoResults,
         marketing,

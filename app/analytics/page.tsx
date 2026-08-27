@@ -151,6 +151,79 @@ interface ContentSeo {
   rolling28: ContentSeoPeriod
 }
 
+interface GroupPageStats {
+  sessions: number
+  phone_click: number
+  reservation_click: number
+  phone_cvr: number
+  reservation_cvr: number
+}
+
+interface GroupPageDiffPct {
+  sessions: number | null
+  phone_click: number | null
+  reservation_click: number | null
+}
+
+interface GroupPageShopClickCounts {
+  phone_click: number
+  reservation_click: number
+}
+
+interface GroupPageShopClicksSnapshot {
+  by_shop: Record<string, GroupPageShopClickCounts>
+  unassigned: GroupPageShopClickCounts
+  other: Record<string, GroupPageShopClickCounts>
+}
+
+interface GroupPageTopQuery {
+  page: string
+  query: string
+  clicks: number
+  impressions: number
+  ctr: number
+  position: number
+}
+
+interface GroupPageAlert {
+  category: string
+  sessions?: number
+  sessions_diff_pct?: number | null
+  impressions?: number
+  impressions_diff_pct?: number | null
+  ctr?: number
+  clicks?: number
+  clicks_diff_pct?: number | null
+}
+
+interface GroupPageEntry {
+  id: string
+  measurement_id: string
+  name: string
+  pageName: string
+  page_url: string
+  includePath: string
+  shop_custom_dimension: { registered: boolean; apiName: string | null; uiName: string | null }
+  current: GroupPageStats
+  previous: GroupPageStats
+  diff_pct: GroupPageDiffPct
+  shop_clicks: { current: GroupPageShopClicksSnapshot; previous: GroupPageShopClicksSnapshot } | null
+  searchConsole: {
+    current: { summary: SearchSummary; topQueries: GroupPageTopQuery[] }
+    previous: { summary: SearchSummary }
+  }
+  alerts: GroupPageAlert[]
+}
+
+interface GroupPagePeriod {
+  pages: GroupPageEntry[]
+}
+
+interface GroupPage {
+  weekly: GroupPagePeriod
+  rolling28: GroupPagePeriod
+}
+
 interface AlertItem {
   priority: Priority
   category: string
@@ -185,6 +258,7 @@ interface Report {
     castAccess?: CastAccessStore[]
     profileReferrers?: ProfileReferrerStore[]
     contentSeo?: ContentSeo
+    groupPage?: GroupPage
   }
   created_at: string
 }
@@ -406,7 +480,7 @@ interface ActionItem {
 }
 
 type Priority = 'A' | 'B' | 'C'
-type TabId = 'weekly' | 'stores' | 'seo' | 'contentSeo' | 'log'
+type TabId = 'weekly' | 'stores' | 'seo' | 'contentSeo' | 'groupPage' | 'log'
 
 function formatDate(d: string) {
   return d.replace(/-/g, '/').slice(2)
@@ -833,6 +907,135 @@ function ContentSeoQueryChangesTable({ rows }: { rows: ContentSeoQueryChange[] }
   )
 }
 
+function GroupPageSummaryCards({ page }: { page: GroupPageEntry }) {
+  const sc = page.searchConsole.current.summary
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <KpiCard label="セッション" value={page.current.sessions.toLocaleString()} diffPct={page.diff_pct.sessions} />
+      <KpiCard
+        label="GA4電話CTA"
+        value={page.current.phone_click.toLocaleString()}
+        diffPct={page.diff_pct.phone_click}
+        note={`CVR ${page.current.phone_cvr}%`}
+      />
+      <KpiCard
+        label="GA4 WEB予約CTA"
+        value={page.current.reservation_click.toLocaleString()}
+        diffPct={page.diff_pct.reservation_click}
+        note={`CVR ${page.current.reservation_cvr}%`}
+      />
+      <KpiCard label="GSCクリック" value={sc.clicks.toLocaleString()} />
+      <KpiCard label="GSC表示回数" value={sc.impressions.toLocaleString()} />
+      <PositionKpiCard label="GSC平均順位" value={sc.position} />
+    </div>
+  )
+}
+
+function GroupPageShopClicksTable({ shopClicks }: { shopClicks: GroupPageEntry['shop_clicks'] }) {
+  if (!shopClicks) {
+    return <p className="text-xs text-gray-400">shopカスタムディメンション未登録のため、店舗別クリック内訳は取得していません。</p>
+  }
+  const shops = Object.keys(shopClicks.current.by_shop)
+  return (
+    <div className="overflow-x-auto rounded border bg-white">
+      <table className="min-w-full text-left text-xs">
+        <thead className="border-b bg-gray-50 text-gray-500">
+          <tr>
+            <th className="px-2 py-1.5 font-medium">店舗</th>
+            <th className="px-2 py-1.5 font-medium">電話クリック</th>
+            <th className="px-2 py-1.5 font-medium">WEB予約クリック</th>
+          </tr>
+        </thead>
+        <tbody>
+          {shops.map(shop => (
+            <tr key={shop} className="border-b last:border-b-0">
+              <td className="whitespace-nowrap px-2 py-1.5 font-medium text-gray-900">{shop}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">{shopClicks.current.by_shop[shop].phone_click.toLocaleString()}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">{shopClicks.current.by_shop[shop].reservation_click.toLocaleString()}</td>
+            </tr>
+          ))}
+          {(shopClicks.current.unassigned.phone_click > 0 || shopClicks.current.unassigned.reservation_click > 0) && (
+            <tr className="border-b last:border-b-0 text-gray-500">
+              <td className="whitespace-nowrap px-2 py-1.5">未割当（店舗未特定のWEB予約リンク等）</td>
+              <td className="whitespace-nowrap px-2 py-1.5">{shopClicks.current.unassigned.phone_click.toLocaleString()}</td>
+              <td className="whitespace-nowrap px-2 py-1.5">{shopClicks.current.unassigned.reservation_click.toLocaleString()}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+const GROUP_PAGE_ALERT_LABELS: Record<string, string> = {
+  sessions_dropped: 'セッション急落',
+  sessions_grown: 'セッション急増',
+  cvr_zero_traffic_exists: '流入はあるがCTAクリック0',
+  impressions_up_ctr_low: 'GSC表示増だがCTR低い',
+  gsc_clicks_dropped: 'GSCクリック急落',
+}
+
+function GroupPageAlertList({ alerts }: { alerts: GroupPageAlert[] }) {
+  if (alerts.length === 0) return <p className="text-xs text-gray-400">該当するアラートはありません。</p>
+  return (
+    <div className="space-y-1.5">
+      {alerts.map((a, i) => (
+        <div key={`${a.category}-${i}`} className="rounded border bg-white p-2.5 text-xs">
+          <span className="font-medium text-gray-900">{GROUP_PAGE_ALERT_LABELS[a.category] ?? a.category}</span>
+          {a.category === 'cvr_zero_traffic_exists' && (
+            <span className="ml-2 text-gray-600">セッション {a.sessions?.toLocaleString()}件</span>
+          )}
+          {(a.category === 'sessions_dropped' || a.category === 'sessions_grown') && (
+            <span className="ml-2 text-gray-600">
+              セッション {a.sessions?.toLocaleString()}件 <SignedValue value={a.sessions_diff_pct} suffix="%" />
+            </span>
+          )}
+          {a.category === 'impressions_up_ctr_low' && (
+            <span className="ml-2 text-gray-600">
+              表示回数 {a.impressions?.toLocaleString()}件 <SignedValue value={a.impressions_diff_pct} suffix="%" />・CTR {a.ctr}%
+            </span>
+          )}
+          {a.category === 'gsc_clicks_dropped' && (
+            <span className="ml-2 text-gray-600">
+              クリック {a.clicks?.toLocaleString()}件 <SignedValue value={a.clicks_diff_pct} suffix="%" />
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function GroupPageTopQueriesTable({ rows }: { rows: GroupPageTopQuery[] }) {
+  if (rows.length === 0) return <p className="text-xs text-gray-400">検索クエリのデータがありません。</p>
+  return (
+    <div className="overflow-x-auto rounded border bg-white">
+      <table className="min-w-full text-left text-xs">
+        <thead className="border-b bg-gray-50 text-gray-500">
+          <tr>
+            <th className="px-2 py-1.5 font-medium">クエリ</th>
+            <th className="px-2 py-1.5 font-medium">GSCクリック</th>
+            <th className="px-2 py-1.5 font-medium">GSC表示回数</th>
+            <th className="px-2 py-1.5 font-medium">GSC CTR</th>
+            <th className="px-2 py-1.5 font-medium">GSC平均順位</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={`${r.query}-${i}`} className="border-b last:border-b-0">
+              <td className="max-w-56 px-2 py-1.5 font-medium text-gray-900">{r.query}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">{r.clicks.toLocaleString()}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">{r.impressions.toLocaleString()}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">{r.ctr}%</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">{r.position}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export default function AnalyticsPage() {
   useEffect(() => { document.title = 'Web解析レポート | KIJ管理' }, [])
   const [reports, setReports] = useState<Report[]>([])
@@ -878,6 +1081,9 @@ export default function AnalyticsPage() {
   const scPrevious = scSite?.previous?.summary
   const contentSeo = selected?.raw_data?.contentSeo
   const contentSeoPeriod = contentSeo ? (comparisonMode === 'rolling28' ? contentSeo.rolling28 : contentSeo.weekly) : null
+  const groupPage = selected?.raw_data?.groupPage
+  const groupPagePeriod = groupPage ? (comparisonMode === 'rolling28' ? groupPage.rolling28 : groupPage.weekly) : null
+  const groupPageEntry = groupPagePeriod?.pages[0] ?? null
 
   const actionItems = marketing?.actionItems?.slice(0, 5) ?? []
   const rank: Record<Priority, number> = { A: 0, B: 1, C: 2 }
@@ -922,6 +1128,7 @@ export default function AnalyticsPage() {
     { id: 'stores', label: '店舗KPI', count: storeInsightsAll.length },
     { id: 'seo', label: 'SEO', count: pageSeoInsightsAll.filter(i => i.priority !== 'C').length },
     { id: 'contentSeo', label: 'コンテンツSEO', count: contentSeoPeriod?.pages.length },
+    { id: 'groupPage', label: 'グループページ', count: groupPageEntry?.alerts.length },
     { id: 'log', label: '詳細ログ' },
   ]
 
@@ -1460,6 +1667,45 @@ export default function AnalyticsPage() {
           ) : (
             <p className="rounded border bg-white p-4 text-xs text-gray-500">
               このレポートにはコンテンツSEOデータがありません（2026-08-03以前に生成されたレポートには未対応）。最新の週次レポートを選択してください。
+            </p>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'groupPage' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-700">グループページ定点観測（/group/discount/）</h2>
+            <ComparisonModeToggle mode={comparisonMode} onChange={setComparisonMode} />
+          </div>
+          <p className="text-xs text-gray-500">
+            快楽M性感グループの割引LP（新規向け）専用の集計。M性感4店舗合計（店舗KPIタブ等）とは完全に別物で、店舗別の数値には合算していない。
+          </p>
+
+          {groupPageEntry ? (
+            <>
+              <section>
+                <GroupPageSummaryCards page={groupPageEntry} />
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">注意アラート</h3>
+                <GroupPageAlertList alerts={groupPageEntry.alerts} />
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">店舗別クリック内訳（電話リンク経由）</h3>
+                <GroupPageShopClicksTable shopClicks={groupPageEntry.shop_clicks} />
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">検索クエリ</h3>
+                <GroupPageTopQueriesTable rows={groupPageEntry.searchConsole.current.topQueries} />
+              </section>
+            </>
+          ) : (
+            <p className="rounded border bg-white p-4 text-xs text-gray-500">
+              このレポートにはグループページデータがありません（2026-08-27以前に生成されたレポートには未対応）。最新の週次レポートを選択してください。
             </p>
           )}
         </div>
