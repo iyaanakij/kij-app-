@@ -12,6 +12,15 @@ const pageLinks = [
   { href: '/admin/dashboard', label: 'システム状態', use: '同期・cron・外部反映の異常確認' },
 ]
 
+// 実務で使っていないため「ツール」プルダウンから一旦除外中(2026-08-27、components/NavBar.tsx)。ページ自体は残存
+const hiddenToolLinks = [
+  { href: '/cast/login', label: 'キャストページ' },
+  { href: '/photodiary', label: '写メ日記' },
+  { href: '/photodiary/login', label: '写メ日記投稿' },
+  { href: '/chat', label: 'チャット' },
+  { href: '/admin/customer-portal', label: 'マイページ連携' },
+]
+
 const storeRows = [
   ['成田', '1', '5', '111702'],
   ['千葉', '2', '6', '111703'],
@@ -255,6 +264,25 @@ export default function ManualPage() {
             </div>
           </section>
         </div>
+
+        <section className="mt-5 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+          <div className="text-xs font-bold tracking-wide text-gray-400 dark:text-gray-500">HIDDEN</div>
+          <h2 className="mt-1 text-sm font-bold text-gray-500 dark:text-gray-400">非表示中のツール</h2>
+          <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+            実務で使っていないため「ツール」プルダウンから一旦外している画面。ページ自体は残っているので、直接開ける。
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {hiddenToolLinks.map(link => (
+              <a
+                key={link.href}
+                href={link.href}
+                className="rounded border border-gray-300 bg-white px-2.5 py-1 text-xs text-gray-500 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200"
+              >
+                {link.label}
+              </a>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   )
