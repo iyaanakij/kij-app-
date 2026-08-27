@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { AREAS, todayString } from '@/lib/types'
+import { AREAS, M_STORE_IDS, Y_STORE_IDS, todayString } from '@/lib/types'
 import {
   DateRange,
   PeriodPair,
@@ -37,10 +37,49 @@ interface TransactionRow {
   date: string
   data_type: string | null
   nomination_label: string | null
+  course_label: string | null
   cast_name: string | null
   revenue: number | null
+  committee_fee: number | null
+  store_profit: number | null
   used_at: string | null
 }
+
+// ── ブランド(M性感倶楽部/癒したくて)判定 ──────────────────────
+// store_daily_kpi(CS3集計済み値)はCS3AliceがE店IDでM/E両ブランドを一括管理しているため
+// ブランド別に出ない。daily_report_transactionsの行明細にはcourse_label/nomination_labelに
+// ブランドの手がかりが残っており(例: course_label「Ｍ80」「エステ80」、nomination_label
+// 「Ｍ本100」「Ｅ写」)、実データ検証(2026-08-27)でほぼ全行を判定できることを確認済み。
+// 判定できない行(「女性保証」等の非サービス枠、フルにplainな行)はnullを返す。
+type Brand = 'all' | 'M' | 'Y'
+
+function deriveBrand(courseLabel: string | null, nominationLabel: string | null): 'M' | 'Y' | null {
+  if (courseLabel) {
+    if (/^[MＭ]/.test(courseLabel)) return 'M'
+    if (courseLabel.startsWith('エステ')) return 'Y'
+  }
+  if (nominationLabel) {
+    if (nominationLabel.startsWith('Ｍ')) return 'M'
+    if (nominationLabel.startsWith('Ｅ')) return 'Y'
+  }
+  return null
+}
+
+// nomination_labelから写真指名/本指名を判定（「Ｍ写」「NEW 写」等→写真、「本100」「Ｍ本120」等→本指名）
+function deriveNominationKind(nominationLabel: string | null): 'photo' | 'regular' | null {
+  if (!nominationLabel) return null
+  if (nominationLabel.includes('写')) return 'photo'
+  if (nominationLabel.includes('本')) return 'regular'
+  return null
+}
+
+function shiftMatchesBrand(sh: ShiftRow, brand: Brand): boolean {
+  if (brand === 'all') return true
+  const ids = brand === 'M' ? M_STORE_IDS : Y_STORE_IDS
+  return (ids as number[]).includes(sh.store_id)
+}
+
+const BRAND_LABEL: Record<Brand, string> = { all: '全ブランド', M: 'M性感倶楽部', Y: '癒したくて' }
 
 interface StaffRow {
   id: number
@@ -83,16 +122,19 @@ interface MetricAgg {
   reservations: number
   cancellations: number
   inboundCalls: number
-  nominations: number
+  regularNominations: number
+  photoNominations: number
 }
 
 function emptyAgg(): MetricAgg {
   return {
     revenue: 0, storeProfit: 0, committeeFee: 0, customers: 0, newCustomers: 0,
-    repeatCustomers: 0, reservations: 0, cancellations: 0, inboundCalls: 0, nominations: 0,
+    repeatCustomers: 0, reservations: 0, cancellations: 0, inboundCalls: 0,
+    regularNominations: 0, photoNominations: 0,
   }
 }
 
+// 全ブランド合算（store_daily_kpiのCS3集計済み値をそのまま使う。従来通り自前計算はしない）
 function aggregate(kpiRows: StoreDailyKpiRow[], txRows: TransactionRow[], areaId: number | null, range: DateRange): MetricAgg {
   const agg = emptyAgg()
   for (const r of kpiRows) {
@@ -112,7 +154,33 @@ function aggregate(kpiRows: StoreDailyKpiRow[], txRows: TransactionRow[], areaId
     if (areaId != null && t.area_id !== areaId) continue
     if (t.date < range.start || t.date > range.end) continue
     if (t.data_type !== '成約') continue
-    if (t.nomination_label && /本|写/.test(t.nomination_label)) agg.nominations += 1
+    const kind = deriveNominationKind(t.nomination_label)
+    if (kind === 'regular') agg.regularNominations += 1
+    else if (kind === 'photo') agg.photoNominations += 1
+  }
+  return agg
+}
+
+// ブランド別自前集計。daily_report_transactionsのみが元データのため、CS3が店舗単位でしか
+// 定義していない新規/リピーター(newCustomers/repeatCustomers)・入電数(inboundCalls)は
+// 常に0のまま(=ブランド別集計非対応、呼び出し側でbrandFiltered表示にする)。
+function aggregateByBrand(txRows: TransactionRow[], brand: 'M' | 'Y', areaId: number | null, range: DateRange): MetricAgg {
+  const agg = emptyAgg()
+  for (const t of txRows) {
+    if (areaId != null && t.area_id !== areaId) continue
+    if (t.date < range.start || t.date > range.end) continue
+    if (deriveBrand(t.course_label, t.nomination_label) !== brand) continue
+    if (t.data_type === '成約') {
+      agg.revenue += t.revenue ?? 0
+      agg.storeProfit += t.store_profit ?? 0
+      agg.committeeFee += t.committee_fee ?? 0
+      agg.customers += 1
+      const kind = deriveNominationKind(t.nomination_label)
+      if (kind === 'regular') agg.regularNominations += 1
+      else if (kind === 'photo') agg.photoNominations += 1
+    }
+    agg.reservations += 1
+    if (t.data_type?.startsWith('キャンセル')) agg.cancellations += 1
   }
   return agg
 }
@@ -130,26 +198,41 @@ function formatYen(n: number) { return `¥${Math.round(n).toLocaleString()}` }
 function formatCount(n: number) { return `${Math.round(n).toLocaleString()}` }
 function formatPct(n: number) { return `${n.toFixed(1)}%` }
 
-function buildMetricRows(current: MetricAgg, previous: MetricAgg): MetricRow[] {
+// brandFiltered=true（M/Y別表示中）は新規客数・リピーター数・入電数を非表示にする。
+// CS3側がブランド別にこれらを計算していない(店舗合算の値しか存在しない)ため、
+// 0として出すとミスリードになるので行自体を出さない。
+function buildMetricRows(current: MetricAgg, previous: MetricAgg, brandFiltered = false): MetricRow[] {
   const unitPriceCur = current.customers > 0 ? current.revenue / current.customers : 0
   const unitPricePrev = previous.customers > 0 ? previous.revenue / previous.customers : 0
-  const nominationRateCur = current.customers > 0 ? (current.nominations / current.customers) * 100 : 0
-  const nominationRatePrev = previous.customers > 0 ? (previous.nominations / previous.customers) * 100 : 0
+  const nominationsCur = current.regularNominations + current.photoNominations
+  const nominationsPrev = previous.regularNominations + previous.photoNominations
+  const nominationRateCur = current.customers > 0 ? (nominationsCur / current.customers) * 100 : 0
+  const nominationRatePrev = previous.customers > 0 ? (nominationsPrev / previous.customers) * 100 : 0
 
-  return [
+  const rows: MetricRow[] = [
     { key: 'revenue', label: '売上', format: formatYen, current: current.revenue, previous: previous.revenue },
     { key: 'storeProfit', label: '店落ち', format: formatYen, current: current.storeProfit, previous: previous.storeProfit },
     { key: 'committeeFee', label: '委託費', format: formatYen, current: current.committeeFee, previous: previous.committeeFee },
     { key: 'customers', label: '客数', format: formatCount, current: current.customers, previous: previous.customers },
     { key: 'unitPrice', label: '客単価', format: formatYen, current: unitPriceCur, previous: unitPricePrev },
-    { key: 'newCustomers', label: '新規客数', format: formatCount, current: current.newCustomers, previous: previous.newCustomers },
-    { key: 'repeatCustomers', label: 'リピーター数', format: formatCount, current: current.repeatCustomers, previous: previous.repeatCustomers },
-    { key: 'nominations', label: '指名数', format: formatCount, current: current.nominations, previous: previous.nominations },
+  ]
+  if (!brandFiltered) {
+    rows.push(
+      { key: 'newCustomers', label: '新規客数', format: formatCount, current: current.newCustomers, previous: previous.newCustomers },
+      { key: 'repeatCustomers', label: 'リピーター数', format: formatCount, current: current.repeatCustomers, previous: previous.repeatCustomers },
+    )
+  }
+  rows.push(
+    { key: 'regularNominations', label: '本指名数', format: formatCount, current: current.regularNominations, previous: previous.regularNominations },
+    { key: 'photoNominations', label: '写真指名数', format: formatCount, current: current.photoNominations, previous: previous.photoNominations },
     { key: 'nominationRate', label: '指名率', format: formatPct, current: nominationRateCur, previous: nominationRatePrev },
     { key: 'reservations', label: '予約数', format: formatCount, current: current.reservations, previous: previous.reservations },
     { key: 'cancellations', label: 'キャンセル数', format: formatCount, current: current.cancellations, previous: previous.cancellations, invertColor: true },
-    { key: 'inboundCalls', label: '入電数', format: formatCount, current: current.inboundCalls, previous: previous.inboundCalls },
-  ]
+  )
+  if (!brandFiltered) {
+    rows.push({ key: 'inboundCalls', label: '入電数', format: formatCount, current: current.inboundCalls, previous: previous.inboundCalls })
+  }
+  return rows
 }
 
 // 寄与度コメント（無課金・テンプレ型）: 客数/客単価/新規/リピーター/指名率のうち
@@ -183,8 +266,8 @@ function DiffBadge({ current, previous, invert }: { current: number; previous: n
   return <span className={`text-xs font-semibold tabular-nums ${colorClass}`}>{arrow}{Math.abs(pct).toFixed(1)}%</span>
 }
 
-function StoreCard({ name, current, previous, highlight }: { name: string; current: MetricAgg; previous: MetricAgg; highlight?: boolean }) {
-  const rows = buildMetricRows(current, previous)
+function StoreCard({ name, current, previous, highlight, brandFiltered }: { name: string; current: MetricAgg; previous: MetricAgg; highlight?: boolean; brandFiltered?: boolean }) {
+  const rows = buildMetricRows(current, previous, brandFiltered)
   const comment = buildContributionComment(rows)
   return (
     <div className={`rounded-xl border p-4 shadow-sm ${
@@ -213,21 +296,26 @@ function StoreCard({ name, current, previous, highlight }: { name: string; curre
   )
 }
 
-function ComparisonGrid({ kpiRows, txRows, pair }: { kpiRows: StoreDailyKpiRow[]; txRows: TransactionRow[]; pair: PeriodPair }) {
+function ComparisonGrid({ kpiRows, txRows, pair, brand }: { kpiRows: StoreDailyKpiRow[]; txRows: TransactionRow[]; pair: PeriodPair; brand: Brand }) {
+  const agg = (areaId: number | null, range: DateRange) =>
+    brand === 'all' ? aggregate(kpiRows, txRows, areaId, range) : aggregateByBrand(txRows, brand, areaId, range)
+  const brandFiltered = brand !== 'all'
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
       <StoreCard
         name="全社計"
-        current={aggregate(kpiRows, txRows, null, pair.current)}
-        previous={aggregate(kpiRows, txRows, null, pair.previous)}
+        current={agg(null, pair.current)}
+        previous={agg(null, pair.previous)}
         highlight
+        brandFiltered={brandFiltered}
       />
       {AREAS.map(area => (
         <StoreCard
           key={area.id}
           name={area.name}
-          current={aggregate(kpiRows, txRows, area.id, pair.current)}
-          previous={aggregate(kpiRows, txRows, area.id, pair.previous)}
+          current={agg(area.id, pair.current)}
+          previous={agg(area.id, pair.previous)}
+          brandFiltered={brandFiltered}
         />
       ))}
     </div>
@@ -452,12 +540,13 @@ const MIN_ASOF = '2025-08-23'
 interface CastAgg {
   revenue: number
   count: number
-  nominations: number
+  regularNominations: number
+  photoNominations: number
   shiftMinutes: number
 }
 
 function emptyCastAgg(): CastAgg {
-  return { revenue: 0, count: 0, nominations: 0, shiftMinutes: 0 }
+  return { revenue: 0, count: 0, regularNominations: 0, photoNominations: 0, shiftMinutes: 0 }
 }
 
 // shifts は (staff_id, date) が重複しうる（HP同期/CS3同期が別store_idで書くため）。
@@ -479,6 +568,7 @@ function computeCastStats(
   staffRows: StaffRow[],
   shiftRows: ShiftRow[],
   areaId: number | null,
+  brand: Brand,
   range: DateRange,
 ) {
   const nameToId = new Map(staffRows.map(s => [s.name, s.id]))
@@ -487,16 +577,23 @@ function computeCastStats(
   for (const t of txRows) {
     if (!t.cast_name || t.data_type !== '成約') continue
     if (areaId != null && t.area_id !== areaId) continue
+    if (brand !== 'all' && deriveBrand(t.course_label, t.nomination_label) !== brand) continue
     if (t.date < range.start || t.date > range.end) continue
     const agg = byCast.get(t.cast_name) ?? emptyCastAgg()
     agg.revenue += t.revenue ?? 0
     agg.count += 1
-    if (t.nomination_label && /本|写/.test(t.nomination_label)) agg.nominations += 1
+    const kind = deriveNominationKind(t.nomination_label)
+    if (kind === 'regular') agg.regularNominations += 1
+    else if (kind === 'photo') agg.photoNominations += 1
     byCast.set(t.cast_name, agg)
   }
 
   const dedupedShifts = dedupLongestShift(
-    shiftRows.filter(sh => sh.date >= range.start && sh.date <= range.end && shiftMatchesArea(sh, areaId))
+    shiftRows.filter(sh =>
+      sh.date >= range.start && sh.date <= range.end
+      && shiftMatchesArea(sh, areaId)
+      && shiftMatchesBrand(sh, brand)
+    )
   )
   const shiftMinByStaffId = new Map<number, number>()
   for (const sh of dedupedShifts) {
@@ -516,7 +613,8 @@ interface CastTableRow {
   revenue: number
   count: number
   unitPrice: number
-  nominations: number
+  regularNominations: number
+  photoNominations: number
   nominationRate: number
   shiftHours: number
   revenuePerHour: number
@@ -536,19 +634,22 @@ function buildCastTableRows(current: Map<string, CastAgg>, previous: Map<string,
     const cur = current.get(name) ?? emptyCastAgg()
     const prev = previous.get(name) ?? emptyCastAgg()
     if (cur.count === 0) continue
+    const curNominations = cur.regularNominations + cur.photoNominations
+    const prevNominations = prev.regularNominations + prev.photoNominations
     rows.push({
       name,
       revenue: cur.revenue,
       count: cur.count,
       unitPrice: cur.count > 0 ? cur.revenue / cur.count : 0,
-      nominations: cur.nominations,
-      nominationRate: cur.count > 0 ? (cur.nominations / cur.count) * 100 : 0,
+      regularNominations: cur.regularNominations,
+      photoNominations: cur.photoNominations,
+      nominationRate: cur.count > 0 ? (curNominations / cur.count) * 100 : 0,
       shiftHours: cur.shiftMinutes / 60,
       revenuePerHour: cur.shiftMinutes > 0 ? cur.revenue / (cur.shiftMinutes / 60) : 0,
       prevRevenue: prev.revenue,
       prevCount: prev.count,
       prevUnitPrice: prev.count > 0 ? prev.revenue / prev.count : 0,
-      prevNominationRate: prev.count > 0 ? (prev.nominations / prev.count) * 100 : 0,
+      prevNominationRate: prev.count > 0 ? (prevNominations / prev.count) * 100 : 0,
       prevShiftHours: prev.shiftMinutes / 60,
     })
   }
@@ -556,16 +657,17 @@ function buildCastTableRows(current: Map<string, CastAgg>, previous: Map<string,
 }
 
 function CastComparisonTable({
-  txRows, staffRows, shiftRows, areaId, pair,
+  txRows, staffRows, shiftRows, areaId, brand, pair,
 }: {
   txRows: TransactionRow[]
   staffRows: StaffRow[]
   shiftRows: ShiftRow[]
   areaId: number | null
+  brand: Brand
   pair: PeriodPair
 }) {
-  const current = computeCastStats(txRows, staffRows, shiftRows, areaId, pair.current)
-  const previous = computeCastStats(txRows, staffRows, shiftRows, areaId, pair.previous)
+  const current = computeCastStats(txRows, staffRows, shiftRows, areaId, brand, pair.current)
+  const previous = computeCastStats(txRows, staffRows, shiftRows, areaId, brand, pair.previous)
   const rows = buildCastTableRows(current, previous)
 
   if (rows.length === 0) {
@@ -584,7 +686,8 @@ function CastComparisonTable({
             <th className={th}>売上</th>
             <th className={th}>本数</th>
             <th className={th}>客単価</th>
-            <th className={th}>指名</th>
+            <th className={th}>本指名</th>
+            <th className={th}>写真指名</th>
             <th className={th}>指名率</th>
             <th className={th}>出勤時間</th>
             <th className={th}>時間売上</th>
@@ -612,7 +715,8 @@ function CastComparisonTable({
                   <DiffBadge current={r.unitPrice} previous={r.prevUnitPrice} />
                 </div>
               </td>
-              <td className={td}>{r.nominations}</td>
+              <td className={td}>{r.regularNominations}</td>
+              <td className={td}>{r.photoNominations}</td>
               <td className={td}>
                 <div className="flex items-center gap-1.5">
                   {formatPct(r.nominationRate)}
@@ -640,6 +744,7 @@ export default function KpiDashboardPage() {
   const [view, setView] = useState<'store' | 'cast' | 'weekday'>('store')
   const [tab, setTab] = useState<TabKey>('daily')
   const [castAreaId, setCastAreaId] = useState<number | null>(null)
+  const [brand, setBrand] = useState<Brand>('all')
   const [kpiRows, setKpiRows] = useState<StoreDailyKpiRow[]>([])
   const [txRows, setTxRows] = useState<TransactionRow[]>([])
   const [staffRows, setStaffRows] = useState<StaffRow[]>([])
@@ -677,7 +782,7 @@ export default function KpiDashboardPage() {
       ),
       fetchAllPaginated<TransactionRow>((from, to) =>
         supabase.from('daily_report_transactions')
-          .select('area_id, date, data_type, nomination_label, cast_name, revenue, used_at')
+          .select('area_id, date, data_type, nomination_label, course_label, cast_name, revenue, committee_fee, store_profit, used_at')
           .gte('date', fetchRange.start).lte('date', fetchRange.end)
           .range(from, to)
       ),
@@ -790,23 +895,37 @@ export default function KpiDashboardPage() {
         <div className="text-sm text-gray-500 dark:text-gray-400">読み込み中...</div>
       ) : view === 'store' ? (
         <div className="space-y-6">
-          <div className="text-sm text-gray-500 dark:text-gray-400">
-            {activePair.label}（{activePair.current.start}〜{activePair.current.end}） vs {activePair.compareLabel}（{activePair.previous.start}〜{activePair.previous.end}）
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
+              {activePair.label}（{activePair.current.start}〜{activePair.current.end}） vs {activePair.compareLabel}（{activePair.previous.start}〜{activePair.previous.end}）
+            </div>
+            <select
+              value={brand}
+              onChange={e => setBrand(e.target.value as Brand)}
+              className="px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+            >
+              {(['all', 'M', 'Y'] as const).map(b => <option key={b} value={b}>{BRAND_LABEL[b]}</option>)}
+            </select>
           </div>
 
-          <ComparisonGrid kpiRows={kpiRows} txRows={txRows} pair={activePair} />
+          <ComparisonGrid kpiRows={kpiRows} txRows={txRows} pair={activePair} brand={brand} />
 
           {tab === 'monthly' && (
             <div>
               <h2 className="font-semibold text-gray-900 dark:text-white mb-3">
                 前年同月比（{yoyPair.current.start}〜{yoyPair.current.end} vs {yoyPair.previous.start}〜{yoyPair.previous.end}）
               </h2>
-              <ComparisonGrid kpiRows={kpiRows} txRows={txRows} pair={yoyPair} />
+              <ComparisonGrid kpiRows={kpiRows} txRows={txRows} pair={yoyPair} brand={brand} />
             </div>
           )}
 
           <div className="text-xs text-gray-400 dark:text-gray-500">
             ※ データは{MIN_ASOF}以降の日次スナップショットを保持しています（錦糸町店のみ2026-03-12以降）。上部のデータ基準日を変更すると過去の期間に遡って閲覧できます。
+            {brand !== 'all' && (
+              <>
+                {' '}※ {BRAND_LABEL[brand]}表示中はCS3デイリーレポート明細（コース名・指名ラベルからブランド判定）による自前集計です。新規客数・リピーター数・入電数はCS3側が店舗合算でしか算出していないためブランド別には出せません（非表示）。
+              </>
+            )}
           </div>
         </div>
       ) : view === 'cast' ? (
@@ -815,14 +934,23 @@ export default function KpiDashboardPage() {
             <div className="text-sm text-gray-500 dark:text-gray-400">
               {activePair.label}（{activePair.current.start}〜{activePair.current.end}） vs {activePair.compareLabel}（{activePair.previous.start}〜{activePair.previous.end}）・売上降順
             </div>
-            <select
-              value={castAreaId ?? ''}
-              onChange={e => setCastAreaId(e.target.value === '' ? null : Number(e.target.value))}
-              className="px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-            >
-              <option value="">全エリア</option>
-              {AREAS.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
+            <div className="flex gap-2">
+              <select
+                value={brand}
+                onChange={e => setBrand(e.target.value as Brand)}
+                className="px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              >
+                {(['all', 'M', 'Y'] as const).map(b => <option key={b} value={b}>{BRAND_LABEL[b]}</option>)}
+              </select>
+              <select
+                value={castAreaId ?? ''}
+                onChange={e => setCastAreaId(e.target.value === '' ? null : Number(e.target.value))}
+                className="px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              >
+                <option value="">全エリア</option>
+                {AREAS.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
           </div>
 
           <CastComparisonTable
@@ -830,11 +958,12 @@ export default function KpiDashboardPage() {
             staffRows={staffRows}
             shiftRows={shiftRows}
             areaId={castAreaId}
+            brand={brand}
             pair={activePair}
           />
 
           <div className="text-xs text-gray-400 dark:text-gray-500">
-            ※ 客単価・時間売上はCS3デイリーレポート明細（成約のみ）と出勤シフトの突き合わせによる概算です。出勤時間はキャスト名でstaffテーブルと名寄せしており、名前が一致しない場合は0時間扱いになります。
+            ※ 客単価・時間売上はCS3デイリーレポート明細（成約のみ）と出勤シフトの突き合わせによる概算です。出勤時間はキャスト名でstaffテーブルと名寄せしており、名前が一致しない場合は0時間扱いになります。ブランド絞り込み時は明細のコース名・指名ラベルからブランドを判定して集計します（判定できない行は除外）。
           </div>
         </div>
       ) : (
