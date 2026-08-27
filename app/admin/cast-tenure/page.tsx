@@ -139,9 +139,10 @@ function YearLineChart({ years }: { years: { year: string; value: number }[] }) 
         const isPeak = i === maxIdx
         return (
           <g key={years[i].year}>
-            <circle cx={p[0]} cy={p[1]} r={isPeak ? 4.5 : 2.2} className={isPeak ? 'fill-amber-500' : 'fill-indigo-500 dark:fill-indigo-400'}>
+            <circle cx={p[0]} cy={p[1]} r={9} fill="transparent" className="cursor-pointer">
               <title>{`${years[i].year}年: ${years[i].value}名`}</title>
             </circle>
+            <circle cx={p[0]} cy={p[1]} r={isPeak ? 4.5 : 2.2} className={`pointer-events-none ${isPeak ? 'fill-amber-500' : 'fill-indigo-500 dark:fill-indigo-400'}`} />
             {isPeak && (
               <text x={p[0]} y={p[1] - 11} fontSize={11.5} fontWeight={700} textAnchor="middle" className="fill-amber-500">
                 {years[i].value}
