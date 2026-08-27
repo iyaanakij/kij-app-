@@ -278,9 +278,6 @@ export default function CastTenurePage() {
           <span>実人数 <b className="text-gray-700 dark:text-gray-300">{summary.total.toLocaleString('en-US')}</b>名</span>
           <span>集計基準日 2026-08-26</span>
         </div>
-        <p className="mt-2 rounded border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-400">
-          社内限定データです。スクリーンショット・外部リンク共有は禁止（Googleインデックス防止のため2026-08-27にArtifactからこの画面へ移設）。
-        </p>
       </header>
 
       <div className="mb-4 flex gap-1 border-b border-gray-200 dark:border-gray-700">
