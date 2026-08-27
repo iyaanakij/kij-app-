@@ -19,15 +19,11 @@ const navItems = [
 ]
 
 // 外部公開ページ・投稿系ツールは「ツール」プルダウンにまとめる
+// 実務で使っていないため一旦除外(2026-08-27): キャストページ・写メ日記・写メ日記投稿・チャット・マイページ連携
 const TOOL_ITEMS = [
-  { href: '/cast/login', label: 'キャストページ', external: true, dot: 'bg-pink-400' },
-  { href: '/photodiary', label: '写メ日記', external: false, dot: 'bg-blue-400' },
-  { href: '/photodiary/login', label: '写メ日記投稿', external: true, dot: 'bg-purple-400' },
-  { href: '/chat', label: 'チャット', external: true, dot: 'bg-green-400' },
   { href: '/admin/vanilla-blog', label: 'バニラブログ', external: false, dot: 'bg-rose-400' },
   { href: '/admin/mail-campaigns', label: 'メルマガ配信', external: false, dot: 'bg-amber-400' },
   { href: '/admin/kpi-dashboard', label: 'KPIダッシュボード', external: false, dot: 'bg-indigo-400' },
-  { href: '/admin/customer-portal', label: 'マイページ連携', external: false, dot: 'bg-teal-400' },
   { href: '/admin/cast-tenure', label: '在籍期間データ', external: false, dot: 'bg-fuchsia-400' },
 ]
 
