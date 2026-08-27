@@ -126,41 +126,59 @@ function YearLineChart({ years }: { years: { year: string; value: number }[] }) 
   const linePath = points.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')
   const areaPath = linePath + ` L${points[n - 1][0].toFixed(1)},${H - padB} L${points[0][0].toFixed(1)},${H - padB} Z`
   const maxIdx = years.reduce((mi, d, i, arr) => (d.value > arr[mi].value ? i : mi), 0)
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; year: string; value: number } | null>(null)
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" className="w-full">
-      {[0, 0.25, 0.5, 0.75, 1].map(f => {
-        const y = H - padB - f * (H - padT - padB)
-        return <line key={f} x1={padL} x2={W - padR} y1={y} y2={y} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth={1} />
-      })}
-      <path d={areaPath} className="fill-indigo-200/60 dark:fill-indigo-900/40" />
-      <path d={linePath} fill="none" className="stroke-indigo-500 dark:stroke-indigo-400" strokeWidth={2.2} strokeLinejoin="round" strokeLinecap="round" />
-      {points.map((p, i) => {
-        const isPeak = i === maxIdx
-        return (
-          <g key={years[i].year}>
-            <circle cx={p[0]} cy={p[1]} r={9} fill="transparent" className="cursor-pointer">
-              <title>{`${years[i].year}年: ${years[i].value}名`}</title>
-            </circle>
-            <circle cx={p[0]} cy={p[1]} r={isPeak ? 4.5 : 2.2} className={`pointer-events-none ${isPeak ? 'fill-amber-500' : 'fill-indigo-500 dark:fill-indigo-400'}`} />
-            {isPeak && (
-              <text x={p[0]} y={p[1] - 11} fontSize={11.5} fontWeight={700} textAnchor="middle" className="fill-amber-500">
-                {years[i].value}
-              </text>
-            )}
-          </g>
-        )
-      })}
-      {years.map((d, i) => {
-        const show = i % 2 === 0 || i === n - 1
-        if (!show) return null
-        return (
-          <text key={d.year} x={points[i][0]} y={H - 6} fontSize={10.5} textAnchor="middle" fontFamily="ui-monospace, monospace" className="fill-gray-500 dark:fill-gray-400">
-            {d.year}
-          </text>
-        )
-      })}
-    </svg>
+    <div className="relative">
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" className="w-full">
+        {[0, 0.25, 0.5, 0.75, 1].map(f => {
+          const y = H - padB - f * (H - padT - padB)
+          return <line key={f} x1={padL} x2={W - padR} y1={y} y2={y} className="stroke-gray-200 dark:stroke-gray-700" strokeWidth={1} />
+        })}
+        <path d={areaPath} className="fill-indigo-200/60 dark:fill-indigo-900/40" />
+        <path d={linePath} fill="none" className="stroke-indigo-500 dark:stroke-indigo-400" strokeWidth={2.2} strokeLinejoin="round" strokeLinecap="round" />
+        {points.map((p, i) => {
+          const isPeak = i === maxIdx
+          return (
+            <g key={years[i].year}>
+              <circle
+                cx={p[0]}
+                cy={p[1]}
+                r={9}
+                fill="transparent"
+                className="cursor-pointer"
+                onMouseEnter={e => setTooltip({ x: e.clientX, y: e.clientY, year: years[i].year, value: years[i].value })}
+                onMouseMove={e => setTooltip(t => (t ? { ...t, x: e.clientX, y: e.clientY } : t))}
+                onMouseLeave={() => setTooltip(null)}
+              />
+              <circle cx={p[0]} cy={p[1]} r={isPeak ? 4.5 : 2.2} className={`pointer-events-none ${isPeak ? 'fill-amber-500' : 'fill-indigo-500 dark:fill-indigo-400'}`} />
+              {isPeak && (
+                <text x={p[0]} y={p[1] - 11} fontSize={11.5} fontWeight={700} textAnchor="middle" className="fill-amber-500">
+                  {years[i].value}
+                </text>
+              )}
+            </g>
+          )
+        })}
+        {years.map((d, i) => {
+          const show = i % 2 === 0 || i === n - 1
+          if (!show) return null
+          return (
+            <text key={d.year} x={points[i][0]} y={H - 6} fontSize={10.5} textAnchor="middle" fontFamily="ui-monospace, monospace" className="fill-gray-500 dark:fill-gray-400">
+              {d.year}
+            </text>
+          )
+        })}
+      </svg>
+      {tooltip && (
+        <div
+          className="pointer-events-none fixed z-50 rounded border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-800 shadow-md dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+          style={{ left: tooltip.x + 14, top: tooltip.y - 30 }}
+        >
+          {tooltip.year}年: {tooltip.value}名
+        </div>
+      )}
+    </div>
   )
 }
 
