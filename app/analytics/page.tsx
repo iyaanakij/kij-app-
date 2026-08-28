@@ -208,6 +208,7 @@ interface GroupPageEntry {
   previous: GroupPageStats
   diff_pct: GroupPageDiffPct
   shop_clicks: { current: GroupPageShopClicksSnapshot; previous: GroupPageShopClicksSnapshot } | null
+  channels: { current: Record<string, number>; previous: Record<string, number> }
   searchConsole: {
     current: { summary: SearchSummary; topQueries: GroupPageTopQuery[] }
     previous: { summary: SearchSummary }
@@ -967,6 +968,37 @@ function GroupPageShopClicksTable({ shopClicks }: { shopClicks: GroupPageEntry['
   )
 }
 
+function GroupPageChannelsTable({ current, previous }: { current: Record<string, number>; previous: Record<string, number> }) {
+  const entries = Object.entries(current).sort((a, b) => b[1] - a[1])
+  if (entries.length === 0) return <p className="text-xs text-gray-400">データがありません。</p>
+  const total = entries.reduce((sum, [, v]) => sum + v, 0)
+  const hasOrganic = entries.some(([channel]) => channel === 'Organic Search')
+  return (
+    <div>
+      {!hasOrganic && (
+        <p className="mb-2 text-xs text-amber-600">※ この期間、Organic Search（自然検索）経由のセッションは0件です。</p>
+      )}
+      <div className="space-y-1.5">
+        {entries.map(([channel, sessions]) => {
+          const diffPct = pctChange(sessions, previous[channel] ?? 0)
+          const share = total > 0 ? Math.round((sessions / total) * 100) : 0
+          return (
+            <div key={channel} className="flex items-center gap-2 text-xs">
+              <div className="w-32 shrink-0 truncate font-medium text-gray-700">{channel}</div>
+              <div className="relative h-3 flex-1 overflow-hidden rounded bg-gray-100">
+                <div className="absolute inset-y-0 left-0 bg-indigo-300" style={{ width: `${share}%` }} />
+              </div>
+              <div className="w-32 shrink-0 text-right text-gray-600">
+                {sessions.toLocaleString()}件（{share}%） <SignedValue value={diffPct} suffix="%" />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 const GROUP_PAGE_ALERT_LABELS: Record<string, string> = {
   sessions_dropped: 'セッション急落',
   sessions_grown: 'セッション急増',
@@ -1691,6 +1723,11 @@ export default function AnalyticsPage() {
               <section>
                 <h3 className="mb-2 text-sm font-semibold text-gray-700">注意アラート</h3>
                 <GroupPageAlertList alerts={groupPageEntry.alerts} />
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">流入チャネル</h3>
+                <GroupPageChannelsTable current={groupPageEntry.channels.current} previous={groupPageEntry.channels.previous} />
               </section>
 
               <section>

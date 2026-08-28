@@ -770,6 +770,8 @@ async function buildGroupPagePeriod(accessToken, ranges) {
       eventsPrev,
       shopClicksCurr,
       shopClicksPrev,
+      channelsCurr,
+      channelsPrev,
       scCurrent,
       scPrevious,
     ] = await Promise.all([
@@ -779,6 +781,8 @@ async function buildGroupPagePeriod(accessToken, ranges) {
       fetchGA4GroupEvents(page.id, accessToken, ranges.ga4Previous.startDate, ranges.ga4Previous.endDate),
       shopDimension ? fetchGA4GroupShopClicks(page.id, accessToken, ranges.ga4Current.startDate, ranges.ga4Current.endDate, shopDimension.apiName) : Promise.resolve(null),
       shopDimension ? fetchGA4GroupShopClicks(page.id, accessToken, ranges.ga4Previous.startDate, ranges.ga4Previous.endDate, shopDimension.apiName) : Promise.resolve(null),
+      fetchGA4Channels(page.id, accessToken, ranges.ga4Current.startDate, ranges.ga4Current.endDate),
+      fetchGA4Channels(page.id, accessToken, ranges.ga4Previous.startDate, ranges.ga4Previous.endDate),
       fetchSC('https://www.m-kairaku.com/', accessToken, {
         ...scFilter,
         dimensions: ['page', 'query'],
@@ -840,6 +844,10 @@ async function buildGroupPagePeriod(accessToken, ranges) {
         current: summarizeGroupShopClicks(shopClicksCurr),
         previous: summarizeGroupShopClicks(shopClicksPrev),
       } : null,
+      channels: {
+        current: summarizeChannels(channelsCurr),
+        previous: summarizeChannels(channelsPrev),
+      },
       searchConsole: {
         current: {
           summary: summarizeSC(scCurrent),
@@ -880,6 +888,7 @@ function formatGroupPageDryRunSection(groupPage) {
     lines.push(`  - phone_click: ${page.current.phone_click} / phone_cvr: ${page.current.phone_cvr}%（前週比 ${page.diff_pct.phone_click ?? '前週データなし'}%）`)
     lines.push(`  - reservation_click: ${page.current.reservation_click} / reservation_cvr: ${page.current.reservation_cvr}%（前週比 ${page.diff_pct.reservation_click ?? '前週データなし'}%）`)
     lines.push(`  - GSC clicks/impressions/ctr/position: ${page.searchConsole.current.summary.clicks}/${page.searchConsole.current.summary.impressions}/${page.searchConsole.current.summary.ctr}%/${page.searchConsole.current.summary.position}`)
+    lines.push(`  - channels: ${JSON.stringify(page.channels.current)}`)
     if (page.shop_custom_dimension.registered && page.shop_clicks) {
       lines.push(`  - shopカスタムディメンション: 登録済み（${page.shop_custom_dimension.apiName}）`)
       for (const [shop, counts] of Object.entries(page.shop_clicks.current.by_shop)) {
