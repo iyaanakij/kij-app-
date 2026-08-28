@@ -196,6 +196,15 @@ interface GroupPageAlert {
   clicks_diff_pct?: number | null
 }
 
+interface GroupPageCastCardClick {
+  gid: string
+  cast_name: string
+  shop: string
+  impressions: number
+  clicks: number
+  ctr: number
+}
+
 interface GroupPageEntry {
   id: string
   measurement_id: string
@@ -209,6 +218,7 @@ interface GroupPageEntry {
   diff_pct: GroupPageDiffPct
   shop_clicks: { current: GroupPageShopClicksSnapshot; previous: GroupPageShopClicksSnapshot } | null
   channels: { current: Record<string, number>; previous: Record<string, number> }
+  castCardClicks: GroupPageCastCardClick[]
   searchConsole: {
     current: { summary: SearchSummary; topQueries: GroupPageTopQuery[] }
     previous: { summary: SearchSummary }
@@ -999,6 +1009,42 @@ function GroupPageChannelsTable({ current, previous }: { current: Record<string,
   )
 }
 
+function GroupPageCastCardTable({ rows }: { rows: GroupPageCastCardClick[] }) {
+  if (rows.length === 0) {
+    return (
+      <p className="text-xs text-gray-400">
+        データがありません。GA4管理画面でこのプロパティのイベントスコープカスタムディメンションに<code className="rounded bg-gray-100 px-1">gid</code>・<code className="rounded bg-gray-100 px-1">cast_name</code>を登録していない場合、ここは常に空になります（登録前のイベントは遡って反映されません）。
+      </p>
+    )
+  }
+  return (
+    <div className="overflow-x-auto rounded border bg-white">
+      <table className="min-w-full text-left text-xs">
+        <thead className="border-b bg-gray-50 text-gray-500">
+          <tr>
+            <th className="px-2 py-1.5 font-medium">キャスト</th>
+            <th className="px-2 py-1.5 font-medium">店舗</th>
+            <th className="px-2 py-1.5 font-medium">表示回数</th>
+            <th className="px-2 py-1.5 font-medium">クリック</th>
+            <th className="px-2 py-1.5 font-medium">CTR</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.gid} className="border-b last:border-b-0">
+              <td className="whitespace-nowrap px-2 py-1.5 font-medium text-gray-900">{r.cast_name || `gid:${r.gid}（未登録）`}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-500">{r.shop}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">{r.impressions.toLocaleString()}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">{r.clicks.toLocaleString()}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-gray-700">{r.ctr}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 const GROUP_PAGE_ALERT_LABELS: Record<string, string> = {
   sessions_dropped: 'セッション急落',
   sessions_grown: 'セッション急増',
@@ -1728,6 +1774,14 @@ export default function AnalyticsPage() {
               <section>
                 <h3 className="mb-2 text-sm font-semibold text-gray-700">流入チャネル</h3>
                 <GroupPageChannelsTable current={groupPageEntry.channels.current} previous={groupPageEntry.channels.previous} />
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">本日出勤カードのキャスト別クリック（新規客の写真興味度）</h3>
+                <p className="mb-2 text-xs text-gray-500">
+                  「本日の出勤状況」カードの表示回数・クリック数をキャスト別に集計。CTR（クリック÷表示）が高いほど写真がタップを誘えている目安。表示順（予約満了は後方）による偏りがあるため、表示回数が近いキャスト同士で比較すること。
+                </p>
+                <GroupPageCastCardTable rows={groupPageEntry.castCardClicks} />
               </section>
 
               <section>

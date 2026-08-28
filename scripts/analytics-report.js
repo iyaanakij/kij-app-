@@ -203,6 +203,29 @@ async function fetchGA4GroupEvents(propertyId, accessToken, startDate, endDate) 
   })
 }
 
+// 本日出勤カード（新規向けLP、2026-08-28追加）のgid別表示回数/クリック。
+// customEvent:gid/customEvent:cast_nameはGA4管理画面での手動登録が必要（登録前は
+// runReportがエラーを返しga4Report()内でnullになるため、summarize側でnull安全に扱う）
+async function fetchGA4GroupCastCardEvents(propertyId, accessToken, startDate, endDate) {
+  return ga4Report(propertyId, accessToken, {
+    dateRanges: [{ startDate, endDate }],
+    metrics: [{ name: 'eventCount' }],
+    dimensions: [
+      { name: 'customEvent:gid' },
+      { name: 'customEvent:cast_name' },
+      { name: 'customEvent:shop' },
+      { name: 'eventName' },
+    ],
+    dimensionFilter: {
+      filter: {
+        fieldName: 'eventName',
+        inListFilter: { values: ['cast_card_impression', 'cast_card_click'] },
+      },
+    },
+    limit: 500,
+  })
+}
+
 async function fetchGA4GroupShopClicks(propertyId, accessToken, startDate, endDate, shopDimension) {
   if (!shopDimension) return null
   return ga4Report(propertyId, accessToken, {
@@ -493,6 +516,25 @@ function summarizeGroupShopClicks(data) {
   return { by_shop: byShop, unassigned, other }
 }
 
+// 本日出勤カードのgid別集計。customEvent:gid/cast_name未登録時はdataがnullのため空配列を返す。
+function summarizeGroupCastCardEvents(data) {
+  const byGid = {}
+  for (const row of data?.rows || []) {
+    const gid = row.dimensionValues[0]?.value || ''
+    const castName = row.dimensionValues[1]?.value || ''
+    const shop = row.dimensionValues[2]?.value || ''
+    const eventName = row.dimensionValues[3]?.value || ''
+    const count = Math.round(parseFloat(row.metricValues[0]?.value) || 0)
+    if (!gid || !['cast_card_impression', 'cast_card_click'].includes(eventName)) continue
+    if (!byGid[gid]) byGid[gid] = { gid, cast_name: castName, shop, impressions: 0, clicks: 0 }
+    if (eventName === 'cast_card_impression') byGid[gid].impressions += count
+    else byGid[gid].clicks += count
+  }
+  return Object.values(byGid)
+    .map(r => ({ ...r, ctr: r.impressions > 0 ? round1((r.clicks / r.impressions) * 100) : 0 }))
+    .sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)
+}
+
 function summarizeSC(data) {
   if (!data?.rows) return { clicks: 0, impressions: 0, ctr: 0, position: 0 }
   let clicks = 0, impressions = 0, posWeightedSum = 0
@@ -772,6 +814,7 @@ async function buildGroupPagePeriod(accessToken, ranges) {
       shopClicksPrev,
       channelsCurr,
       channelsPrev,
+      castCardCurr,
       scCurrent,
       scPrevious,
     ] = await Promise.all([
@@ -783,6 +826,7 @@ async function buildGroupPagePeriod(accessToken, ranges) {
       shopDimension ? fetchGA4GroupShopClicks(page.id, accessToken, ranges.ga4Previous.startDate, ranges.ga4Previous.endDate, shopDimension.apiName) : Promise.resolve(null),
       fetchGA4Channels(page.id, accessToken, ranges.ga4Current.startDate, ranges.ga4Current.endDate),
       fetchGA4Channels(page.id, accessToken, ranges.ga4Previous.startDate, ranges.ga4Previous.endDate),
+      fetchGA4GroupCastCardEvents(page.id, accessToken, ranges.ga4Current.startDate, ranges.ga4Current.endDate),
       fetchSC('https://www.m-kairaku.com/', accessToken, {
         ...scFilter,
         dimensions: ['page', 'query'],
@@ -848,6 +892,7 @@ async function buildGroupPagePeriod(accessToken, ranges) {
         current: summarizeChannels(channelsCurr),
         previous: summarizeChannels(channelsPrev),
       },
+      castCardClicks: summarizeGroupCastCardEvents(castCardCurr).slice(0, 30),
       searchConsole: {
         current: {
           summary: summarizeSC(scCurrent),
@@ -889,6 +934,7 @@ function formatGroupPageDryRunSection(groupPage) {
     lines.push(`  - reservation_click: ${page.current.reservation_click} / reservation_cvr: ${page.current.reservation_cvr}%（前週比 ${page.diff_pct.reservation_click ?? '前週データなし'}%）`)
     lines.push(`  - GSC clicks/impressions/ctr/position: ${page.searchConsole.current.summary.clicks}/${page.searchConsole.current.summary.impressions}/${page.searchConsole.current.summary.ctr}%/${page.searchConsole.current.summary.position}`)
     lines.push(`  - channels: ${JSON.stringify(page.channels.current)}`)
+    lines.push(`  - castCardClicks: ${page.castCardClicks.length}件（gid別、上位: ${page.castCardClicks.slice(0, 5).map(c => `${c.cast_name || c.gid}=クリック${c.clicks}/表示${c.impressions}`).join(', ') || 'なし'}）`)
     if (page.shop_custom_dimension.registered && page.shop_clicks) {
       lines.push(`  - shopカスタムディメンション: 登録済み（${page.shop_custom_dimension.apiName}）`)
       for (const [shop, counts] of Object.entries(page.shop_clicks.current.by_shop)) {
