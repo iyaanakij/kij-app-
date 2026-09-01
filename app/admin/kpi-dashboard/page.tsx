@@ -543,10 +543,11 @@ interface CastAgg {
   regularNominations: number
   photoNominations: number
   shiftMinutes: number
+  noShowCount: number
 }
 
 function emptyCastAgg(): CastAgg {
-  return { revenue: 0, count: 0, regularNominations: 0, photoNominations: 0, shiftMinutes: 0 }
+  return { revenue: 0, count: 0, regularNominations: 0, photoNominations: 0, shiftMinutes: 0, noShowCount: 0 }
 }
 
 // shifts は (staff_id, date) が重複しうる（HP同期/CS3同期が別store_idで書くため）。
@@ -575,16 +576,21 @@ function computeCastStats(
   const byCast = new Map<string, CastAgg>()
 
   for (const t of txRows) {
-    if (!t.cast_name || t.data_type !== '成約') continue
+    const isNoShow = t.data_type?.includes('当日欠勤') ?? false
+    if (!t.cast_name || (t.data_type !== '成約' && !isNoShow)) continue
     if (areaId != null && t.area_id !== areaId) continue
     if (brand !== 'all' && deriveBrand(t.course_label, t.nomination_label) !== brand) continue
     if (t.date < range.start || t.date > range.end) continue
     const agg = byCast.get(t.cast_name) ?? emptyCastAgg()
-    agg.revenue += t.revenue ?? 0
-    agg.count += 1
-    const kind = deriveNominationKind(t.nomination_label)
-    if (kind === 'regular') agg.regularNominations += 1
-    else if (kind === 'photo') agg.photoNominations += 1
+    if (isNoShow) {
+      agg.noShowCount += 1
+    } else {
+      agg.revenue += t.revenue ?? 0
+      agg.count += 1
+      const kind = deriveNominationKind(t.nomination_label)
+      if (kind === 'regular') agg.regularNominations += 1
+      else if (kind === 'photo') agg.photoNominations += 1
+    }
     byCast.set(t.cast_name, agg)
   }
 
@@ -618,6 +624,8 @@ interface CastTableRow {
   nominationRate: number
   shiftHours: number
   revenuePerHour: number
+  noShowCount: number
+  prevNoShowCount: number
   prevRevenue: number
   prevCount: number
   prevUnitPrice: number
@@ -633,7 +641,7 @@ function buildCastTableRows(current: Map<string, CastAgg>, previous: Map<string,
   for (const name of names) {
     const cur = current.get(name) ?? emptyCastAgg()
     const prev = previous.get(name) ?? emptyCastAgg()
-    if (cur.count === 0) continue
+    if (cur.count === 0 && cur.noShowCount === 0) continue
     const curNominations = cur.regularNominations + cur.photoNominations
     const prevNominations = prev.regularNominations + prev.photoNominations
     rows.push({
@@ -646,6 +654,8 @@ function buildCastTableRows(current: Map<string, CastAgg>, previous: Map<string,
       nominationRate: cur.count > 0 ? (curNominations / cur.count) * 100 : 0,
       shiftHours: cur.shiftMinutes / 60,
       revenuePerHour: cur.shiftMinutes > 0 ? cur.revenue / (cur.shiftMinutes / 60) : 0,
+      noShowCount: cur.noShowCount,
+      prevNoShowCount: prev.noShowCount,
       prevRevenue: prev.revenue,
       prevCount: prev.count,
       prevUnitPrice: prev.count > 0 ? prev.revenue / prev.count : 0,
@@ -691,6 +701,7 @@ function CastComparisonTable({
             <th className={th}>指名率</th>
             <th className={th}>出勤時間</th>
             <th className={th}>時間売上</th>
+            <th className={th}>当日欠勤</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -730,6 +741,12 @@ function CastComparisonTable({
                 </div>
               </td>
               <td className={td}>{r.shiftHours > 0 ? formatYen(r.revenuePerHour) : '—'}</td>
+              <td className={td}>
+                <div className="flex items-center gap-1.5">
+                  {r.noShowCount}
+                  <DiffBadge current={r.noShowCount} previous={r.prevNoShowCount} invert />
+                </div>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -963,7 +980,7 @@ export default function KpiDashboardPage() {
           />
 
           <div className="text-xs text-gray-400 dark:text-gray-500">
-            ※ 客単価・時間売上はCS3デイリーレポート明細（成約のみ）と出勤シフトの突き合わせによる概算です。出勤時間はキャスト名でstaffテーブルと名寄せしており、名前が一致しない場合は0時間扱いになります。ブランド絞り込み時は明細のコース名・指名ラベルからブランドを判定して集計します（判定できない行は除外）。
+            ※ 客単価・時間売上はCS3デイリーレポート明細（成約のみ）と出勤シフトの突き合わせによる概算です。出勤時間はキャスト名でstaffテーブルと名寄せしており、名前が一致しない場合は0時間扱いになります。ブランド絞り込み時は明細のコース名・指名ラベルからブランドを判定して集計します（判定できない行は除外）。当日欠勤はキャンセル理由に「当日欠勤」を含む行の件数です（バックレ等の無断キャンセルは含みません）。
           </div>
         </div>
       ) : (
