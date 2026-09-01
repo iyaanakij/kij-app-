@@ -715,8 +715,8 @@ function CastComparisonTable({
     return <div className="text-sm text-gray-400 dark:text-gray-500 py-6 text-center">対象期間の実績データがありません</div>
   }
 
-  const th = 'text-left font-medium text-gray-500 dark:text-gray-400 px-3 py-2 whitespace-nowrap'
-  const td = 'px-3 py-2 whitespace-nowrap text-gray-900 dark:text-white tabular-nums'
+  const th = 'text-left font-medium text-gray-500 dark:text-gray-400 px-2 py-2 whitespace-nowrap'
+  const td = 'px-2 py-2 whitespace-nowrap text-gray-900 dark:text-white tabular-nums'
 
   return (
     <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
@@ -727,13 +727,11 @@ function CastComparisonTable({
             <th className={th}>売上</th>
             <th className={th}>本数</th>
             <th className={th}>客単価</th>
-            <th className={th}>本指名</th>
-            <th className={th}>写真指名</th>
+            <th className={th}>指名(本/写)</th>
             <th className={th}>指名率</th>
             <th className={th}>出勤時間</th>
             <th className={th}>時間売上</th>
-            <th className={th}>欠勤キャンセル数</th>
-            <th className={th}>当日欠勤日数</th>
+            <th className={th}>当日欠勤(日/予約)</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -758,8 +756,7 @@ function CastComparisonTable({
                   <DiffBadge current={r.unitPrice} previous={r.prevUnitPrice} />
                 </div>
               </td>
-              <td className={td}>{r.regularNominations}</td>
-              <td className={td}>{r.photoNominations}</td>
+              <td className={td}>{r.regularNominations} / {r.photoNominations}</td>
               <td className={td}>
                 <div className="flex items-center gap-1.5">
                   {formatPct(r.nominationRate)}
@@ -775,13 +772,7 @@ function CastComparisonTable({
               <td className={td}>{r.shiftHours > 0 ? formatYen(r.revenuePerHour) : '—'}</td>
               <td className={td}>
                 <div className="flex items-center gap-1.5">
-                  {r.noShowCount}
-                  <DiffBadge current={r.noShowCount} previous={r.prevNoShowCount} invert />
-                </div>
-              </td>
-              <td className={td}>
-                <div className="flex items-center gap-1.5">
-                  {r.absenceDayCount}
+                  {r.absenceDayCount} / {r.noShowCount}
                   <DiffBadge current={r.absenceDayCount} previous={r.prevAbsenceDayCount} invert />
                 </div>
               </td>
@@ -1027,7 +1018,7 @@ export default function KpiDashboardPage() {
           />
 
           <div className="text-xs text-gray-400 dark:text-gray-500">
-            ※ 客単価・時間売上はCS3デイリーレポート明細（成約のみ）と出勤シフトの突き合わせによる概算です。出勤時間はキャスト名でstaffテーブルと名寄せしており、名前が一致しない場合は0時間扱いになります。ブランド絞り込み時は明細のコース名・指名ラベルからブランドを判定して集計します（判定できない行は除外）。欠勤キャンセル数はキャンセル理由に「当日欠勤」を含む予約の件数です（バックレ等の無断キャンセルは含みません）。1回の当日欠勤連絡で複数予約が巻き添えキャンセルされた場合は複数件としてカウントされるため、実際の「欠勤した日数」とは一致しません（予約が0件の日に丸ごとシフトが飛んだ場合はここに含まれません）。当日欠勤日数はCS3承認シフトが同期サイクル中に消えたことを検知した実績で、こちらが本来の「欠勤した日数」に近い指標です（2026-09-01以降のみ蓄積、それ以前は0件になります）。
+            ※ 客単価・時間売上はCS3デイリーレポート明細（成約のみ）と出勤シフトの突き合わせによる概算です。出勤時間はキャスト名でstaffテーブルと名寄せしており、名前が一致しない場合は0時間扱いになります。ブランド絞り込み時は明細のコース名・指名ラベルからブランドを判定して集計します（判定できない行は除外）。「当日欠勤(日/予約)」は左が実際の欠勤日数（CS3承認シフトが同期サイクル中に消えたことを検知した実績、増減バッジもこちら基準）、右が予約キャンセル理由に「当日欠勤」を含む件数（1回の欠勤で複数予約が巻き添えキャンセルされると複数件になるため日数とは一致しません）です。日数側は2026-09-01以降のみ蓄積（8/16〜8/31は履歴スナップショットからバックフィル済み、8/15以前は復元不可）。
           </div>
         </div>
       ) : (
