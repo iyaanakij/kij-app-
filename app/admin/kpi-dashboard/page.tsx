@@ -94,6 +94,14 @@ interface ShiftRow {
   end_time: number
 }
 
+// 真の当日欠勤イベント（2026-09-01追加、25-cs3-approved-to-shifts.jsが同期サイクル中の
+// シフト消失を検知して記録。予約キャンセル理由ベースのnoShowCountとは別軸）
+interface AbsenceEventRow {
+  staff_id: number
+  store_id: number
+  date: string
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchAllPaginated<T>(buildQuery: (from: number, to: number) => any): Promise<T[]> {
   const PAGE = 1000
@@ -544,10 +552,11 @@ interface CastAgg {
   photoNominations: number
   shiftMinutes: number
   noShowCount: number
+  absenceDayCount: number
 }
 
 function emptyCastAgg(): CastAgg {
-  return { revenue: 0, count: 0, regularNominations: 0, photoNominations: 0, shiftMinutes: 0, noShowCount: 0 }
+  return { revenue: 0, count: 0, regularNominations: 0, photoNominations: 0, shiftMinutes: 0, noShowCount: 0, absenceDayCount: 0 }
 }
 
 // shifts は (staff_id, date) が重複しうる（HP同期/CS3同期が別store_idで書くため）。
@@ -568,11 +577,13 @@ function computeCastStats(
   txRows: TransactionRow[],
   staffRows: StaffRow[],
   shiftRows: ShiftRow[],
+  absenceRows: AbsenceEventRow[],
   areaId: number | null,
   brand: Brand,
   range: DateRange,
 ) {
   const nameToId = new Map(staffRows.map(s => [s.name, s.id]))
+  const idToName = new Map(staffRows.map(s => [s.id, s.name]))
   const byCast = new Map<string, CastAgg>()
 
   for (const t of txRows) {
@@ -611,6 +622,21 @@ function computeCastStats(
     if (staffId != null) agg.shiftMinutes = shiftMinByStaffId.get(staffId) ?? 0
   }
 
+  const area = areaId != null ? AREAS.find(a => a.id === areaId) : null
+  for (const ev of absenceRows) {
+    if (ev.date < range.start || ev.date > range.end) continue
+    if (area && !area.storeIds.includes(ev.store_id)) continue
+    if (brand !== 'all') {
+      const ids = brand === 'M' ? M_STORE_IDS : Y_STORE_IDS
+      if (!(ids as number[]).includes(ev.store_id)) continue
+    }
+    const castName = idToName.get(ev.staff_id)
+    if (!castName) continue
+    const agg = byCast.get(castName) ?? emptyCastAgg()
+    agg.absenceDayCount += 1
+    byCast.set(castName, agg)
+  }
+
   return byCast
 }
 
@@ -626,6 +652,8 @@ interface CastTableRow {
   revenuePerHour: number
   noShowCount: number
   prevNoShowCount: number
+  absenceDayCount: number
+  prevAbsenceDayCount: number
   prevRevenue: number
   prevCount: number
   prevUnitPrice: number
@@ -641,7 +669,7 @@ function buildCastTableRows(current: Map<string, CastAgg>, previous: Map<string,
   for (const name of names) {
     const cur = current.get(name) ?? emptyCastAgg()
     const prev = previous.get(name) ?? emptyCastAgg()
-    if (cur.count === 0 && cur.noShowCount === 0) continue
+    if (cur.count === 0 && cur.noShowCount === 0 && cur.absenceDayCount === 0) continue
     const curNominations = cur.regularNominations + cur.photoNominations
     const prevNominations = prev.regularNominations + prev.photoNominations
     rows.push({
@@ -656,6 +684,8 @@ function buildCastTableRows(current: Map<string, CastAgg>, previous: Map<string,
       revenuePerHour: cur.shiftMinutes > 0 ? cur.revenue / (cur.shiftMinutes / 60) : 0,
       noShowCount: cur.noShowCount,
       prevNoShowCount: prev.noShowCount,
+      absenceDayCount: cur.absenceDayCount,
+      prevAbsenceDayCount: prev.absenceDayCount,
       prevRevenue: prev.revenue,
       prevCount: prev.count,
       prevUnitPrice: prev.count > 0 ? prev.revenue / prev.count : 0,
@@ -667,17 +697,18 @@ function buildCastTableRows(current: Map<string, CastAgg>, previous: Map<string,
 }
 
 function CastComparisonTable({
-  txRows, staffRows, shiftRows, areaId, brand, pair,
+  txRows, staffRows, shiftRows, absenceRows, areaId, brand, pair,
 }: {
   txRows: TransactionRow[]
   staffRows: StaffRow[]
   shiftRows: ShiftRow[]
+  absenceRows: AbsenceEventRow[]
   areaId: number | null
   brand: Brand
   pair: PeriodPair
 }) {
-  const current = computeCastStats(txRows, staffRows, shiftRows, areaId, brand, pair.current)
-  const previous = computeCastStats(txRows, staffRows, shiftRows, areaId, brand, pair.previous)
+  const current = computeCastStats(txRows, staffRows, shiftRows, absenceRows, areaId, brand, pair.current)
+  const previous = computeCastStats(txRows, staffRows, shiftRows, absenceRows, areaId, brand, pair.previous)
   const rows = buildCastTableRows(current, previous)
 
   if (rows.length === 0) {
@@ -702,6 +733,7 @@ function CastComparisonTable({
             <th className={th}>出勤時間</th>
             <th className={th}>時間売上</th>
             <th className={th}>欠勤キャンセル数</th>
+            <th className={th}>当日欠勤日数</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -747,6 +779,12 @@ function CastComparisonTable({
                   <DiffBadge current={r.noShowCount} previous={r.prevNoShowCount} invert />
                 </div>
               </td>
+              <td className={td}>
+                <div className="flex items-center gap-1.5">
+                  {r.absenceDayCount}
+                  <DiffBadge current={r.absenceDayCount} previous={r.prevAbsenceDayCount} invert />
+                </div>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -766,6 +804,7 @@ export default function KpiDashboardPage() {
   const [txRows, setTxRows] = useState<TransactionRow[]>([])
   const [staffRows, setStaffRows] = useState<StaffRow[]>([])
   const [shiftRows, setShiftRows] = useState<ShiftRow[]>([])
+  const [absenceRows, setAbsenceRows] = useState<AbsenceEventRow[]>([])
   const [loading, setLoading] = useState(true)
 
   const today = todayString()
@@ -790,7 +829,7 @@ export default function KpiDashboardPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [kpi, tx, staff] = await Promise.all([
+    const [kpi, tx, staff, absence] = await Promise.all([
       fetchAllPaginated<StoreDailyKpiRow>((from, to) =>
         supabase.from('store_daily_kpi')
           .select('area_id, date, close_count, reserve_count, cancel_count, change_count, other_count, revenue_total, committee_fee_total, store_profit_total, contracts_all_count, new_customers, repeat_customers, inbound_calls_total')
@@ -806,10 +845,17 @@ export default function KpiDashboardPage() {
       fetchAllPaginated<StaffRow>((from, to) =>
         supabase.from('staff').select('id, name').range(from, to)
       ),
+      fetchAllPaginated<AbsenceEventRow>((from, to) =>
+        supabase.from('cast_absence_events')
+          .select('staff_id, store_id, date')
+          .gte('date', fetchRange.start).lte('date', fetchRange.end)
+          .range(from, to)
+      ),
     ])
     setKpiRows(kpi)
     setTxRows(tx)
     setStaffRows(staff)
+    setAbsenceRows(absence)
 
     const staffIds = staff.map(s => s.id)
     const shifts = staffIds.length > 0
@@ -974,13 +1020,14 @@ export default function KpiDashboardPage() {
             txRows={txRows}
             staffRows={staffRows}
             shiftRows={shiftRows}
+            absenceRows={absenceRows}
             areaId={castAreaId}
             brand={brand}
             pair={activePair}
           />
 
           <div className="text-xs text-gray-400 dark:text-gray-500">
-            ※ 客単価・時間売上はCS3デイリーレポート明細（成約のみ）と出勤シフトの突き合わせによる概算です。出勤時間はキャスト名でstaffテーブルと名寄せしており、名前が一致しない場合は0時間扱いになります。ブランド絞り込み時は明細のコース名・指名ラベルからブランドを判定して集計します（判定できない行は除外）。欠勤キャンセル数はキャンセル理由に「当日欠勤」を含む予約の件数です（バックレ等の無断キャンセルは含みません）。1回の当日欠勤連絡で複数予約が巻き添えキャンセルされた場合は複数件としてカウントされるため、実際の「欠勤した日数」とは一致しません（予約が0件の日に丸ごとシフトが飛んだ場合はここに含まれません）。
+            ※ 客単価・時間売上はCS3デイリーレポート明細（成約のみ）と出勤シフトの突き合わせによる概算です。出勤時間はキャスト名でstaffテーブルと名寄せしており、名前が一致しない場合は0時間扱いになります。ブランド絞り込み時は明細のコース名・指名ラベルからブランドを判定して集計します（判定できない行は除外）。欠勤キャンセル数はキャンセル理由に「当日欠勤」を含む予約の件数です（バックレ等の無断キャンセルは含みません）。1回の当日欠勤連絡で複数予約が巻き添えキャンセルされた場合は複数件としてカウントされるため、実際の「欠勤した日数」とは一致しません（予約が0件の日に丸ごとシフトが飛んだ場合はここに含まれません）。当日欠勤日数はCS3承認シフトが同期サイクル中に消えたことを検知した実績で、こちらが本来の「欠勤した日数」に近い指標です（2026-09-01以降のみ蓄積、それ以前は0件になります）。
           </div>
         </div>
       ) : (
