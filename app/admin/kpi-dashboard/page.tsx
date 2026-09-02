@@ -118,7 +118,7 @@ async function fetchAllPaginated<T>(buildQuery: (from: number, to: number) => an
   return results
 }
 
-type TabKey = 'daily' | 'weekly' | 'monthly'
+type TabKey = 'daily' | 'weekly' | 'monthly' | 'yoy'
 
 interface MetricAgg {
   revenue: number
@@ -537,6 +537,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'daily', label: '日次' },
   { key: 'weekly', label: '週次' },
   { key: 'monthly', label: '月次' },
+  { key: 'yoy', label: '前年同月比' },
 ]
 
 // バックフィル済みデータの開始日（2026-08-23実施、2025-08-23〜の1年分）。
@@ -865,7 +866,8 @@ export default function KpiDashboardPage() {
 
   useEffect(() => { load() }, [load])
 
-  const activePair: PeriodPair = tab === 'daily' ? dailyPair : tab === 'weekly' ? weeklyPair : monthlyPair
+  const activePair: PeriodPair =
+    tab === 'daily' ? dailyPair : tab === 'weekly' ? weeklyPair : tab === 'monthly' ? monthlyPair : yoyPair
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto">
@@ -963,15 +965,6 @@ export default function KpiDashboardPage() {
           </div>
 
           <ComparisonGrid kpiRows={kpiRows} txRows={txRows} pair={activePair} brand={brand} />
-
-          {tab === 'monthly' && (
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white mb-3">
-                前年同月比（{yoyPair.current.start}〜{yoyPair.current.end} vs {yoyPair.previous.start}〜{yoyPair.previous.end}）
-              </h2>
-              <ComparisonGrid kpiRows={kpiRows} txRows={txRows} pair={yoyPair} brand={brand} />
-            </div>
-          )}
 
           <div className="text-xs text-gray-400 dark:text-gray-500">
             ※ データは{MIN_ASOF}以降の日次スナップショットを保持しています（錦糸町店のみ2026-03-12以降）。上部のデータ基準日を変更すると過去の期間に遡って閲覧できます。
