@@ -14,6 +14,7 @@ import {
   pctChange,
   addDays,
 } from '@/lib/kpiDateRanges'
+import { deriveBrand, deriveNominationKind } from '@/lib/cs3TransactionDerive'
 
 interface StoreDailyKpiRow {
   area_id: number
@@ -47,31 +48,10 @@ interface TransactionRow {
 
 // ── ブランド(M性感倶楽部/癒したくて)判定 ──────────────────────
 // store_daily_kpi(CS3集計済み値)はCS3AliceがE店IDでM/E両ブランドを一括管理しているため
-// ブランド別に出ない。daily_report_transactionsの行明細にはcourse_label/nomination_labelに
-// ブランドの手がかりが残っており(例: course_label「Ｍ80」「エステ80」、nomination_label
-// 「Ｍ本100」「Ｅ写」)、実データ検証(2026-08-27)でほぼ全行を判定できることを確認済み。
-// 判定できない行(「女性保証」等の非サービス枠、フルにplainな行)はnullを返す。
+// ブランド別に出ない。daily_report_transactionsの行明細から自前判定する
+// （deriveBrand/deriveNominationKindの詳細は lib/cs3TransactionDerive.ts 参照。
+// /ranking の本指名ユニーク数集計とも共用）。
 type Brand = 'all' | 'M' | 'Y'
-
-function deriveBrand(courseLabel: string | null, nominationLabel: string | null): 'M' | 'Y' | null {
-  if (courseLabel) {
-    if (/^[MＭ]/.test(courseLabel)) return 'M'
-    if (courseLabel.startsWith('エステ')) return 'Y'
-  }
-  if (nominationLabel) {
-    if (nominationLabel.startsWith('Ｍ')) return 'M'
-    if (nominationLabel.startsWith('Ｅ')) return 'Y'
-  }
-  return null
-}
-
-// nomination_labelから写真指名/本指名を判定（「Ｍ写」「NEW 写」等→写真、「本100」「Ｍ本120」等→本指名）
-function deriveNominationKind(nominationLabel: string | null): 'photo' | 'regular' | null {
-  if (!nominationLabel) return null
-  if (nominationLabel.includes('写')) return 'photo'
-  if (nominationLabel.includes('本')) return 'regular'
-  return null
-}
 
 function shiftMatchesBrand(sh: ShiftRow, brand: Brand): boolean {
   if (brand === 'all') return true

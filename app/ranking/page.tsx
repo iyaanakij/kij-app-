@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { AREAS } from '@/lib/types'
 import { getAuthHeaders } from '@/lib/auth'
+import { deriveBrand, deriveNominationKind } from '@/lib/cs3TransactionDerive'
 
 function getMonthOptions() {
   const options: { label: string; value: string }[] = []
@@ -70,6 +71,7 @@ interface StaffStats {
   name: string
   // CS3成績（正確な値）
   honShimei: number
+  honUnique: number
   shashinShimei: number
   totalRes: number
   honRate: number
@@ -118,6 +120,14 @@ interface ShiftRow {
   status: 'normal' | 'x'
 }
 
+// 本指名ユニーク数集計用（daily_report_transactionsの行明細、KPIダッシュボードと同じテーブル）
+interface DailyReportTxRow {
+  cast_name: string | null
+  customer_id: string | null
+  course_label: string | null
+  nomination_label: string | null
+}
+
 type RankingKey = keyof Pick<StaffStats, 'honShimei' | 'shashinShimei' | 'honRate' | 'kadoritsu' | 'nonHonCourseMin' | 'honCourseMin'>
 
 interface RankingDef {
@@ -125,10 +135,11 @@ interface RankingDef {
   label: string
   higherIsBetter: boolean
   format: (v: number) => string
+  extra?: (s: StaffStats) => string
 }
 
 const RANKINGS: RankingDef[] = [
-  { key: 'honShimei',        label: '本指名数',            higherIsBetter: true, format: v => `${v}件` },
+  { key: 'honShimei',        label: '本指名数',            higherIsBetter: true, format: v => `${v}件`, extra: s => `(${s.honUnique}人)` },
   { key: 'shashinShimei',    label: '写真指名数',           higherIsBetter: true, format: v => `${v}件` },
   { key: 'honRate',          label: '本指名率',             higherIsBetter: true, format: v => `${(v * 100).toFixed(1)}%` },
   { key: 'kadoritsu',        label: '稼働率',               higherIsBetter: true, format: v => `${(v * 100).toFixed(1)}%` },
@@ -240,7 +251,7 @@ export default function RankingPage() {
           if (!staffMap.has(id)) {
             staffMap.set(id, {
               staffId: id, name,
-              honShimei: 0, shashinShimei: 0, totalRes: 0, honRate: 0,
+              honShimei: 0, honUnique: 0, shashinShimei: 0, totalRes: 0, honRate: 0,
               shiftMin: 0, courseMin: 0, kadoritsu: 0,
               honCourseMin: 0, nonHonCourseMin: 0,
               hasCs3: false,
@@ -294,6 +305,35 @@ export default function RankingPage() {
             if (r.nomination_type?.includes('本')) s.honShimei++
             if (r.nomination_type?.includes('写')) s.shashinShimei++
           }
+        }
+
+        // ── 本指名ユニーク数（daily_report_transactions由来、KPIダッシュボードと同じテーブル）──
+        // cs3_cast_performance/reservationsは月次件数のみで顧客識別子を持たないため、
+        // customer_id(CS3の顧客ID)がある行明細から別途集計する。同期は独立(日次cron)のため
+        // CS3成績データ(集計ボタン)の取得有無に関わらず取得を試みる。
+        const dailyReportTx = await fetchAllPaginated<DailyReportTxRow>((from, to) =>
+          supabase.from('daily_report_transactions')
+            .select('cast_name, customer_id, course_label, nomination_label')
+            .eq('area_id', areaId)
+            .eq('data_type', '成約')
+            .gte('date', dateFrom)
+            .lte('date', dateTo)
+            .range(from, to)
+        )
+        if (cancelled) return
+
+        const honUniqueByCastName = new Map<string, Set<string>>()
+        const targetBrand = section === 'M' ? 'M' : 'Y'
+        for (const t of dailyReportTx) {
+          if (!t.cast_name || !t.customer_id) continue
+          if (deriveBrand(t.course_label, t.nomination_label) !== targetBrand) continue
+          if (deriveNominationKind(t.nomination_label) !== 'regular') continue
+          const set = honUniqueByCastName.get(t.cast_name) ?? new Set<string>()
+          set.add(t.customer_id)
+          honUniqueByCastName.set(t.cast_name, set)
+        }
+        for (const s of staffMap.values()) {
+          s.honUnique = honUniqueByCastName.get(s.name)?.size ?? 0
         }
 
         // ── シフトデータ（稼働率計算用）──
@@ -467,6 +507,7 @@ export default function RankingPage() {
           指名数・本指名率{cs3CourseAvailable ? '・コース総時間' : ''}は CS3 成績データ（取得済み月のみ）を出典とします。
           {!cs3CourseAvailable && ' コース総時間はCS3コース時間列の反映待ちです。'}
           稼働率の分母はシフト表データです。
+          本指名数の「(◯人)」は本指名した重複のない顧客数（デイリーレポート明細集計、キャスト名の名寄せに依存）です。
         </p>
 
         <div className="flex flex-wrap items-center gap-3 mb-6">
@@ -567,7 +608,10 @@ export default function RankingPage() {
                             <tr key={s.staffId} className="border-b border-gray-800 last:border-0">
                               <td className="py-1 pr-2 text-gray-500 text-xs w-6">{rankMap.get(s.staffId)}</td>
                               <td className="py-1 text-gray-200 truncate max-w-0 w-full">{s.name}</td>
-                              <td className="py-1 text-right text-gray-400 text-xs whitespace-nowrap pl-2">{def.format(s[def.key])}</td>
+                              <td className="py-1 text-right text-gray-400 text-xs whitespace-nowrap pl-2">
+                                {def.format(s[def.key])}
+                                {def.extra && <span className="text-gray-600 ml-1">{def.extra(s)}</span>}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
