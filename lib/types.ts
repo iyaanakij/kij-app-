@@ -10,6 +10,7 @@ export interface Staff {
   notes: string | null
   cs3_cast_id: string | null
   created_at: string
+  hidden?: boolean
   stores?: Store[]
 }
 

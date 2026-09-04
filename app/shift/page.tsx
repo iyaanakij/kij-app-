@@ -167,22 +167,53 @@ export default function ShiftPage() {
     return Number.isInteger(hours) ? String(hours) : hours.toFixed(1)
   }
 
-  // 選択エリアに所属するスタッフだけを表示する。
-  const sortedStaffList = useMemo(() => {
+  // 選択エリアに所属するスタッフだけを表示する（手動非表示にしたスタッフは除外）。
+  const areaStaffList = useMemo(() => {
     const area = AREAS.find(a => a.id === selectedAreaId)!
     const areaStaffIds = new Set(
       staffStores
         .filter(link => area.storeIds.includes(link.store_id))
         .map(link => link.staff_id)
     )
-    const visibleStaff = staffList.filter(staff => areaStaffIds.has(staff.id))
+    return staffList.filter(staff => areaStaffIds.has(staff.id))
+  }, [staffList, staffStores, selectedAreaId])
+
+  // 手動非表示は店舗を問わない1フラグ。該当スタッフのシフト(status='normal')が
+  // 新規に入るとDBトリガー側で自動的にhidden=falseへ戻る。
+  const hiddenStaffInArea = useMemo(
+    () => areaStaffList.filter(staff => staff.hidden),
+    [areaStaffList]
+  )
+
+  const sortedStaffList = useMemo(() => {
+    const visibleStaff = areaStaffList.filter(staff => !staff.hidden)
     return visibleStaff.sort((a, b) => {
       const aCount = shifts.filter(s => s.staff_id === a.id).length
       const bCount = shifts.filter(s => s.staff_id === b.id).length
       if (bCount !== aCount) return bCount - aCount
       return a.name.localeCompare(b.name, 'ja')
     })
-  }, [staffList, staffStores, shifts, selectedAreaId])
+  }, [areaStaffList, shifts])
+
+  async function hideStaff(staffId: number) {
+    setStaffList(prev => prev.map(s => (s.id === staffId ? { ...s, hidden: true } : s)))
+    const { error } = await supabase.from('staff').update({ hidden: true }).eq('id', staffId)
+    if (error) {
+      console.warn('failed to hide staff', error)
+      setStaffList(prev => prev.map(s => (s.id === staffId ? { ...s, hidden: false } : s)))
+    }
+  }
+
+  async function unhideAllStaffInArea() {
+    const ids = hiddenStaffInArea.map(s => s.id)
+    if (ids.length === 0) return
+    setStaffList(prev => prev.map(s => (ids.includes(s.id) ? { ...s, hidden: false } : s)))
+    const { error } = await supabase.from('staff').update({ hidden: false }).in('id', ids)
+    if (error) {
+      console.warn('failed to unhide staff', error)
+      setStaffList(prev => prev.map(s => (ids.includes(s.id) ? { ...s, hidden: true } : s)))
+    }
+  }
 
   const fetchStaff = useCallback(async () => {
     const [{ data: staffData }, { data: storeLinks }] = await Promise.all([
@@ -782,6 +813,15 @@ export default function ShiftPage() {
                 全日表示（{hiddenDays.size}件非表示）
               </button>
             )}
+            {hiddenStaffInArea.length > 0 && (
+              <button
+                onClick={unhideAllStaffInArea}
+                className="px-3 py-1 text-xs bg-purple-100 hover:bg-purple-200 text-purple-800 rounded-full font-medium transition-colors"
+                title={hiddenStaffInArea.map(s => s.name).join('、')}
+              >
+                全員表示（{hiddenStaffInArea.length}名非表示）
+              </button>
+            )}
             {lastSyncAt && (
               <span className="text-xs text-gray-400">
                 CS3同期: {new Date(lastSyncAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -887,7 +927,18 @@ export default function ShiftPage() {
 
                   return (
                   <tr key={staff.id} className={`border-b border-gray-100 ${staffIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
-                    <td className="sticky left-0 z-10 bg-inherit border-r border-gray-200 px-3 py-1.5 font-semibold text-gray-800">{staff.name}</td>
+                    <td className="group/staffname sticky left-0 z-10 bg-inherit border-r border-gray-200 px-3 py-1.5 font-semibold text-gray-800">
+                      <div className="flex items-center justify-between gap-1">
+                        <span>{staff.name}</span>
+                        <button
+                          onClick={() => hideStaff(staff.id)}
+                          className="opacity-0 group-hover/staffname:opacity-100 shrink-0 w-4 h-4 flex items-center justify-center rounded-full text-gray-300 hover:text-white hover:bg-red-500 text-[10px] font-bold transition-colors"
+                          title="このスタッフを非表示にする（シフトが入ると自動で再表示されます）"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </td>
                     <td className="sticky left-28 z-10 bg-inherit border-r border-gray-200 w-10 text-center">
                       <input
                         type="checkbox"
