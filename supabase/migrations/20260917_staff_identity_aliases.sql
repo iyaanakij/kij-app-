@@ -21,3 +21,13 @@ create index if not exists staff_identity_aliases_lookup
 
 create index if not exists staff_identity_aliases_staff_id
   on staff_identity_aliases (staff_id);
+
+-- Supabaseは新規テーブルのRLSを自動で有効化するが、ポリシーは自動生成されない。
+-- ポリシー未作成のまま放置すると、anonキー経由(アプリ側)は常に0件になり気づきにくい
+-- （2026-09-17、/shiftで別名が表示されない不具合として発覚・解消）。
+alter table staff_identity_aliases enable row level security;
+
+create policy "allow select" on staff_identity_aliases for select using (true);
+create policy "allow insert" on staff_identity_aliases for insert with check (true);
+create policy "allow update" on staff_identity_aliases for update using (true);
+create policy "allow delete" on staff_identity_aliases for delete using (true);
