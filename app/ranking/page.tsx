@@ -332,8 +332,26 @@ export default function RankingPage() {
           set.add(t.customer_id)
           honUniqueByCastName.set(t.cast_name, set)
         }
+
+        // staff_identity_aliases: 特定店舗だけ別名義(源氏名)で稼働する同一人物を合算する
+        const { data: aliasRowsData } = await supabase
+          .from('staff_identity_aliases')
+          .select('staff_id, alias_name, shop_id')
+        const aliasNamesByStaffId = new Map<number, string[]>()
+        for (const a of aliasRowsData ?? []) {
+          if (a.shop_id && a.shop_id !== shopCode) continue
+          const list = aliasNamesByStaffId.get(a.staff_id) ?? []
+          list.push(a.alias_name)
+          aliasNamesByStaffId.set(a.staff_id, list)
+        }
+
         for (const s of staffMap.values()) {
-          s.honUnique = honUniqueByCastName.get(s.name)?.size ?? 0
+          const names = [s.name, ...(aliasNamesByStaffId.get(s.staffId) ?? [])]
+          const combined = new Set<string>()
+          for (const n of names) {
+            for (const cid of honUniqueByCastName.get(n) ?? []) combined.add(cid)
+          }
+          s.honUnique = combined.size
         }
 
         // ── シフトデータ（稼働率計算用）──

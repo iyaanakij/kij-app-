@@ -251,10 +251,29 @@ async function notifyReservationLine(entry, staffId, reservationId, section) {
   return ok ? 'sent' : 'failed'
 }
 
+// entry.storeId（E店store_id）→ CS3 shop_id の逆引き
+const STORE_TO_SHOP = Object.fromEntries(
+  Object.entries(SHOP_TO_STORE).map(([shopId, storeId]) => [storeId, shopId])
+)
+
 // Vercel経由を廃止し、Supabaseに直接書き込む（Vercel 10秒タイムアウト回避）
 async function upsertReservationsToSupabase(entries, successfulShops) {
   const { data: allStaff } = await supabase.from('staff').select('id, name')
   const nameToId = new Map((allStaff ?? []).map(s => [s.name, s.id]))
+
+  // staff_identity_aliases: 同一人物が特定店舗だけ別名義(源氏名)で稼働するケース
+  const { data: aliasRows } = await supabase
+    .from('staff_identity_aliases')
+    .select('staff_id, alias_name, shop_id')
+  function resolveStaffId(castName, storeId) {
+    const direct = nameToId.get(castName)
+    if (direct) return direct
+    const shopId = STORE_TO_SHOP[storeId]
+    const alias = (aliasRows ?? []).find(a =>
+      a.alias_name === castName && (!a.shop_id || a.shop_id === shopId)
+    )
+    return alias ? alias.staff_id : null
+  }
 
   // 既存CS3予約を一括取得（今日以降）。store_id も取得して削除を店舗単位に限定する
   const today = new Date().toISOString().split('T')[0]
@@ -274,7 +293,7 @@ async function upsertReservationsToSupabase(entries, successfulShops) {
   const syncedKeys = []
 
   for (const entry of entries) {
-    const staffId = nameToId.get(entry.castName) ?? null
+    const staffId = resolveStaffId(entry.castName, entry.storeId)
     if (!staffId) {
       skipped++
       await markReservationLineSkipped(entry, null, 'staff_name_unmatched', entry.castName)
