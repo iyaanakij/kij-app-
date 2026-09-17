@@ -37,6 +37,13 @@ function parseShiftValue(value: string): { mode: 'delete' | 'x' | 'normal'; star
 
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土']
 const NARITA_AREA_ID = 1
+// area → CS3 shop_id（staff_identity_aliasesのshop_idと突き合わせるため）
+const AREA_TO_SHOP: Record<number, string> = {
+  1: '111702', // 成田
+  2: '111703', // 千葉
+  3: '111701', // 西船橋
+  4: '111704', // 錦糸町
+}
 const DORM_TOTAL_ROOMS = 5
 const DORM_USAGE_MEMO = '__SHIFT_DORM_USAGE__'
 const DORM_ENTRY_MEMO_PREFIX = '__NARITA_DORM_ENTRY__'
@@ -64,6 +71,7 @@ export default function ShiftPage() {
   const [selectedAreaId, setSelectedAreaId] = useState(3) // デフォルト: 西船橋
   const [staffList, setStaffList] = useState<Staff[]>([])
   const [staffStores, setStaffStores] = useState<{ staff_id: number; store_id: number }[]>([])
+  const [staffAliases, setStaffAliases] = useState<{ staff_id: number; alias_name: string; shop_id: string | null }[]>([])
   const [shifts, setShifts] = useState<Shift[]>([])
   const [shiftMarkers, setShiftMarkers] = useState<ShiftMarker[]>([])
   const [loading, setLoading] = useState(false)
@@ -216,13 +224,21 @@ export default function ShiftPage() {
   }
 
   const fetchStaff = useCallback(async () => {
-    const [{ data: staffData }, { data: storeLinks }] = await Promise.all([
+    const [{ data: staffData }, { data: storeLinks }, { data: aliasRows }] = await Promise.all([
       supabase.from('staff').select('*').order('name'),
       supabase.from('staff_stores').select('staff_id, store_id'),
+      supabase.from('staff_identity_aliases').select('staff_id, alias_name, shop_id'),
     ])
     if (staffData) setStaffList(staffData)
     if (storeLinks) setStaffStores(storeLinks)
+    if (aliasRows) setStaffAliases(aliasRows)
   }, [])
+
+  const displayStaffName = useCallback((staff: Staff) => {
+    const shopCode = AREA_TO_SHOP[selectedAreaId]
+    const alias = staffAliases.find(a => a.staff_id === staff.id && (!a.shop_id || a.shop_id === shopCode))
+    return alias?.alias_name ?? staff.name
+  }, [staffAliases, selectedAreaId])
 
   const fetchShifts = useCallback(async () => {
     setLoading(true)
@@ -929,7 +945,7 @@ export default function ShiftPage() {
                   <tr key={staff.id} className={`border-b border-gray-100 ${staffIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
                     <td className="group/staffname sticky left-0 z-10 bg-inherit border-r border-gray-200 px-3 py-1.5 font-semibold text-gray-800">
                       <div className="flex items-center justify-between gap-1">
-                        <span>{staff.name}</span>
+                        <span>{displayStaffName(staff)}</span>
                         <button
                           onClick={() => hideStaff(staff.id)}
                           className="opacity-0 group-hover/staffname:opacity-100 shrink-0 w-4 h-4 flex items-center justify-center rounded-full text-gray-300 hover:text-white hover:bg-red-500 text-[10px] font-bold transition-colors"
