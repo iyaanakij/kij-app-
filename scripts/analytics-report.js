@@ -254,6 +254,35 @@ async function fetchGA4Channels(propertyId, accessToken, startDate, endDate) {
   })
 }
 
+// ②' UTMキャンペーン別セッション数（2026-09-19: 32コンテンツ記事→group/discount/リンクのUTM計測用）
+// sessionDefaultChannelGroupは同一ドメイン内遷移がDirectに丸め込まれ発生源を判別できないため、
+// utm_source/utm_campaign/utm_contentをそのまま見る
+async function fetchGA4GroupCampaigns(propertyId, accessToken, startDate, endDate) {
+  return ga4Report(propertyId, accessToken, {
+    dateRanges: [{ startDate, endDate }],
+    metrics: [{ name: 'sessions' }],
+    dimensions: [
+      { name: 'sessionSource' },
+      { name: 'sessionCampaignName' },
+      { name: 'sessionManualAdContent' },
+    ],
+    orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+    limit: 50,
+  })
+}
+
+function summarizeGroupCampaigns(data) {
+  if (!data?.rows) return []
+  return data.rows
+    .map(row => ({
+      source: row.dimensionValues[0].value,
+      campaign: row.dimensionValues[1].value,
+      content: row.dimensionValues[2].value,
+      sessions: Math.round(parseFloat(row.metricValues[0].value)),
+    }))
+    .filter(row => row.source === 'content_article')
+}
+
 // ③ phone_click / reservation_click 件数
 async function fetchGA4Events(propertyId, accessToken, startDate, endDate) {
   return ga4Report(propertyId, accessToken, {
@@ -814,6 +843,8 @@ async function buildGroupPagePeriod(accessToken, ranges) {
       shopClicksPrev,
       channelsCurr,
       channelsPrev,
+      campaignsCurr,
+      campaignsPrev,
       castCardCurr,
       scCurrent,
       scPrevious,
@@ -826,6 +857,8 @@ async function buildGroupPagePeriod(accessToken, ranges) {
       shopDimension ? fetchGA4GroupShopClicks(page.id, accessToken, ranges.ga4Previous.startDate, ranges.ga4Previous.endDate, shopDimension.apiName) : Promise.resolve(null),
       fetchGA4Channels(page.id, accessToken, ranges.ga4Current.startDate, ranges.ga4Current.endDate),
       fetchGA4Channels(page.id, accessToken, ranges.ga4Previous.startDate, ranges.ga4Previous.endDate),
+      fetchGA4GroupCampaigns(page.id, accessToken, ranges.ga4Current.startDate, ranges.ga4Current.endDate),
+      fetchGA4GroupCampaigns(page.id, accessToken, ranges.ga4Previous.startDate, ranges.ga4Previous.endDate),
       fetchGA4GroupCastCardEvents(page.id, accessToken, ranges.ga4Current.startDate, ranges.ga4Current.endDate),
       fetchSC('https://www.m-kairaku.com/', accessToken, {
         ...scFilter,
@@ -891,6 +924,10 @@ async function buildGroupPagePeriod(accessToken, ranges) {
       channels: {
         current: summarizeChannels(channelsCurr),
         previous: summarizeChannels(channelsPrev),
+      },
+      contentArticleReferrals: {
+        current: summarizeGroupCampaigns(campaignsCurr),
+        previous: summarizeGroupCampaigns(campaignsPrev),
       },
       castCardClicks: summarizeGroupCastCardEvents(castCardCurr).slice(0, 30),
       searchConsole: {

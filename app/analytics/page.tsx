@@ -205,6 +205,13 @@ interface GroupPageCastCardClick {
   ctr: number
 }
 
+interface GroupPageContentReferral {
+  source: string
+  campaign: string
+  content: string
+  sessions: number
+}
+
 interface GroupPageEntry {
   id: string
   measurement_id: string
@@ -218,6 +225,7 @@ interface GroupPageEntry {
   diff_pct: GroupPageDiffPct
   shop_clicks: { current: GroupPageShopClicksSnapshot; previous: GroupPageShopClicksSnapshot } | null
   channels: { current: Record<string, number>; previous: Record<string, number> }
+  contentArticleReferrals: { current: GroupPageContentReferral[]; previous: GroupPageContentReferral[] }
   castCardClicks: GroupPageCastCardClick[]
   searchConsole: {
     current: { summary: SearchSummary; topQueries: GroupPageTopQuery[] }
@@ -1009,6 +1017,50 @@ function GroupPageChannelsTable({ current, previous }: { current: Record<string,
   )
 }
 
+function GroupPageContentReferralsTable({ current, previous }: { current: GroupPageContentReferral[]; previous: GroupPageContentReferral[] }) {
+  if (current.length === 0) {
+    return (
+      <p className="text-xs text-gray-400">
+        データがありません（2026-09-19にUTM付与を開始。付与前のセッションは遡って集計されません）。32記事のリンクが<code className="rounded bg-gray-100 px-1">utm_source=content_article</code>で反映されているか確認してください。
+      </p>
+    )
+  }
+  const prevByKey = new Map(previous.map(row => [`${row.campaign}__${row.content}`, row.sessions]))
+  const total = current.reduce((sum, row) => sum + row.sessions, 0)
+  return (
+    <div className="overflow-x-auto rounded border bg-white">
+      <table className="w-full text-xs">
+        <thead className="bg-gray-50 text-gray-500">
+          <tr>
+            <th className="px-3 py-2 text-left">テーマ（utm_campaign）</th>
+            <th className="px-3 py-2 text-left">店舗（utm_content）</th>
+            <th className="px-3 py-2 text-right">セッション</th>
+            <th className="px-3 py-2 text-right">前期間比</th>
+          </tr>
+        </thead>
+        <tbody>
+          {current.map(row => {
+            const diffPct = pctChange(row.sessions, prevByKey.get(`${row.campaign}__${row.content}`) ?? 0)
+            return (
+              <tr key={`${row.campaign}__${row.content}`} className="border-t">
+                <td className="px-3 py-1.5 font-medium text-gray-700">{row.campaign}</td>
+                <td className="px-3 py-1.5 text-gray-600">{row.content}</td>
+                <td className="px-3 py-1.5 text-right text-gray-700">{row.sessions.toLocaleString()}</td>
+                <td className="px-3 py-1.5 text-right"><SignedValue value={diffPct} suffix="%" /></td>
+              </tr>
+            )
+          })}
+          <tr className="border-t bg-gray-50 font-medium">
+            <td className="px-3 py-1.5" colSpan={2}>合計</td>
+            <td className="px-3 py-1.5 text-right">{total.toLocaleString()}</td>
+            <td className="px-3 py-1.5" />
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function GroupPageCastCardTable({ rows }: { rows: GroupPageCastCardClick[] }) {
   if (rows.length === 0) {
     return (
@@ -1774,6 +1826,17 @@ export default function AnalyticsPage() {
               <section>
                 <h3 className="mb-2 text-sm font-semibold text-gray-700">流入チャネル</h3>
                 <GroupPageChannelsTable current={groupPageEntry.channels.current} previous={groupPageEntry.channels.previous} />
+              </section>
+
+              <section>
+                <h3 className="mb-2 text-sm font-semibold text-gray-700">コンテンツ記事からの送客（UTM計測）</h3>
+                <p className="mb-2 text-xs text-gray-500">
+                  32本のSEOコンテンツ記事に埋め込んだ「WEB限定のご新規様割引」リンク経由のセッション。同一ドメイン内遷移は上の「流入チャネル」ではDirectに丸め込まれ発生源が分からないため、UTM（utm_source=content_article）で別途計測している。
+                </p>
+                <GroupPageContentReferralsTable
+                  current={groupPageEntry.contentArticleReferrals.current}
+                  previous={groupPageEntry.contentArticleReferrals.previous}
+                />
               </section>
 
               <section>
